@@ -16,7 +16,7 @@ include: ["stylesheets", "javascripts", "images", "fonts"]
 
 gems:
     - kramdown
-    - github-pages
+#    - github-pages
 #    - jekyll-redirect-from
 #    - rdiscount
 
