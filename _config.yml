@@ -1,0 +1,23 @@
+# For Atom Feed
+domain: clau.se
+author: Dmytro Lytovchenko
+email: dmytro.lytovchenko@gmail.com
+title: Fgsfds
+
+lang: en
+
+port: 3000
+lsi: false
+permalink: /:title
+markdown: kramdown
+# Since GH pages override this to "true", we test this value to see if we are running locally
+safe: false
+include: ["stylesheets", "javascripts", "images", "fonts"]
+
+#gems:
+#  - jekyll-redirect-from
+#  - rdiscount
+
+exclude:
+    - clau.se.iml
+    - params.json
