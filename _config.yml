@@ -14,9 +14,11 @@ markdown: kramdown
 safe: false
 include: ["stylesheets", "javascripts", "images", "fonts"]
 
-#gems:
-#  - jekyll-redirect-from
-#  - rdiscount
+gems:
+    - kramdown
+    - github-pages
+#    - jekyll-redirect-from
+#    - rdiscount
 
 exclude:
     - clau.se.iml
