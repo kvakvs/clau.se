@@ -1,0 +1,158 @@
+---
+layout: default
+title: Bearded Men, the Game
+---
+
+<h1>{{ page.title }}</h1>
+
+<h3>Game Engine TODO</h3>
+
+<ul>
+    <li>Giving orders (marking map cells, objects and areas)</li>
+    
+    <li>View mode for orders (show/hide). Or show current orders of same type while
+    giving another order</li>
+    
+    <li>Astar routing. Plus separate Astar implementation will be used for AI.</li>
+    
+    <li>AI: Planning, decision making with Astar, following plans.</li>
+    <li>AI: Defining unit capabilities: what does it have, what can it do.</li>
+    
+    <li>Units: Body parts and stats.</li>
+    
+    <li>UI: Inspect window for an unit. Show current plan? Display unit and its body
+    stats, damaged body parts, inventory, equipment.</li>
+    <li>UI: Maybe revert to a simpler UI skin? Or find a more detailed appropriate free
+    skin.</li>
+</ul>
+
+<h3>Design/TODO</h3>
+
+<p>Most of this is shameless theft from DF.</p>
+
+<h4>Land</h4>
+
+<ul>
+    <li>Land generation, caves, biomes, volcanoes, simple geology.</li>
+    <li>Water sources, water erosion, streams/rivers.</li>
+</ul>
+
+<h4>Settlement</h4>
+
+<ul>
+    <li>Wealth calculation, enemy uses estimated wealth to decide to attack</li>
+    <li>General land properties: Terror level defines the creatures in this area</li>
+</ul>
+
+<h4>Creatures and Actors</h4>
+
+<ul>
+    <li>Factions? Friendly/loyal/enemy/separatist?</li>
+    <li>Body parts, vital body parts, wounds, scars, skin fat, bleeding.
+        Undeads missing vital organs (hit points accumulated damage to kill
+        the thing)</li>
+    <li>Use body parts for activities - hands to carry, legs to move, cat uses
+        teeth to carry mouse</li>
+    <li>Throwing, attacking - may wound/kill</li>
+    <li>Sicknesses (syndromes), immunity, contraction: injected, on contact,
+        inhaled</li>
+    <li>Getting wet, contaminated with liquids</li>
+    <li>Skills and attributes. Rust if not used for a long time.</li>
+</ul>
+
+<h4>Personal</h4>
+
+<ul>
+    <li>Moods</li>
+    <li>Good/bad feelings</li>
+    <li>Strange moods?</li>
+</ul>
+
+<h4>Food</h4>
+
+<p>Note: I personally hate setting up those small things manually, like crafting
+    initial tool set for everyone and giving manual order to everyone. Would
+    like to have this somehow automated/simplified while still allowing manual
+    management for those who want it (i.e. manual crafting and giving orders).</p>
+
+<ul>
+    <li>Gathering (low return, runs out of bushes)</li>
+    <li>Fishing (easy entry, much time, low return)</li>
+    <li>Hunting</li>
+    <li>Orders: Become a hunter, become a fisher, become a gatherer</li>
+    <li>Failing to hunt with bow and no arrows</li>
+</ul>
+
+<h4>Building</h4>
+
+<ul>
+    <li>Orders, repeat orders, cancel order</li>
+    <li>Digging</li>
+    <li>Stone properties: warm (lava is close), damp (water is close).</li>
+    <li>Liquids, flowing, flooding</li>
+</ul>
+
+<h4>Items and Objects</h4>
+
+<ul>
+    <li>Forbid flag on doors etc</li>
+    <li>Levers connected to stuff, various actions on different stuff. Triggers
+        which act similar to levers.</li>
+    <li>Situations: step into, get covered with X, get splashed, spill,
+        inhale fumes (of spill or of a natural liquid), get hit/shot with an
+        object covered with X.</li>
+    <li>Actions: Sniff, taste, touch?</li>
+</ul>
+
+<h4>Materials</h4>
+
+<ul>
+    <li>Physical props: Melting point, boiling point, ignite point, heat damage
+        point, cold damage point, density (solid and liquid), heat capacity,
+        fixed temperature of the material</li>
+    <li>Dietary props</li>
+    <li>Contamination with this material as what? Blood slime vomit ichor pus
+        goo grime filth</li>
+    <li>? Powder dye - properties of the powdered material</li>
+    <li>Liquid absorption properties</li>
+    <li>Impact/fracturing/breaking point/elasticity/strain at yield/compressive
+        yield/elasticity, tensile yield, torsion, shear yield/fracture, bending
+        yield/fracture/strain at yield, elasticity</li>
+    <li>Hardens with water (allows to make casts)</li>
+</ul>
+
+<h4>Material extra properties</h4>
+
+<ul>
+    <li>"Getting this item implies animal kill" flag</li>
+    <li>classifications - material types: wood, stone, leather, metal, glass,
+        cloth, bone, shell, gem, wax</li>
+    <li>extra subclasses - bone, tooth, horn, pearl, shell, silk, soap, meat...</li>
+    <li>can rot if not stockpiled</li>
+    <li>can evaporate</li>
+    <li>enters blood (or stays on the skin)</li>
+    <li>edible by vermin, edible raw, edible when cooked</li>
+    <li>can create alcohol?</li>
+    <li>can be used to craft weapons, ranged, anvils, ammo, picks, armor...</li>
+</ul>
+
+<h4>Altars and Temples</h4>
+
+<ul>
+    <li>Certain shape and materials for a holy or unholy structure</li>
+    <li>Can convert room to temple/consecrate</li>
+    <li>Buffs/Bonuses for sacrifices, for covering with specific types of liquids</li>
+</ul>
+
+<h4>Engineering</h4>
+
+<ul>
+    <li>Pumps?</li>
+    <li>Drawbridges</li>
+    <li>Doors</li>
+    <li>Levers. Lever can be connected to a weapon too!</li>
+    <li>Timed mechanism</li>
+    <li>Presense sensors</li>
+    <li>This leads to traps</li>
+    <li>Cages, spike traps, etc.</li>
+</ul>
