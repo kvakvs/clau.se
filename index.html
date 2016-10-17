@@ -6,48 +6,89 @@ title: Hello
 <h3>{{ page.title }}</h3>
 
 <p>My name is Dmytro, and I am a software engineer. You can find me
-    on FB, Twitter, Github etc. using the same nickname.</p>
+  son FB, Twitter,
+  <a href="https://github.com/kvakvs/">Github</a>
+  etc. using the same nickname.</p>
 
 <h3>My current projects</h3>
 
 <ul>
-    <li><strong><a href="bm.html">Bearded Men</a></strong>
-        &mdash; an attempt to create simulation game in my
-        free time. Different approaches have been tried, including
-        <a href="https://github.com/kvakvs/BeardedMen">Qt+OpenGL raw C++</a>,
-        using <a href="https://github.com/kvakvs/BeardedMenUE">Unreal Engine</a>
-        and Unity (no URL yet). So far both Qt+OpenGL and Unity look promising.</li>
+  <li><strong><a href="bm.html">Bearded Men</a> Simulation Game.</strong>
+    A game about higher being (a King, or a God, maybe) indirectly
+    controlling a realm, inhabited by small beings with their own will.
+    Sort of Dwarf Fortress, but it really isn't.
+    <strong>Now the game is at design concept stage.</strong></li>
 
-    <li><strong><a href="https://github.com/kvakvs/otp/tree/cmake">CMake build
-        system</a> for Erlang/OTP</strong> &mdash; an attempt to rewrite
-        and replace bunch of convoluted Makefiles and use CMake to build and
-        release Erlang/OTP.</li>
+  <li><strong><a href="https://github.com/kvakvs/beam_bots">BEAM Bots</a></strong>
+    &mdash; A robot game, where you connect to the game via ZeroMQ API and can
+    spawn then control a toy car. Multiplayer. Physics. 3D render.
+    Unreal Engine 4.</li>
+
+  <li>A Russian translation for
+    <a href="http://shop.oreilly.com/product/0636920024149.do">the "Scalability"</a>
+    book on behalf of DMK Press.</li>
+
+  <li><strong><a href="http://beam-wisdoms.clau.se">BEAM Wisdoms</a></strong>
+    &mdash; A collection of easy to read and in-depth articles on BEAM VM
+    which runs Erlang, Elixir and other languages.
+  </li>
+
 </ul>
 
-<h3>Previous projects: frozen, paused or abandoned</h3>
+<h3>Previous Finished/Paused</h3>
 
 <ul>
-    <li><a href="https://github.com/kvakvs/eia">Erlang in Anger</a> &mdash; Russian translation.
-    Requires some proof reading and editing which possibly will never be done.</li>
-    
-    <li><a href="https://github.com/kvakvs/gluonvm">Gluon Erlang VM</a> &mdash; a BEAM-compatible
-    virtual machine for Erlang written in C++. Floating somewhere close to proof of concept stage.
-    It mostly works, but has few features.</li>
-    
-    <li><a href="https://github.com/kvakvs/erlang-handbook">Erlang Handbook</a> &mdash; an
-    outdated translation of Erlang Handbook to Russian. Mostly usable.</li>
-    
-    <li><a href="https://github.com/kvakvs/hge">HGE, Haaf's Graphics Engine</a> &mdash; a Windows
-    game engine written in simple C++ supporting DirectX 8 and 9. Passive support and maintenance
-    mode, also hosting <a href="https://github.com/kvakvs/hge">Dummy Website</a> and 
-    a <a href="http://kvakvs.github.io/hge/doc/index.html">clone of original website</a> for HGE.</li>
-    
-    <li><a href="https://github.com/kvakvs/tx">Term Explorer for Erlang</a> &mdash; a simple
-    self-dependent Erlang library, which spawns a web page to pretty-print long nested terms with
-    type highlighting and limited live process inspection features.</li>
-    
-    <li><a href="https://github.com/kvakvs/macaba">Macaba Imageboard</a> &mdash; an old (and 
-    potentially very slow under load) image board implementation in Erlang and Riak. If I was rewriting
-    it today, I'd use memory-only or disk_copies Mnesia for posts and comments, while storing image
-    files on either mechanical hard drives or SSD with standard OS caching layer.</li>
+  <li><strong><a href="bm-old.html">Bearded Men (previous)</a></strong>
+    &mdash; an attempt to create simulation game in my
+    free time. Different approaches have been tried, including
+    <a href="https://github.com/kvakvs/BeardedMen">Qt+OpenGL raw C++</a>,
+    using <a href="https://github.com/kvakvs/BeardedMenUE">Unreal Engine</a>
+    and Unity (no URL yet). Project concept now changed to BM Sim
+    (see in the projects above).
+  </li>
+
+  <li><strong><a href="https://github.com/kvakvs/otp/tree/cmake">CMake build
+    system</a> for Erlang/OTP</strong> &mdash; an attempt to rewrite
+    and replace bunch of convoluted Makefiles and use CMake to build and
+    release Erlang/OTP.
+  </li>
+
+  <li><a href="https://github.com/kvakvs/eia">Erlang in Anger</a> &mdash;
+    Russian translation. Requires some proof reading and editing which possibly
+    will never be done.
+  </li>
+
+  <li><a href="https://github.com/kvakvs/gluonvm">Gluon Erlang VM</a> &mdash; a
+    BEAM-compatible
+    virtual machine for Erlang written in C++. Floating somewhere close to proof
+    of concept stage.
+    It mostly works, but has few features.
+  </li>
+
+  <li><a href="https://github.com/kvakvs/erlang-handbook">Erlang
+    Handbook</a> &mdash; an outdated translation of Erlang Handbook to Russian.
+    Mostly usable.
+  </li>
+
+  <li><a href="https://github.com/kvakvs/hge">HGE, Haaf's Graphics
+    Engine</a> &mdash; a Windows game engine written in simple C++ supporting
+    DirectX 8 and 9. Passive support and maintenance
+    mode, also hosting <a href="https://github.com/kvakvs/hge">Dummy Website</a>
+    and a <a href="http://kvakvs.github.io/hge/doc/index.html">clone of original
+    website</a> for HGE.
+  </li>
+
+  <li><a href="https://github.com/kvakvs/tx">Term Explorer for
+    Erlang</a> &mdash; a simple self-dependent Erlang library, which spawns a web
+    page to pretty-print long nested terms with
+    type highlighting and limited live process inspection features.
+  </li>
+
+  <li><a href="https://github.com/kvakvs/macaba">Macaba Imageboard</a> &mdash;
+    an old (and potentially very slow under load) image board implementation
+    in Erlang and Riak. If I was rewriting it today, I'd use memory-only or
+    disk_copies Mnesia for posts and comments, while storing image
+    files on either mechanical hard drives or SSD with standard OS caching
+    layer.
+  </li>
 </ul>
