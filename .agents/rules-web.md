@@ -6,13 +6,21 @@ dependencies, few components, no speculative abstractions.
 ## Stack and Hosting
 
 - Next.js latest stable, App Router only (`app/`), no Pages Router.
-- React latest stable, TypeScript latest stable, Tailwind CSS v4.
-- Package manager: `pnpm` (on windows host). Commit `package-lock.json`. No yarn/pnpm lockfiles.
-- Main branch is `master`. Hosting is Nginx on virtual dedicated host, uploaded via SSH.
+- React latest stable, Tailwind CSS v4, ESLint 9, TypeScript 6. Stay on
+  TypeScript 6 until Next.js and typescript-eslint support the native TypeScript
+  7 compiler.
+- Package manager: `pnpm` (on windows host). Commit `pnpm-lock.yaml`; no
+  `package-lock.json` or `yarn.lock`. Project `.npmrc` sets
+  `minimum-release-age=10080` (minutes = 7 days; pnpm does not accept `7d`). Add
+  dependencies with an explicit range (`pnpm add pkg@^1`); a bare `latest` tag
+  fails under the release-age policy.
+- Main branch is `master`. Hosting is Nginx on virtual dedicated host, uploaded
+  via SSH. The site is a static export (`output: "export"`,
+  `trailingSlash: true`): `pnpm build` writes `out/`, which is uploaded as is.
   - Forbidden: API routes, route handlers with dynamic behavior, middleware,
-    server actions, `cookies()`, `headers()`, ISR/`revalidate`, runtime
-    `fetch` on the server, `next/image` optimization (set
-    `images.unoptimized: true` if `next/image` is used at all).
+    server actions, `cookies()`, `headers()`, ISR/`revalidate`, runtime `fetch`
+    on the server, `next/image` optimization (set `images.unoptimized: true` if
+    `next/image` is used at all).
   - Dynamic routes must define `generateStaticParams`.
   - If deployed under a sub-path, set `basePath` in one place; never hardcode
     the prefix in links or asset URLs.
@@ -26,7 +34,7 @@ dependencies, few components, no speculative abstractions.
 app/                 routes (layout.tsx, page.tsx, docs/, resources/)
 components/          shared UI components (one component per file)
 lib/                 non-UI code: i18n, theme, docs loading, helpers
-messages/            translation dictionaries: en.ts, sv.ts, es.ts, uk.ts
+messages/            translation dictionaries: <locale>.ts, index.ts
 content/docs/        Markdown copied from ../clau/docs (see Documentation)
 public/              static assets
 scripts/             build helper scripts (e.g. docs sync)
@@ -38,10 +46,10 @@ scripts/             build helper scripts (e.g. docs sync)
 
 ## TypeScript
 
-- `strict: true`, plus `noUncheckedIndexedAccess` and
-  `noImplicitOverride`. Build must pass `tsc --noEmit` with zero errors.
-- No `any`. Use `unknown` and narrow. No `@ts-ignore`; `@ts-expect-error`
-  only with a comment explaining why.
+- `strict: true`, plus `noUncheckedIndexedAccess` and `noImplicitOverride`.
+  Build must pass `tsc --noEmit` with zero errors.
+- No `any`. Use `unknown` and narrow. No `@ts-ignore`; `@ts-expect-error` only
+  with a comment explaining why.
 - Prefer `type` aliases; use `interface` only when declaration merging is
   needed. Export types used across files.
 - Prefer union string literals and `as const` objects over `enum`.
@@ -56,16 +64,16 @@ scripts/             build helper scripts (e.g. docs sync)
   that needs state, effects, browser APIs or event handlers (theme toggle,
   language dropdown). Never mark a layout or page as a client component.
 - Function components only. Props typed inline or via a named `type`.
-- No `useEffect` for derived state; compute during render. Use effects only
-  to sync with external systems (`matchMedia`, `localStorage`,
+- No `useEffect` for derived state; compute during render. Use effects only to
+  sync with external systems (`matchMedia`, `localStorage`,
   `navigator.languages`).
 - Access `window`, `document`, `localStorage`, `navigator` only inside effects
   or event handlers, never during render (static export prerenders on build).
 - Keys are stable IDs, never array indices for reorderable lists.
 - No global state library. React context only for theme and locale.
-- Accessibility: semantic elements (`header`, `nav`, `main`, `footer`,
-  `button`, `a`), visible focus styles, `aria-label` on icon-only buttons,
-  `lang` attribute on `<html>` updated to the active locale.
+- Accessibility: semantic elements (`header`, `nav`, `main`, `footer`, `button`,
+  `a`), visible focus styles, `aria-label` on icon-only buttons, `lang`
+  attribute on `<html>` updated to the active locale.
 - Use `next/link` for internal navigation, plain `<a>` with
   `rel="noopener noreferrer"` for external links.
 
@@ -76,57 +84,65 @@ scripts/             build helper scripts (e.g. docs sync)
   requires it.
 - Dark mode is class-based so the manual toggle works:
   `@custom-variant dark (&:where(.dark, .dark *));`
-- Define colors as semantic tokens (`--color-bg`, `--color-fg`,
-  `--color-muted`, `--color-accent`, `--color-border`, `--color-card`) in
-  `@theme`, override them under `.dark`. Components use the tokens
-  (`bg-bg`, `text-fg`), not raw palette colors, so both themes stay
-  consistent. Use `dark:` variants only for one-off exceptions.
-- Utility classes in markup; no CSS modules, no styled-components. Use
-  `@apply` sparingly, only in `globals.css` for prose/base element styles.
+- Define colors as semantic tokens (`--color-bg`, `--color-fg`, `--color-muted`,
+  `--color-accent`, `--color-border`, `--color-card`) in `@theme`, override them
+  under `.dark`. Components use the tokens (`bg-bg`, `text-fg`), not raw palette
+  colors, so both themes stay consistent. Use `dark:` variants only for one-off
+  exceptions.
+- Utility classes in markup; no CSS modules, no styled-components. Use `@apply`
+  sparingly, only in `globals.css` for prose/base element styles.
 - Long or conditional class lists: use a tiny `cn()` helper in `lib/` (plain
   join of truthy strings). Add `clsx`/`tailwind-merge` only if really needed.
-- Mobile first: base styles for small screens, `sm:`/`md:`/`lg:` for larger.
-  No horizontal scroll at 360px width.
-- Markdown docs rendering: `@tailwindcss/typography` (`prose
-  dark:prose-invert`) is allowed.
+- Mobile first: base styles for small screens, `sm:`/`md:`/`lg:` for larger. No
+  horizontal scroll at 360px width.
+- Markdown docs rendering: `@tailwindcss/typography` (`prose dark:prose-invert`)
+  is allowed.
 
 ## Theme (Light / Auto / Dark)
 
 - Selector in the top right of the header, three states: `light`, `auto`,
   `dark`. Default `auto`. Persist choice in `localStorage` key `theme`.
-- `auto` follows `window.matchMedia("(prefers-color-scheme: dark)")` and
-  reacts to its `change` event live.
-- Prevent flash of wrong theme: a small inline blocking `<script>` in
-  `<head>` of the root layout reads `localStorage` and sets the `dark` class
-  on `<html>` before first paint. Add `suppressHydrationWarning` on `<html>`.
-- Wrap all `localStorage` access in `try/catch` (private mode, blocked
-  storage).
+- `auto` follows `window.matchMedia("(prefers-color-scheme: dark)")` and reacts
+  to its `change` event live.
+- Prevent flash of wrong theme: a small inline blocking `<script>` in `<head>`
+  of the root layout reads `localStorage` and sets the `dark` class on `<html>`
+  before first paint. Add `suppressHydrationWarning` on `<html>`.
+- Wrap all `localStorage` access in `try/catch` (private mode, blocked storage).
 
 ## Internationalization
 
-- Locales: `en` (default), `sv`, `es`, `uk`. Locale type is the union
-  `"en" | "sv" | "es" | "uk"`; one source list in `lib/i18n.ts`.
-- No i18n library unless requirements grow; dictionaries are plain typed
-  objects in `messages/<locale>.ts`. `en.ts` is the source of truth; other
-  dictionaries are typed `satisfies Messages` (derived from `en`) so a missing
-  key is a compile error.
-- Detection on the client: saved choice in `localStorage` key `locale` wins;
-  otherwise the first entry of `navigator.languages` whose primary subtag
-  (`sv-SE` -> `sv`) is supported; otherwise `en`.
-- Language dropdown sits in the top right, next to the theme selector. Show
-  each language in its own name (English, Svenska, Español, Українська).
-- Never hardcode user-visible strings in components; all text goes through
-  the dictionary. Technical names (Erlang, LLVM, OTP, Clause, `clau`) stay
+- Locales: `en` (default), `sv`, `es`, `uk`, `fr`, `de`, `pt`. One source list
+  in `lib/i18n.ts`; the `Locale` type is derived from it.
+- No i18n library unless requirements grow; dictionaries are plain typed objects
+  in `messages/<locale>.ts`. `en.ts` is the source of truth; other dictionaries
+  are typed `satisfies Messages` (derived from `en`) so a missing key is a
+  compile error.
+- The locale is the first path segment: `/<locale>/`, `/<locale>/docs/<slug>/`,
+  `/<locale>/resources/`. All routes live under `app/[lang]/` (root layout with
+  `<html lang>`), prerendered for every locale via `generateStaticParams` and
+  `dynamicParams = false`. Internal links always include the locale.
+- The site root `/` is a static page whose inline script picks the locale and
+  redirects: saved choice in `localStorage` key `locale` wins; otherwise the
+  first entry of `navigator.languages` whose primary subtag (`sv-SE` -> `sv`) is
+  supported; otherwise `en`. It lists all languages as plain links for visitors
+  without JavaScript.
+- Language dropdown sits in the top right, next to the theme selector. Show each
+  language in its own name (English, Svenska, Español, Українська, Français,
+  Deutsch, Português). Changing it saves the choice and navigates to the same
+  page under the new locale.
+- Portuguese is written in European Portuguese.
+- Never hardcode user-visible strings in components; all text goes through the
+  dictionary. Technical names (Erlang, LLVM, OTP, Clause, `clau`) stay
   untranslated.
 - Documentation Markdown from `../clau/docs` is not translated; only the
   surrounding UI (headings, notices, navigation) is.
 
 ## Documentation Pages
 
-- Source of truth is `../clau/docs`. It is outside this repository and absent
-  in CI, so copy it into `content/docs/` with a script in `scripts/`
-  (`npm run sync-docs`) and commit the copy. Never import from `../clau`
-  directly in app code.
+- Source of truth is `../clau/docs`. It is outside this repository and absent in
+  CI, so copy it into `content/docs/` with a script in `scripts/`
+  (`pnpm sync-docs`) and commit the copy. Never import from `../clau` directly
+  in app code.
 - Table of contents order is defined explicitly in `lib/docs.ts` (Getting
   started, Building the compiler, Using the compiler, Interpreting results,
   Differences from Erlang/OTP, then remaining files alphabetically).
@@ -140,19 +156,20 @@ scripts/             build helper scripts (e.g. docs sync)
 Before declaring work done, run and pass:
 
 ```
-npm run lint        # ESLint (next/core-web-vitals + typescript rules)
-npx tsc --noEmit
-npm run build       # must produce the static export in out/
+pnpm lint           # ESLint (next/core-web-vitals + typescript rules)
+pnpm typecheck      # tsc --noEmit
+pnpm build          # must produce the static export in out/
 ```
 
 - Format with Prettier (`prettier-plugin-tailwindcss` to sort classes).
-- No console errors or hydration warnings in the browser on any page, in both
-  themes and all four locales.
-- Check pages at mobile (360px) and desktop widths in light and dark.
+- Browser testing (launching Chrome or another browser, screenshots) is off.
+  Do not run it unless the user asks. The developer checks pages in the
+  browser: no console errors or hydration warnings, mobile (360px) and
+  desktop widths, light and dark.
 
 ## Dependencies
 
 - Add a dependency only when it removes real complexity. Justify each new
   package in the commit message.
-- No UI kits (MUI, Chakra, shadcn bulk installs), no icon packs for a handful
-  of icons (inline SVG instead), no analytics or trackers.
+- No UI kits (MUI, Chakra, shadcn bulk installs), no icon packs for a handful of
+  icons (inline SVG instead), no analytics or trackers.

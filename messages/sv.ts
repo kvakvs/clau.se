@@ -1,0 +1,167 @@
+import type { Messages } from "@/messages/en";
+
+export const sv = {
+  meta: {
+    description:
+      "Clause kompilerar Erlang/OTP 29 i förväg via LLVM till körbara program.",
+  },
+  nav: {
+    label: "Huvudmeny",
+    home: "Hem",
+    docs: "Dokumentation",
+    resources: "Resurser",
+  },
+  theme: {
+    label: "Färgtema",
+    light: "Ljust",
+    auto: "Auto",
+    dark: "Mörkt",
+  },
+  language: {
+    label: "Språk",
+  },
+  footer: {
+    tagline: "Erlang, kompilerat i förväg.",
+  },
+  home: {
+    title: "Erlang/OTP 29, kompilerat till maskinkod",
+    intro:
+      "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser, meddelandeöverföring och skräpsamling per process.",
+    status:
+      "Under utveckling: en växande delmängd av Erlang kompileras och körs redan idag. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
+    ctaDocs: "Läs dokumentationen",
+    ctaSource: "Källkod på GitHub",
+    cardsTitle: "Funktioner",
+    cards: [
+      {
+        id: "otp",
+        property: "OTP 29",
+        title: "Modern Erlang-syntax",
+        text: "Preprocessor och parser för Erlang/OTP 29: makron, records, native records, maps, bitsträngar, comprehensions, maybe och typspecifikationer.",
+      },
+      {
+        id: "llvm",
+        property: "LLVM",
+        title: "LLVM-backend",
+        text: "Kompilerar till verifierad LLVM IR, bitkod eller objektfiler med O0, O2 eller Os, med typspecialiserade funktionsvarianter.",
+      },
+      {
+        id: "executables",
+        property: "clau -o app",
+        title: "Körbara program",
+        text: "Länkar Erlang-moduler och runtime till ett fristående program med Clang, med ett enda kommando.",
+      },
+      {
+        id: "processes",
+        property: "spawn · send · receive",
+        title: "Erlang-processer",
+        text: "Processer på schemaläggartrådar med selektiv receive, tidsgränser, länkar, monitorer, registrerade namn och exit-signaler.",
+      },
+      {
+        id: "memory",
+        property: "GC per process",
+        title: "Isolerat minne",
+        text: "Varje process äger sin heap, som städas av en kopierande skräpsamlare enligt den klassiska ERTS-designen.",
+      },
+      {
+        id: "targets",
+        property: "7 plattformar",
+        title: "Plattformsoberoende",
+        text: "Körning validerad på Windows x64; objektfiler kontrollerade för Linux x86, x64, ARM och AArch64, Windows x86 och x64 samt Apple Silicon.",
+      },
+    ],
+    detailsTitle: "Funktioner i detalj",
+    details: [
+      {
+        id: "frontend",
+        title: "Frontend",
+        items: [
+          "Förbehandling: makron, include, include_lib, villkorlig kompilering och språkfunktioner",
+          "Erlang/OTP 29-syntax: uttryck, mönster, records, bitsträngar, typer och specifikationer, kontrollflöde och comprehensions",
+          "Syntaxkontroll, utskrift av expanderad källkod och ett indenterat syntaxträd",
+          "Diagnostik i källkoden över flera indatafiler",
+        ],
+      },
+      {
+        id: "compiler",
+        title: "Kompilator",
+        items: [
+          "Semantisk analys: kontroll av delmängden, variabelbindningar, anropsupplösning, deklarerade och härledda typer",
+          "LLVM O0, O2 och Os; objektfiler, IR och bitkod per modul; IR-ögonblicksbilder med Erlang-källkod",
+          "Typrapporter: källkod med härledda funktionssignaturer",
+          "Riktiga svansanrop för lokala, fjärr- och ömsesidigt rekursiva anrop",
+          "Ett tydligt notimpl-meddelande för giltig Erlang som kräver en funktion som ännu inte finns",
+        ],
+      },
+      {
+        id: "runtime",
+        title: "Runtime",
+        items: [
+          "Runtime-bibliotek i C++23 utan LLVM, länkat i varje program",
+          "Heltal med godtycklig precision, flyttal, atomer, tupler, listor, maps, bitsträngar, records, funs, pids, portar och referenser",
+          "Processer, meddelanden, selektiv receive, länkar, monitorer och registrerade namn på schemaläggartrådar",
+          "Heap per process med kopierande skräpsamlare och binärer utanför heapen",
+          "Portar för standard-I/O, filer, underprocesser och sockets",
+          "Undantag med try, catch och after, samt stackspår",
+          "io:format med OTP:s ~p-formatering; delmängder av lists, maps, file och io",
+        ],
+      },
+      {
+        id: "tooling",
+        title: "Projekt och verktyg",
+        items: [
+          "TOML-projekt med namngivna mål, hittande av källfiler och inställningar per mål",
+          "Kommenterade startprojekt med clau --new-project",
+          "Ett clau-kommando från Erlang-källkod till körbart program",
+          "Beteendet kontrolleras mot utdata från referensversionen av Erlang/OTP",
+        ],
+      },
+    ],
+  },
+  docs: {
+    title: "Dokumentation",
+    notReady: "Dokumentationen är inte klar ännu.",
+    meanwhile:
+      "Under tiden är du välkommen att läsa utvecklaranteckningarna från projektets repository. De beskriver den nuvarande implementationen och dess begränsningar, och är skrivna på engelska.",
+    synced: "Synkroniserad från commit",
+    startHere: "Börja här",
+    reference: "Referensanteckningar",
+    notWritten: "Inte skriven ännu. Se under tiden:",
+    allDocs: "All dokumentation",
+    englishOnly: "Den här sidan finns bara på engelska.",
+    featured: {
+      gettingStarted: {
+        title: "Kom igång",
+        text: "Förutsättningar: CMake, en C++23-kompilator, Clang, LLVM SDK, Boost och toml++.",
+      },
+      building: {
+        title: "Bygga kompilatorn",
+        text: "Konfigurera, bygg och testa med CMake-presets på Linux, macOS och Windows.",
+      },
+      using: {
+        title: "Använda kompilatorn",
+        text: "Kommandoradsflaggor, inspektionslägen, körbara program och TOML-projekt.",
+      },
+      interpreting: {
+        title: "Hur man tolkar resultaten",
+        text: "Att prova Clause på befintlig Erlang-kod: vad som kompileras idag, vad notimpl-meddelanden betyder och vad man kan prova härnäst.",
+      },
+      differences: {
+        title: "Kända skillnader från Erlang/OTP",
+        text: "Observerbart beteende där Clause medvetet skiljer sig från OTP 29.",
+      },
+    },
+  },
+  resources: {
+    title: "Resurser",
+    intro: "Var du hittar källkoden och följer utvecklingen.",
+    github: {
+      title: "GitHub-repository",
+      text: "Källkod, ärenden och utvecklingshistorik.",
+    },
+  },
+  notFound: {
+    title: "Sidan hittades inte",
+    home: "Gå till startsidan",
+  },
+} satisfies Messages;
