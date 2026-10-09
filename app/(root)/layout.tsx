@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { siteIcons } from "@/lib/site";
 import { themeInitScript } from "@/lib/theme";
 import "../globals.css";
 
 export const metadata: Metadata = {
+  icons: siteIcons,
   title: "Clause",
   description:
     "Clause compiles Erlang/OTP 29 ahead of time through LLVM into native executables.",

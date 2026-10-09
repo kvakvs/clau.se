@@ -122,13 +122,17 @@ export const fr = {
     title: "Documentation",
     notReady: "La documentation n'est pas encore prête.",
     meanwhile:
-      "En attendant, vous pouvez lire les notes de développement du dépôt du projet. Elles décrivent l'implémentation actuelle et ses limites, et sont rédigées en anglais.",
+      "En attendant, vous pouvez lire les notes de développement du dépôt du projet. Elles décrivent l'implémentation actuelle et ses limites.",
     synced: "Synchronisé depuis le commit",
     startHere: "Commencer ici",
     reference: "Notes de référence",
     notWritten: "Pas encore rédigé. En attendant, voir :",
     allDocs: "Toute la documentation",
-    englishOnly: "Cette page n'est disponible qu'en anglais.",
+    englishOnly: "Cette page n'est pas encore traduite ; elle est donc affichée en anglais.",
+    outdated:
+      "L'original anglais a changé depuis cette traduction ; certaines parties peuvent donc être obsolètes.",
+    translated: "Traduit de l'original anglais",
+    readEnglish: "Lire en anglais",
     featured: {
       gettingStarted: {
         title: "Premiers pas",

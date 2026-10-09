@@ -2,20 +2,23 @@
   "name": "clau-se",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
-    "sync-docs": "node scripts/sync-docs.mjs"
+    "sync-docs": "node scripts/sync-docs.mjs",
+    "docs-status": "node scripts/docs-status.ts",
+    "docs-stamp": "node scripts/docs-stamp.ts"
   },
   "dependencies": {
+    "github-slugger": "^2.0.0",
     "next": "^16.3.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
-    "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {

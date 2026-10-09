@@ -122,13 +122,17 @@ export const sv = {
     title: "Dokumentation",
     notReady: "Dokumentationen är inte klar ännu.",
     meanwhile:
-      "Under tiden är du välkommen att läsa utvecklaranteckningarna från projektets repository. De beskriver den nuvarande implementationen och dess begränsningar, och är skrivna på engelska.",
+      "Under tiden är du välkommen att läsa utvecklaranteckningarna från projektets repository. De beskriver den nuvarande implementationen och dess begränsningar.",
     synced: "Synkroniserad från commit",
     startHere: "Börja här",
     reference: "Referensanteckningar",
     notWritten: "Inte skriven ännu. Se under tiden:",
     allDocs: "All dokumentation",
-    englishOnly: "Den här sidan finns bara på engelska.",
+    englishOnly: "Den här sidan är inte översatt ännu och visas därför på engelska.",
+    outdated:
+      "Det engelska originalet har ändrats sedan översättningen gjordes, så delar av den kan vara inaktuella.",
+    translated: "Översatt från det engelska originalet",
+    readEnglish: "Läs på engelska",
     featured: {
       gettingStarted: {
         title: "Kom igång",

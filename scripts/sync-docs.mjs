@@ -1,10 +1,12 @@
-// Copies the developer notes of the Clause repository into content/docs/.
+// Copies the developer notes of the Clause repository into content/docs/en/.
 //
 // Usage: pnpm sync-docs [path-to-clau]   (default: ../clau)
 //
 // docs/*.md are copied as they are. The project README.md is split into the
 // "Getting started", "Building the compiler" and "Using the compiler" pages;
 // its links are rewritten to be relative to docs/ like the other files.
+// Translations in content/docs/<locale>/ are left alone; run
+// `pnpm docs-status` afterwards to see which of them are now outdated.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -13,7 +15,7 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const source = path.resolve(root, process.argv[2] ?? "../clau");
 const sourceDocs = path.join(source, "docs");
-const target = path.join(root, "content", "docs");
+const target = path.join(root, "content", "docs", "en");
 const metaFile = path.join(root, "content", "docs-meta.json");
 
 // README "Build" section is split before this line: everything above it
@@ -70,7 +72,18 @@ for (const [file, [title, body]] of Object.entries(derived)) {
 
 fs.writeFileSync(
   metaFile,
-  JSON.stringify({ commit: gitCommit(source) }, null, 2) + "\n",
+  JSON.stringify(
+    {
+      commit: git(source, "rev-parse", "--short", "HEAD"),
+      // Uncommitted changes in the copied files: the commit alone is not exact.
+      dirty: Boolean(
+        git(source, "status", "--porcelain", "--", "docs", "README.md"),
+      ),
+      syncedAt: new Date().toISOString().slice(0, 10),
+    },
+    null,
+    2,
+  ) + "\n",
 );
 console.log(`Synced ${docFiles.length} docs from ${source}`);
 
@@ -105,9 +118,9 @@ function rewriteReadmeLinks(markdown) {
   });
 }
 
-function gitCommit(dir) {
+function git(dir, ...args) {
   try {
-    return execFileSync("git", ["-C", dir, "rev-parse", "--short", "HEAD"], {
+    return execFileSync("git", ["-C", dir, ...args], {
       encoding: "utf8",
     }).trim();
   } catch {

@@ -136,22 +136,36 @@ scripts/             build helper scripts (e.g. docs sync)
 - Never hardcode user-visible strings in components; all text goes through the
   dictionary. Technical names (Erlang, LLVM, OTP, Clause, `clau`) stay
   untranslated.
-- Documentation Markdown from `../clau/docs` is not translated; only the
-  surrounding UI (headings, notices, navigation) is.
+- Documentation Markdown is translated per file; see Documentation Pages and
+  `.agents/translation.md`.
 
 ## Documentation Pages
 
-- Source of truth is `../clau/docs`. It is outside this repository and absent in
-  CI, so copy it into `content/docs/` with a script in `scripts/`
-  (`pnpm sync-docs`) and commit the copy. Never import from `../clau` directly
-  in app code.
+- Source of truth is `../clau/docs` (plus the project README, split into
+  Getting started / Building / Using pages). It is outside this repository, so
+  `pnpm sync-docs` copies it into `content/docs/en/` and records the source
+  commit, a dirty flag and the sync date in `content/docs-meta.json`. Commit
+  the copy. Never import from `../clau` directly in app code; never edit
+  `content/docs/en/` by hand.
+- Translations live in `content/docs/<locale>/<same name>.md` with frontmatter
+  (`sourceCommit`, `sourceSha256`, `translatedAt`) written by
+  `pnpm docs-stamp <locale> <file>`. How to translate:
+  `.agents/translation.md`.
+- After every sync run `pnpm docs-status`: it lists current, outdated (English
+  changed since translation), missing and orphaned translations, and fails on
+  structure mismatches. The site shows an outdated notice on stale
+  translations and falls back to English for missing ones.
+- Heading anchors come from the English original by position
+  (`lib/doc-structure.ts`, `components/markdown.tsx`), so translations must
+  keep the same headings, code blocks and link targets.
 - Table of contents order is defined explicitly in `lib/docs.ts` (Getting
   started, Building the compiler, Using the compiler, Interpreting results,
-  Differences from Erlang/OTP, then remaining files alphabetically).
+  Differences from Erlang/OTP, then remaining files alphabetically by
+  translated title).
 - Render each doc page as a static route via `generateStaticParams`. Render
-  Markdown on the server at build time (e.g. `react-markdown` + `remark-gfm`);
-  no client-side Markdown parsing. Rewrite relative `.md` links between docs to
-  site routes.
+  Markdown on the server at build time (`react-markdown` + `remark-gfm`); no
+  client-side Markdown parsing. Relative `.md` links between docs become site
+  routes in the current locale; other repository paths link to GitHub.
 
 ## Quality Gates
 
