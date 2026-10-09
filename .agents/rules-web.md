@@ -17,6 +17,8 @@ dependencies, few components, no speculative abstractions.
 - Main branch is `master`. Hosting is Nginx on virtual dedicated host, uploaded
   via SSH. The site is a static export (`output: "export"`,
   `trailingSlash: true`): `pnpm build` writes `out/`, which is uploaded as is.
+  Deploy with the `/deploy` skill (`.agents/skills/deploy/`): builds, then
+  replaces `pupa:/home/clause/www` over SSH from WSL.
   - Forbidden: API routes, route handlers with dynamic behavior, middleware,
     server actions, `cookies()`, `headers()`, ISR/`revalidate`, runtime `fetch`
     on the server, `next/image` optimization (set `images.unoptimized: true` if
