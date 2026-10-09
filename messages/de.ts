@@ -122,13 +122,17 @@ export const de = {
     title: "Dokumentation",
     notReady: "Die Dokumentation ist noch nicht fertig.",
     meanwhile:
-      "Bis dahin können Sie die Entwicklernotizen aus dem Projekt-Repository lesen. Sie beschreiben die aktuelle Implementierung und ihre Grenzen und sind auf Englisch verfasst.",
+      "Bis dahin können Sie die Entwicklernotizen aus dem Projekt-Repository lesen. Sie beschreiben die aktuelle Implementierung und ihre Grenzen.",
     synced: "Synchronisiert von Commit",
     startHere: "Hier beginnen",
     reference: "Referenznotizen",
     notWritten: "Noch nicht geschrieben. Bis dahin siehe:",
     allDocs: "Gesamte Dokumentation",
-    englishOnly: "Diese Seite ist nur auf Englisch verfügbar.",
+    englishOnly: "Diese Seite ist noch nicht übersetzt und wird daher auf Englisch angezeigt.",
+    outdated:
+      "Das englische Original wurde seit dieser Übersetzung geändert, daher können Teile davon veraltet sein.",
+    translated: "Übersetzt aus dem englischen Original",
+    readEnglish: "Auf Englisch lesen",
     featured: {
       gettingStarted: {
         title: "Erste Schritte",

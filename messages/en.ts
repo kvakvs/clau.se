@@ -120,13 +120,17 @@ export const en = {
     title: "Documentation",
     notReady: "The documentation is not ready yet.",
     meanwhile:
-      "Meanwhile, you are welcome to read the developer notes from the project repository. They describe the current implementation and its limits, and are written in English.",
+      "Meanwhile, you are welcome to read the developer notes from the project repository. They describe the current implementation and its limits.",
     synced: "Synced from commit",
     startHere: "Start here",
     reference: "Reference notes",
     notWritten: "Not written yet. Meanwhile, see:",
     allDocs: "All documentation",
-    englishOnly: "This page is available in English only.",
+    englishOnly: "This page is not translated yet, so it is shown in English.",
+    outdated:
+      "The English original has changed since this translation was made, so parts of it may be out of date.",
+    translated: "Translated from the English original",
+    readEnglish: "Read in English",
     featured: {
       gettingStarted: {
         title: "Getting started",

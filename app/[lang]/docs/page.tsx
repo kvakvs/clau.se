@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  docsCommit,
+  docsSource,
   featuredDocs,
   getDoc,
   getOtherDocs,
@@ -30,16 +30,17 @@ export default async function DocsPage({ params }: Props) {
       <div className="mt-6 max-w-3xl rounded-xl border border-accent/40 bg-accent-soft px-5 py-4">
         <p className="font-semibold">{t.notReady}</p>
         <p className="mt-1 text-sm">{t.meanwhile}</p>
-        {docsCommit && (
+        {docsSource.commit && (
           <p className="mt-2 text-xs text-muted">
             {t.synced}{" "}
             <a
-              href={`${GITHUB_URL}/tree/${docsCommit}/docs`}
+              href={`${GITHUB_URL}/tree/${docsSource.commit}/docs`}
               rel="noopener noreferrer"
               className="font-mono hover:underline"
             >
-              {docsCommit}
+              {docsSource.commit}
             </a>
+            {` · ${docsSource.syncedAt}`}
           </p>
         )}
       </div>
@@ -51,11 +52,11 @@ export default async function DocsPage({ params }: Props) {
         <ol className="mt-4 grid gap-3 md:grid-cols-2">
           {featuredDocs.map((entry, i) => {
             const { title, text } = t.featured[entry.id];
-            const doc = entry.slug ? getDoc(entry.slug) : undefined;
+            const doc = entry.slug ? getDoc(entry.slug, lang) : undefined;
             const related =
               "related" in entry
                 ? entry.related
-                    .map((slug) => getDoc(slug))
+                    .map((slug) => getDoc(slug, lang))
                     .filter((d): d is Doc => d !== undefined)
                 : [];
             const body = (
@@ -106,7 +107,7 @@ export default async function DocsPage({ params }: Props) {
           {t.reference}
         </h2>
         <ul className="mt-4 columns-1 gap-8 sm:columns-2 lg:columns-3">
-          {getOtherDocs().map((doc) => (
+          {getOtherDocs(lang).map((doc) => (
             <li key={doc.slug} className="break-inside-avoid py-1">
               <Link
                 href={href(doc.slug)}

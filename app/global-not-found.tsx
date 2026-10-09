@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { siteIcons } from "@/lib/site";
 import { themeInitScript } from "@/lib/theme";
 import { en } from "@/messages/en";
 import "./globals.css";
 
-export const metadata: Metadata = { title: `${en.notFound.title} · Clause` };
+export const metadata: Metadata = {
+  title: `${en.notFound.title} · Clause`,
+  icons: siteIcons,
+};
 
 export default function GlobalNotFound() {
   return (

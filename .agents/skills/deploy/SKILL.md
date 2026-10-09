@@ -18,7 +18,9 @@ Arguments (`$ARGUMENTS`, any order):
 ## Steps
 
 1. If `sync` was given and `../clau` exists, run `pnpm sync-docs` and report
-   which docs changed (`git status --short content/`).
+   which docs changed (`git status --short content/`). Then run
+   `pnpm docs-status` and report outdated translations; they deploy with an
+   "out of date" notice, so this does not block.
 2. Run the quality gates from the repository root (PowerShell), stopping at
    the first failure and reporting its output:
 

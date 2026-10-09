@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { isLocale, locales } from "@/lib/i18n";
+import { siteIcons } from "@/lib/site";
 import { themeInitScript } from "@/lib/theme";
 import { getMessages } from "@/messages";
 import "../globals.css";
@@ -23,6 +24,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isLocale(lang)) return {};
   return {
     metadataBase: new URL("https://clau.se"),
+    icons: siteIcons,
     title: { default: "Clause", template: "%s · Clause" },
     description: getMessages(lang).meta.description,
   };
