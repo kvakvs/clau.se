@@ -197,6 +197,7 @@ export const pt = {
       title: "Repositório no GitHub",
       text: "Código-fonte, issues e histórico de desenvolvimento.",
     },
+    credits: "Créditos de arte",
   },
   notFound: {
     title: "Página não encontrada",

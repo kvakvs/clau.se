@@ -197,6 +197,7 @@ export const fr = {
       title: "Dépôt GitHub",
       text: "Code source, tickets et historique du développement.",
     },
+    credits: "Crédits graphiques",
   },
   notFound: {
     title: "Page introuvable",

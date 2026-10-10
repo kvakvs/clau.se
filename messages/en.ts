@@ -194,6 +194,7 @@ export const en = {
       title: "GitHub repository",
       text: "Source code, issues and development history.",
     },
+    credits: "Art credits",
   },
   notFound: {
     title: "Page not found",

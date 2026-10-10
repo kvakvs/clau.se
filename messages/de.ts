@@ -197,6 +197,7 @@ export const de = {
       title: "GitHub-Repository",
       text: "Quellcode, Issues und Entwicklungsverlauf.",
     },
+    credits: "Bildnachweis",
   },
   notFound: {
     title: "Seite nicht gefunden",

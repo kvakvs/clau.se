@@ -197,6 +197,7 @@ export const sv = {
       title: "GitHub-repository",
       text: "Källkod, ärenden och utvecklingshistorik.",
     },
+    credits: "Bildkällor",
   },
   notFound: {
     title: "Sidan hittades inte",
