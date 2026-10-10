@@ -68,7 +68,7 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
 ## Steps
 
 1. **Find what changed.** Read `content/home-meta.json` (`{ "commit": "...",
-   "updatedAt": "YYYY-MM-DD" }`; missing on the first run, then treat as
+"updatedAt": "YYYY-MM-DD" }`; missing on the first run, then treat as
    `full`). Unless `full`, list the changes since that commit:
 
    ```bash
@@ -77,8 +77,9 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
    ```
 
    Also note uncommitted changes in those paths (`git -C ../clau status
-   --short -- ...`): read them, but mention to the user that the source is
+--short -- ...`): read them, but mention to the user that the source is
    dirty. If nothing changed and not `full`, report that and stop.
+
 2. **Sync the docs.** Run `pnpm sync-docs`, then `pnpm docs-status`, and keep
    the list of outdated and missing translations for the report.
 3. **Read the sources.** With `full` or on the first run read all of them.
@@ -111,19 +112,20 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
 7. **Docs translations (only with `docs`).** For each file that step 2 listed
    as outdated or missing, translate or update it per `.agents/translation.md`
    (one subagent per locale), stamp it with `pnpm -s docs-stamp <locale>
-   <file>.md...`, then rerun `pnpm docs-status` until it shows no `ERROR` and
+<file>.md...`, then rerun `pnpm docs-status` until it shows no `ERROR` and
    no outdated files. Without `docs`, only report the outdated list.
 8. **Quality gates.** Run, stopping at the first failure and fixing it:
 
    ```powershell
-   pnpm format
+   pnpm exec prettier --write messages content/home-meta.json
    pnpm lint
    pnpm typecheck
    pnpm build
    ```
 
    A dictionary that lost or gained a key fails `typecheck` (`satisfies
-   Messages`). Do not open a browser.
+Messages`). Do not open a browser.
+
 9. **Report.** Source commit range used, English changes, locales updated,
    docs sync result and outdated translations left, gate results. Do not
    commit or deploy unless the user asks; suggest `/deploy` when done.

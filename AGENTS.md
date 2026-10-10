@@ -8,11 +8,11 @@ for more details.
 
 Follow coding rules in `.agents/rules-web.md`.
 
-* Use next.js/typescript/react/tailwind css to create minimal website
-* Have light and dark color theme, with a toggle Light - Auto - Dark, where Auto
+- Use next.js/typescript/react/tailwind css to create minimal website
+- Have light and dark color theme, with a toggle Light - Auto - Dark, where Auto
   will detect device current theme and follow it. Display theme selector in top
   right.
-* Have language translations: English, Swedish, French, German, Portuguese,
+- Have language translations: English, Swedish, French, German, Portuguese,
   Spanish, Ukrainian. Detect language from top preferred browser language, but
   otherwise default to English. Language dropdown in the top right next to the
   theme selector.

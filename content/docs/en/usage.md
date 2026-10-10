@@ -28,6 +28,8 @@ clau [options] <source.erl>...
   --target-triple <triple>  Select the machine/OS/ABI
   -O0 / -O2 / -Os         Generic O0 (default) / speed / size optimization
   --no-type-specialization  Disable compiler variants at either optimization level
+  -g                      Emit Erlang line tables; executables keep them for debuggers
+  --lto                   Link modules as bitcode with link-time optimization (LLD targets)
   --verbose               Trace files and compilation phases to stderr
   --impldebug <n[,n...]>   Enable debug output for selected implementation steps
   -I, --include <dir>      Add an include directory (last supplied searched first)
@@ -73,7 +75,7 @@ clau --print-types answer.erl client.erl
 IR inspection allows both stages together and stops before object emission. Multiple
 snapshots are separate modules; use `--emit llvm-ir` for individual assembly files.
 Type inspection stops before LLVM and prints each module as source with inferred
-function signatures and `Expression :: Type` annotations. It accepts preprocessing/project/verbosity options, but rejects other
+function signatures and trailing `% Type` comments on each line's outermost expression. It accepts preprocessing/project/verbosity options, but rejects other
 actions, output destinations and backend policy. See [compilation options](compile.md).
 
 `--verbose` prints `[pp] <filename>` for source files and resolved preprocessor

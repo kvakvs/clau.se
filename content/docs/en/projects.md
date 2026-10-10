@@ -77,7 +77,10 @@ Each selected target is a separate compilation batch with its own preprocessing
 sessions. Planning (decode, select, discover, check output collisions) finishes
 before any source runs; execution then processes targets/files in order and
 latches failures. Payload output goes to stdout in target/file order without
-banners; context and diagnostics go to stderr.
+banners; context and diagnostics go to stderr. A target with diagnostics is
+named once, on a `<manifest> [target <name>]:` line before its first one; the
+diagnostics themselves (`error: file:line:col: message`) carry no tool or
+target prefix.
 
 ```sh
 ./build/debug/bin/clau --parse-check --project examples/project/project.toml
@@ -152,7 +155,7 @@ links every selected target that has an `output` or `entry` key, or that CLI
 
 | Setting | Manifest and CLI combination |
 | --- | --- |
-| `include_dirs` | Manifest order, after CLI `-I` (last CLI `-I` searched first) |
+| `include_dirs` | Manifest order, after CLI `-I` (last CLI `-I` searched first); an entry with wildcards (`deps/*/include`, `apps/**/include`) expands in place to the existing directories it matches, sorted by UTF-8 path bytes (`**` also matches none, directory symlinks are skipped); an unmatched pattern is an error |
 | `source_search_paths` | Project source lookup only |
 | `defines` | Manifest first, then CLI; duplicates across both are errors |
 | `applications` | Manifest map; CLI entries replace matching names |

@@ -72,6 +72,7 @@ way; a value goes in the next argument or after `=`.
 | `--max-stack BYTES` | Cap on each process's frame stack; default uncapped |
 | `--max-memory BYTES` | Cap on the memory of all processes together (heaps, off-heap binaries, stacks); default uncapped |
 | `--schedulers N` | Scheduler workers running processes, 1 to 1,024; default one per logical processor, like OTP's `+S` ([workers](processes.md#workers)) |
+| `--profile FILE` | Write a report of entries and self time per function and per process to `FILE` when the program ends ([profiling](profiling.md)); off by default |
 | `--args-file FILE` | Options file like OTP's `vm.args`: reserved, reports `runtime option --args-file is not implemented` |
 | `--` | Ends the runtime options; the following arguments all go to `Entry` |
 
@@ -175,6 +176,19 @@ clau -O2 -o build/demo examples/compile/answer.erl examples/compile/client.erl
 `-Os` additionally places every generated and runtime function and data object in
 its own section and links with `--gc-sections` (ELF), `-dead_strip` (Mach-O) or
 `/OPT:REF /OPT:ICF` (MSVC), so code no entry path reaches is removed.
+
+`--lto` (plan 11 step 62) compiles the modules and the startup module to LLVM
+bitcode instead of objects and links with `-flto -fuse-ld=lld`, so LLD optimizes
+the program's generated code as one unit against the native runtime archive.
+Module and startup descriptors, exported entries and `main` stay referenced and
+survive; programs behave as without it. Only LLD reads this compiler's bitcode,
+so `--lto` is accepted for Windows MSVC and ELF targets; others fail before
+linking with `--lto is not supported for target <triple>: it needs LLD`.
+`--lto` needs an executable output (`-o` or a linking project build). The
+installed Clang/LLD must be the same LLVM release as `clau` (23.1).
+
+`-g` keeps Erlang line tables for debuggers: in the executable (ELF), or in a
+`<name>.pdb` published beside it (MSVC targets) ([debugging](debugging.md)).
 
 - `PATH` is invocation-relative. For Windows targets, `.exe` is appended when
   the file name has no extension. Its directory must exist.

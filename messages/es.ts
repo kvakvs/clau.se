@@ -26,9 +26,9 @@ export const es = {
   home: {
     title: "Erlang/OTP 29, compilado a código nativo",
     intro:
-      "Clause es un compilador anticipado (AOT) para Erlang. Preprocesa, analiza sintáctica y semánticamente el código Erlang, lo compila mediante LLVM y enlaza ejecutables nativos con su propio runtime: procesos ligeros, paso de mensajes y recolección de basura por proceso.",
+      "Clause es un compilador anticipado (AOT) para Erlang. Preprocesa, analiza sintáctica y semánticamente el código Erlang, lo compila mediante LLVM y enlaza ejecutables nativos con su propio runtime: procesos ligeros en varios hilos planificadores, paso de mensajes, puertos y recolección de basura por proceso.",
     status:
-      "En desarrollo: un subconjunto creciente de Erlang ya se compila y ejecuta. La documentación indica qué funciona y en qué difiere Clause de Erlang/OTP.",
+      "En desarrollo: un subconjunto creciente de Erlang ya se compila a ejecutables nativos y se ejecuta en Windows y Linux. Pendiente: validación en macOS con Apple Silicon y en hardware ARM nativo, y comparaciones más amplias con los propios conjuntos de pruebas de OTP. La documentación indica qué funciona y en qué difiere Clause de Erlang/OTP.",
     ctaDocs: "Leer la documentación",
     ctaSource: "Código en GitHub",
     cardsTitle: "Características",
@@ -43,19 +43,19 @@ export const es = {
         id: "llvm",
         property: "LLVM",
         title: "Backend LLVM",
-        text: "Compila a LLVM IR verificado, bitcode u objetos nativos con O0, O2 u Os, con variantes de funciones especializadas por tipo.",
+        text: "Compila a LLVM IR verificado, bitcode u objetos nativos con O0, O2 u Os, con optimización opcional en tiempo de enlace entre módulos.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Ejecutables nativos",
-        text: "Enlaza módulos Erlang y el runtime en un programa autónomo con Clang, en un solo comando.",
+        text: "Enlaza módulos Erlang, el subconjunto de la biblioteca que usan y el runtime en un programa autónomo con Clang, en un solo comando. Los escripts también se compilan.",
       },
       {
         id: "processes",
         property: "spawn · send · receive",
         title: "Procesos Erlang",
-        text: "Procesos en hilos planificadores con receive selectivo, tiempos de espera, enlaces, monitores, nombres registrados y señales de salida.",
+        text: "Procesos en varios hilos planificadores con receive selectivo, tiempos de espera, enlaces, monitores, nombres registrados y señales de salida.",
       },
       {
         id: "memory",
@@ -64,10 +64,28 @@ export const es = {
         text: "Cada proceso tiene su propio heap, gestionado por un recolector de basura por copia según el diseño clásico de ERTS.",
       },
       {
+        id: "ports",
+        property: "gen_tcp · file · os",
+        title: "Puertos y E/S",
+        text: "Archivos, entrada y salida estándar, subprocesos y sockets TCP/UDP mediante puertos, atendidos por un único hilo de E/S basado en eventos.",
+      },
+      {
+        id: "inference",
+        property: "--print-types",
+        title: "Inferencia de tipos",
+        text: "Infiere tipos de función por cláusula; con O2 eliminan comprobaciones en tiempo de ejecución y seleccionan variantes especializadas por tipo con una alternativa genérica.",
+      },
+      {
+        id: "debugging",
+        property: "-g · --profile",
+        title: "Depuración y perfilado",
+        text: "Tablas de líneas del código Erlang para depuradores nativos y un informe de costes opcional por función y por proceso.",
+      },
+      {
         id: "targets",
         property: "7 plataformas",
         title: "Multiplataforma",
-        text: "Ejecución validada en Windows x64; objetos comprobados para Linux x86, x64, ARM y AArch64, Windows x86 y x64, y Apple Silicon.",
+        text: "Ejecución nativa validada en Windows x64 y Linux x86-64; runtime probado en x86 de 32 bits y, mediante emulación, en ARM. Objetos para siete plataformas, incluido Apple Silicon.",
       },
     ],
     detailsTitle: "Características en detalle",
@@ -83,13 +101,27 @@ export const es = {
         ],
       },
       {
+        id: "language",
+        title: "Semántica de Erlang",
+        items: [
+          "Coincidencia de patrones y guards en cláusulas de función, case, if, receive y coincidencias en el cuerpo",
+          "maybe y comprehensions de listas, binaries y maps",
+          "Records con actualizaciones y record_info/2; records nativos, cualificados y anónimos",
+          "Funs con capturas, funs con nombre, llamadas dinámicas y apply",
+          "Excepciones: error, exit, throw, catch, try ... of ... catch ... after, y trazas de pila",
+        ],
+      },
+      {
         id: "compiler",
         title: "Compilador",
         items: [
           "Análisis semántico: comprobación del subconjunto, ligado de variables, resolución de llamadas, tipos declarados e inferidos",
+          "Inferencia de tipos con tipos de función por cláusula; las especificaciones que contradicen los tipos inferidos son errores de compilación",
           "LLVM O0, O2 y Os; objetos, IR y bitcode por módulo; instantáneas de IR anotadas con el código Erlang",
+          "O2 elimina las comprobaciones de tipo y de forma demostradas por la inferencia, con variantes especializadas por tipo acotadas",
+          "Optimización en tiempo de enlace entre módulos con --lto",
           "Informes de tipos: código fuente anotado con las firmas de función inferidas",
-          "Llamadas de cola reales para llamadas locales, remotas y mutuamente recursivas",
+          "Llamadas de cola reales y recursión profunda en una pila explícita por proceso",
           "Un mensaje notimpl explícito para Erlang válido que requiere una característica aún no implementada",
         ],
       },
@@ -99,11 +131,10 @@ export const es = {
         items: [
           "Biblioteca de runtime en C++23 sin LLVM, enlazada en cada programa",
           "Enteros de precisión arbitraria, flotantes, átomos, tuplas, listas, maps, bitstrings, records, funs, pids, puertos y referencias",
-          "Procesos, mensajes, receive selectivo, enlaces, monitores y nombres registrados en hilos planificadores",
-          "Heaps por proceso con recolector de basura por copia y binarios fuera del heap",
-          "Puertos para E/S estándar, archivos, subprocesos y sockets",
-          "Excepciones con try, catch y after, y trazas de pila",
-          "io:format con el formato ~p de OTP; subconjuntos de lists, maps, file e io",
+          "Procesos, mensajes, receive selectivo, enlaces, monitores, nombres registrados y temporizadores en varios hilos planificadores",
+          "Heaps por proceso con recolector de basura por copia, binarios fuera del heap y límites de memoria opcionales",
+          "Puertos para archivos, E/S estándar, subprocesos y sockets TCP/UDP en un único hilo de E/S basado en eventos",
+          "io:format con el formato ~p de OTP; subconjuntos de lists, maps, file, io, gen_tcp, gen_udp, inet y os",
         ],
       },
       {
@@ -112,8 +143,10 @@ export const es = {
         items: [
           "Proyectos TOML con objetivos con nombre, descubrimiento de fuentes y opciones por objetivo",
           "Proyectos iniciales comentados con clau --new-project",
-          "Un solo comando clau del código Erlang a un ejecutable nativo",
+          "Un solo comando clau del código Erlang a un ejecutable nativo; los escripts también se compilan",
+          "Tablas de líneas de depuración con -g (CodeView o DWARF 5) y perfilado opcional con --profile",
           "Comportamiento comprobado contra las salidas de Erlang/OTP de referencia",
+          "Ejecuciones con sanitizers de direcciones, de comportamiento indefinido y de hilos en Linux",
         ],
       },
     ],
@@ -128,7 +161,8 @@ export const es = {
     reference: "Notas de referencia",
     notWritten: "Aún no está escrito. Mientras tanto, consulta:",
     allDocs: "Toda la documentación",
-    englishOnly: "Esta página aún no está traducida, por eso se muestra en inglés.",
+    englishOnly:
+      "Esta página aún no está traducida, por eso se muestra en inglés.",
     outdated:
       "El original en inglés ha cambiado desde que se hizo esta traducción, por lo que partes de ella pueden estar desactualizadas.",
     translated: "Traducido del original en inglés",

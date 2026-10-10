@@ -53,6 +53,7 @@ Arguments (`$ARGUMENTS`, any order):
    fails on authentication, a key passphrase or a sudo password, do not retry
    in a loop: ask the user to run the same command themselves with the `!`
    prefix in the prompt.
+
 5. Report the script's summary lines (file counts, write mode). Optionally
    check the live site with `curl -sI https://clau.se/en/` (status line
    only). Do not launch a browser.

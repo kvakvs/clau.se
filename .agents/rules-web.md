@@ -82,7 +82,7 @@ scripts/             build helper scripts (e.g. docs sync)
 ## Tailwind CSS
 
 - Tailwind v4 CSS-first configuration in `app/globals.css` (`@import
-  "tailwindcss";`, `@theme { ... }`). No `tailwind.config.js` unless a plugin
+"tailwindcss";`, `@theme { ... }`). No `tailwind.config.js` unless a plugin
   requires it.
 - Dark mode is class-based so the manual toggle works:
   `@custom-variant dark (&:where(.dark, .dark *));`

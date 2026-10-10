@@ -5,11 +5,11 @@
 
 @theme {
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   --font-mono:
-    ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
+    ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
 
   --color-bg: #fbfbfa;
   --color-fg: #1c1b1a;

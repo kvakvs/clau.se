@@ -31,7 +31,11 @@ let errors = 0;
 
 for (const locale of locales) {
   const dir = path.join(docsDir, locale);
-  const counts = { current: 0, outdated: [] as string[], missing: [] as string[] };
+  const counts = {
+    current: 0,
+    outdated: [] as string[],
+    missing: [] as string[],
+  };
   for (const file of english) {
     const enText = fs.readFileSync(path.join(enDir, file), "utf8");
     const target = path.join(dir, file);
@@ -44,8 +48,14 @@ for (const locale of locales) {
     else counts.outdated.push(`${file} (${meta.sourceCommit ?? "unstamped"})`);
 
     const problems: string[] = [];
-    const enHeadings = headings(enText).map((h) => h.depth).join(",");
-    if (headings(body).map((h) => h.depth).join(",") !== enHeadings) {
+    const enHeadings = headings(enText)
+      .map((h) => h.depth)
+      .join(",");
+    if (
+      headings(body)
+        .map((h) => h.depth)
+        .join(",") !== enHeadings
+    ) {
       problems.push("headings differ");
     }
     if (codeFenceCount(body) !== codeFenceCount(enText)) {
@@ -60,7 +70,9 @@ for (const locale of locales) {
     }
   }
   const orphans = fs.existsSync(dir)
-    ? fs.readdirSync(dir).filter((f) => f.endsWith(".md") && !english.includes(f))
+    ? fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".md") && !english.includes(f))
     : [];
   console.log(
     `${locale}: ${counts.current} current, ${counts.outdated.length} outdated, ` +

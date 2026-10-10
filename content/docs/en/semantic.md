@@ -157,7 +157,8 @@ Inference is separate from declared types and never trusts specs.
 - Containers (step 58D, `semantic/types/inference_containers`): a list
   `[E1, ..., En | T]` joins its elements in front of the tail's fact (a
   proper list when the tail is one, `nonempty_improper_list(H, T)` when it
-  is no list, `term()` when it is unknown); `++`, `--`, `hd/1`, `tl/1`,
+  is no list, `nonempty_maybe_improper_list()` when it is unknown or may be
+  improper: a cell is never empty, also in a pattern such as `[H | _]`); `++`, `--`, `hd/1`, `tl/1`,
   `element/2`, `setelement/3`, `tuple_to_list/1` and `map_get/2` read and
   rebuild element facts member by member of a union, a member that would
   raise adding nothing. A map update keeps exact keys (`:=` of a missing key
@@ -178,10 +179,18 @@ Inference is separate from declared types and never trusts specs.
   evaluated again for that call with its patterns matching the arguments'
   facts, at most 4 such calls deep, and its first evaluation's facts are
   restored afterwards (`Double = fun(Y) -> Y * 2 end, Double(3)` is 6).
-  `apply/2,3` and dynamic calls stay `term()`. Since `fun F/A` may name a
-  function inferred later, the passes over the batch also repeat until every
-  such fun read its function's final result; otherwise a last pass gives
-  them `term()` results.
+  `apply(F, Args)` (also `erlang:apply/2`) is a call of `F` with the
+  arguments `Args` holds: the elements of a literal proper list, else those
+  of its fact (`[]`, a list of known positions, or as many copies of a
+  proper list's element as `F`'s single arity takes); a bound anonymous fun
+  is evaluated again as above (`apply(fun kind/1, [1])` selects `kind(1)`).
+  `apply(M, F, Args)` whose `M` and `F` are known atoms naming an exported
+  batch function reads that function's function types like `fun F/A`.
+  Arguments of unknown length, other targets and `M:F(Args)` with variable
+  names stay `term()`. Since `fun F/A` and `apply/3` may name a function
+  inferred later, the passes over the batch also repeat until every such
+  read saw its function's final result; otherwise a last pass gives them
+  `term()` results.
 - Whole-value body assignments and aliases copy the RHS fact
   (`Y = 42, Z = Y, id(Z)` infers 42); tuple, list, map and tuple-record
   patterns give their variables the facts of the parts they match, in body
@@ -271,11 +280,12 @@ Inference is separate from declared types and never trusts specs.
   clause, like the overloads of a `-spec`: the arguments' facts after the
   head and guard (a plain variable's narrowed fact, else the pattern's) and
   the clause's result (`none()` for a clause that always raises; impossible
-  clauses add none). A clause whose body ends in a `case` or `if` splits into
-  one function type per possible branch, with the arguments' facts after that
-  branch's pattern and guard and the branch's result (one level: a nested
-  `case` does not split further). Function types of equal inputs merge
-  (their results join); past 8 the last ones merge into one, inputs and
+  clauses add none). A clause whose result is a
+  [dependent fact](#dependent-facts) on its arguments (a `case` or `if`
+  ending it, or a variable bound to one, nested at any depth) splits into one
+  function type per clause of that fact, its parameters' facts met with the
+  arguments they name. Function types of equal inputs merge
+  (their results join); past 32 the last ones merge into one, inputs and
   results joined. Recursive components iterate them with the results, each
   round joining (then widening) each type's result; a component that does
   not converge keeps only its union summaries. An anonymous fun's fact keeps
@@ -347,6 +357,82 @@ Inference is separate from declared types and never trusts specs.
   accepted. `-callback` specifications are not checked. OTP's compiler does
   not check specifications ([differences](differences.md#language-edge-cases)).
 
+### Dependent facts
+
+Steps 58N1–58N3 (`semantic/types/dependent`). A `case`, `if` or
+`try ... of` behaves like a fun of the variables its clauses narrow, applied
+to them: its value is a dependent fact, one function type per possible
+clause.
+
+- Parameters: the variables bound before the construct that its scrutinee
+  (a `try`'s body's last expression) and guards read, in source order
+  (variables its clause patterns bind are new in each clause, not
+  parameters); at most 4, a later one's narrowing is forgotten. Each
+  possible clause keeps the parameters' facts after its pattern and guard
+  and its value (`none()` for a clause that never completes); it is exact,
+  like a function type (58L), when a `case` or `try` matches a parameter or
+  a tuple of parameters with an exact pattern and guard, or an `if` has an
+  exact guard.
+- A scrutinee that is a tuple of variables narrows each variable to its
+  element of the matched value, and a tuple pattern's variable is bound to
+  the same value as the scrutinee's element at its position
+  (`case {X, Y} of {A, b} when is_integer(A) -> ...` narrows `X` and `Y`).
+- A `try ... of` depends on its `of` clauses; its catch clauses can follow
+  any value of its body, so their joined values join into every clause's
+  value (`try X of 1 -> one; _ -> other catch _:_ -> error end` is
+  `$try_of_operator(X :: 1) -> error | one; (X :: _) -> error | other`).
+- `receive` and `maybe ... else` stay the join of their clauses: their
+  clauses match a message or a failed `?=` value that nothing outside them
+  can name, so no read could select among them.
+- A clause whose value is itself dependent (a nested `case` or `if`, or a
+  read of a dependent variable) contributes one function type per clause of
+  it over the union of both parameter lists, inputs met. Types that can
+  never be entered (an input `none()`, or within an earlier exact type's
+  inputs) are dropped, so are parameters whose facts are the same in every
+  type; equal inputs merge and past 32 types the last ones merge (58K). A
+  construct whose remaining types all give the same value, or that narrows
+  no parameter, is its plain join.
+- Every other consumer reads the erased fact, the join of the clauses'
+  values. Facts that leave the walked function (results, function types,
+  fun facts) are erased; joins keep a dependence only when both sides have
+  the same one.
+- A variable bound to a dependent value keeps it. Reading the variable
+  selects the clauses its parameters' current facts enter (58L order, an
+  exact clause whose inputs hold them stops) and whose values meet the
+  variable's own narrowed fact, and the read's fact is the join of their
+  values (`Y = case X of 1 -> one; _ -> other end, case X of 1 -> Y end`
+  reads `one`).
+- A variable every clause of a `case` or `if` binds (step 58N2) is the join
+  of its facts at the end of the clauses that complete, dependent on the
+  construct's parameters like its value:
+  `case X of 1 -> Y = 5; _ -> Y = 6 end, Y` infers `(1) -> 5; (_) -> 6`.
+  The same join applies after `receive`, `try` and `maybe`, without
+  dependence.
+- Operators, builtins, tuple, list, map and record constructions, and calls
+  of batch functions (their function types selected as in 58L, the
+  arguments not narrowed again) with dependent operands are evaluated once
+  per combination of the operands' clauses, with those clauses' values in
+  place of the operands' facts and their inputs met (step 58N2): reads of
+  one variable take the same clause, other operands combine, at most 16
+  combinations (past that the use is the plain join). `R + 1` with
+  `R = case X of a -> 1; b -> 2 end` infers `(a) -> 2; (b) -> 3`.
+- Narrowing a dependent variable (a pattern, a guard, a use) also narrows
+  its parameters to the join of the inputs of the clauses entered whose
+  values meet the narrowed fact, and their parameters in turn, 4 levels
+  deep: after `R = case X of a -> 1; b -> 2 end`, `case R of 1 -> X end`
+  reads `X` as `a`.
+- A function clause's dependent result splits it (see Function types):
+  parameters that name an argument, or a name bound to its value, meet its
+  input; others are dropped (such a type is exact only if their input is any
+  term). `nested_case(X, L)` with `case X of 1 -> case L of spanish -> uno;
+  _ -> one end; _ -> other end` infers `(1, spanish) -> uno; (1, _) -> one;
+  (_, _) -> other`.
+- `--print-types` notes a dependent value as a function type named by
+  its construct, each input after its parameter's name:
+  `case X of 1 -> one; _ -> other end` ends in
+  `end. % $case_of_operator(X :: 1) -> one; (X :: _) -> other`; an `if`
+  prints `$if_operator`, a `try ... of` `$try_of_operator`.
+
 ### Inference domain
 
 Decision of plan 11 step 58A (`semantic/types/lattice`). A fact is a set of
@@ -390,9 +476,11 @@ Facts print as Erlang types, categories by their built-in names.
 - Specifications never add to facts: inferred facts come only from code and
   never decide a representation on a spec's word.
 
-Lowering consumes these facts. Generated IR never converts an integer to a heap
-pointer; each fallible service result is loaded only on its success path, and
-shape checks dominate extraction. Specialization policy:
+Lowering consumes these facts. At `-O2` with type specialization, facts of
+caller-joined arguments and of expressions remove tag, shape and service checks
+([proofs](specialization.md#proofs)); the only heap pointer conversions are
+those proven reads. Each fallible service result is loaded only on its success
+path, and shape checks dominate extraction. Specialization policy:
 [specialization.md](specialization.md).
 
 ## `--print-types`
@@ -407,14 +495,14 @@ not an interchange format. Warnings stay on stderr.
 -module(branches).
 -export([mixed/1]).
 
-%% inferred: mixed(_) -> 1..2
+%% inferred: mixed(1) -> 1; (_) -> 2
 mixed(X) ->
     case X of
         1 ->
             1;
         _ ->
             2
-    end :: 1..2.
+    end. % $case_of_operator(X :: 1) -> 1; (X :: _) -> 2
 ```
 
 - A `%% module` line names the module, its source, the project target and
@@ -430,13 +518,16 @@ mixed(X) ->
   `f(integer()) -> integer(); (atom()) -> string()`
   (`semantic::types::function_source`). A `-spec` stays with the function right after
   it, set apart from other forms by a blank line.
-- Expressions whose fact says more than `term()` are annotated
-  `Expression :: Type` (a known type hides an argument relation, which shows
-  only for a value known as nothing else): in parentheses inside other
-  expressions, without them
-  for a whole body expression. Literal terms (literals, and tuples, lists,
-  constructed maps and bitstrings of literals) and matches are not annotated
-  (the right side of a match is).
+- Each line's outermost expression (a body expression, or a `case`'s
+  scrutinee) whose fact says more than `term()` is noted with a trailing
+  `% Type` comment after the line's punctuation (a known type hides an
+  argument relation, which shows only for a value known as nothing else):
+  at most one note per line, none for the expressions nested in it, so the
+  output stays valid Erlang. A body expression on several lines carries its
+  note on its last line (`end, % ...`). Literal terms (literals, and tuples,
+  lists, constructed maps and bitstrings of literals) are not noted; a match
+  shows its value. A dependent value prints like a function type of its
+  construct ([dependent facts](#dependent-facts)).
 - A value inference proved equal to one of the function's arguments, and known
   as nothing more, prints as that argument's name, a type variable: the
   variable the first clause binding the whole argument gives it, else
