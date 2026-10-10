@@ -158,6 +158,10 @@ scripts/             build helper scripts (e.g. docs sync)
 - Heading anchors come from the English original by position
   (`lib/doc-structure.ts`, `components/markdown.tsx`), so translations must
   keep the same headings, code blocks and link targets.
+- Front page text (intro, status, feature cards and details) is refreshed from
+  `../clau` docs and progress notes with the `/update-doc` skill
+  (`.agents/skills/update-doc/`), which also translates the changed strings
+  and records the source commit in `content/home-meta.json`.
 - Table of contents order is defined explicitly in `lib/docs.ts` (Getting
   started, Building the compiler, Using the compiler, Interpreting results,
   Differences from Erlang/OTP, then remaining files alphabetically by
