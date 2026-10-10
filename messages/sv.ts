@@ -26,9 +26,9 @@ export const sv = {
   home: {
     title: "Erlang/OTP 29, kompilerat till maskinkod",
     intro:
-      "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser, meddelandeöverföring och skräpsamling per process.",
+      "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, portar och skräpsamling per process.",
     status:
-      "Under utveckling: en växande delmängd av Erlang kompileras och körs redan idag. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
+      "Under utveckling: en växande delmängd av Erlang kompileras till körbara program och körs redan idag på Windows och Linux. Återstår: validering på macOS med Apple Silicon och på riktig ARM-hårdvara, samt bredare jämförelser med OTP:s egna testsviter. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
     ctaDocs: "Läs dokumentationen",
     ctaSource: "Källkod på GitHub",
     cardsTitle: "Funktioner",
@@ -43,19 +43,19 @@ export const sv = {
         id: "llvm",
         property: "LLVM",
         title: "LLVM-backend",
-        text: "Kompilerar till verifierad LLVM IR, bitkod eller objektfiler med O0, O2 eller Os, med typspecialiserade funktionsvarianter.",
+        text: "Kompilerar till verifierad LLVM IR, bitkod eller objektfiler med O0, O2 eller Os, med valfri länktidsoptimering över moduler.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Körbara program",
-        text: "Länkar Erlang-moduler och runtime till ett fristående program med Clang, med ett enda kommando.",
+        text: "Länkar Erlang-moduler, den delmängd av biblioteket som de använder och runtime till ett fristående program med Clang, med ett enda kommando. Även escripts kan kompileras.",
       },
       {
         id: "processes",
         property: "spawn · send · receive",
         title: "Erlang-processer",
-        text: "Processer på schemaläggartrådar med selektiv receive, tidsgränser, länkar, monitorer, registrerade namn och exit-signaler.",
+        text: "Processer på flera schemaläggartrådar med selektiv receive, tidsgränser, länkar, monitorer, registrerade namn och exit-signaler.",
       },
       {
         id: "memory",
@@ -64,10 +64,28 @@ export const sv = {
         text: "Varje process äger sin heap, som städas av en kopierande skräpsamlare enligt den klassiska ERTS-designen.",
       },
       {
+        id: "ports",
+        property: "gen_tcp · file · os",
+        title: "Portar och I/O",
+        text: "Filer, standard-in- och utmatning, underprocesser och TCP/UDP-sockets via portar, hanterade av en händelsestyrd I/O-tråd.",
+      },
+      {
+        id: "inference",
+        property: "--print-types",
+        title: "Typhärledning",
+        text: "Härleder funktionstyper per klausul; med O2 tar de bort kontroller vid körning och väljer typspecialiserade varianter med en generisk variant som reserv.",
+      },
+      {
+        id: "debugging",
+        property: "-g · --profile",
+        title: "Felsökning och profilering",
+        text: "Radtabeller för Erlang-källkoden som debuggers på maskinkodsnivå kan läsa, och en valfri kostnadsrapport per funktion och per process.",
+      },
+      {
         id: "targets",
         property: "7 plattformar",
         title: "Plattformsoberoende",
-        text: "Körning validerad på Windows x64; objektfiler kontrollerade för Linux x86, x64, ARM och AArch64, Windows x86 och x64 samt Apple Silicon.",
+        text: "Körning validerad på Windows x64 och Linux x86-64; runtime testad på 32-bitars x86 och, under emulering, på ARM. Objektfiler för sju plattformar, inklusive Apple Silicon.",
       },
     ],
     detailsTitle: "Funktioner i detalj",
@@ -83,13 +101,27 @@ export const sv = {
         ],
       },
       {
+        id: "language",
+        title: "Erlang-semantik",
+        items: [
+          "Mönstermatchning och guards i funktionsklausuler, case, if, receive och matchningar i funktionskroppar",
+          "maybe samt comprehensions för listor, binaries och maps",
+          "Records med uppdateringar och record_info/2; native records samt kvalificerade och anonyma records",
+          "Funs med infångade variabler, namngivna funs, dynamiska anrop och apply",
+          "Undantag: error, exit, throw, catch, try ... of ... catch ... after samt stackspår",
+        ],
+      },
+      {
         id: "compiler",
         title: "Kompilator",
         items: [
           "Semantisk analys: kontroll av delmängden, variabelbindningar, anropsupplösning, deklarerade och härledda typer",
+          "Typhärledning med funktionstyper per klausul; specifikationer som motsäger härledda typer ger kompileringsfel",
           "LLVM O0, O2 och Os; objektfiler, IR och bitkod per modul; IR-ögonblicksbilder med Erlang-källkod",
+          "O2 tar bort typ- och formkontroller som härledningen bevisat, med ett begränsat antal typspecialiserade varianter",
+          "Länktidsoptimering över moduler med --lto",
           "Typrapporter: källkod med härledda funktionssignaturer",
-          "Riktiga svansanrop för lokala, fjärr- och ömsesidigt rekursiva anrop",
+          "Riktiga svansanrop och djup rekursion på en explicit stack per process",
           "Ett tydligt notimpl-meddelande för giltig Erlang som kräver en funktion som ännu inte finns",
         ],
       },
@@ -99,11 +131,10 @@ export const sv = {
         items: [
           "Runtime-bibliotek i C++23 utan LLVM, länkat i varje program",
           "Heltal med godtycklig precision, flyttal, atomer, tupler, listor, maps, bitsträngar, records, funs, pids, portar och referenser",
-          "Processer, meddelanden, selektiv receive, länkar, monitorer och registrerade namn på schemaläggartrådar",
-          "Heap per process med kopierande skräpsamlare och binärer utanför heapen",
-          "Portar för standard-I/O, filer, underprocesser och sockets",
-          "Undantag med try, catch och after, samt stackspår",
-          "io:format med OTP:s ~p-formatering; delmängder av lists, maps, file och io",
+          "Processer, meddelanden, selektiv receive, länkar, monitorer, registrerade namn och timrar på flera schemaläggartrådar",
+          "Heap per process med kopierande skräpsamlare, binärer utanför heapen och valfria minnesgränser",
+          "Portar för filer, standard-I/O, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd",
+          "io:format med OTP:s ~p-formatering; delmängder av lists, maps, file, io, gen_tcp, gen_udp, inet och os",
         ],
       },
       {
@@ -112,8 +143,10 @@ export const sv = {
         items: [
           "TOML-projekt med namngivna mål, hittande av källfiler och inställningar per mål",
           "Kommenterade startprojekt med clau --new-project",
-          "Ett clau-kommando från Erlang-källkod till körbart program",
+          "Ett clau-kommando från Erlang-källkod till körbart program; även escripts kan kompileras",
+          "Felsökningsradtabeller med -g (CodeView eller DWARF 5) och valfri profilering med --profile",
           "Beteendet kontrolleras mot utdata från referensversionen av Erlang/OTP",
+          "Körningar med sanitizers för adresser, odefinierat beteende och trådar på Linux",
         ],
       },
     ],
@@ -128,7 +161,8 @@ export const sv = {
     reference: "Referensanteckningar",
     notWritten: "Inte skriven ännu. Se under tiden:",
     allDocs: "All dokumentation",
-    englishOnly: "Den här sidan är inte översatt ännu och visas därför på engelska.",
+    englishOnly:
+      "Den här sidan är inte översatt ännu och visas därför på engelska.",
     outdated:
       "Det engelska originalet har ändrats sedan översättningen gjordes, så delar av den kan vara inaktuella.",
     translated: "Översatt från det engelska originalet",

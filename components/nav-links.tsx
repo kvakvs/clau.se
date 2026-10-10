@@ -13,8 +13,7 @@ export function NavLinks({ label, links }: Props) {
     <nav aria-label={label} className="flex gap-1 text-sm">
       {links.map(({ href, text }, i) => {
         // The first link is the locale home and matches only exactly.
-        const current =
-          i === 0 ? pathname === href : pathname.startsWith(href);
+        const current = i === 0 ? pathname === href : pathname.startsWith(href);
         return (
           <Link
             key={href}

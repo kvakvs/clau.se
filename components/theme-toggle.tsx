@@ -63,11 +63,7 @@ const icons: Record<Theme, React.ReactNode> = {
 };
 
 export function ThemeToggle({ label, names }: Props) {
-  const theme = useSyncExternalStore(
-    subscribe,
-    readTheme,
-    (): Theme => "auto",
-  );
+  const theme = useSyncExternalStore(subscribe, readTheme, (): Theme => "auto");
 
   useEffect(() => {
     applyTheme(theme);

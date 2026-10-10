@@ -98,10 +98,12 @@ in `printing.hpp`; `compiler/src/printing/source_*`) is reusable:
   on one line. Parentheses come only from the source's own groups.
 - Printed text parses back to the same syntax tree, and printing it again
   gives the same text (CTest `printing_source` over the parseable fixtures).
-- `SourceNotes` adds an annotation to an expression, printed as
-  `Expression :: Text` (in parentheses unless it is a whole body expression;
-  not Erlang), and comment lines above a form. Patterns, guards and the left
-  side of a match carry none.
+- `SourceNotes` adds a note to an expression, printed as a trailing
+  `% Text` comment after the punctuation of the line where the expression
+  ends, and comment lines above a form. Only whole-line expressions carry
+  notes (body expressions and a `case`'s scrutinee; one per line, the
+  outermost), so long nested expressions stay readable and the text stays
+  Erlang. Patterns and guards carry none.
 
 ## Options
 
@@ -115,6 +117,8 @@ in `printing.hpp`; `compiler/src/printing/source_*`) is reusable:
 | `--target-triple TRIPLE` | Target machine; `--target` is project target selection |
 | `-O0` / `-O2` / `-Os` | Default generic code + LLVM O0 / bounded specialization + LLVM O2 / LLVM Os, no specialization, one section per symbol and linker dead-stripping of unreferenced code and data |
 | `--no-type-specialization` | Disable variants regardless of option order |
+| `--lto` | Link the modules as bitcode with LLD link-time optimization (Windows MSVC and ELF targets; needs `-o` or a linking project build) ([linking](executables.md#linking)) |
+| `-g` | Erlang line tables in objects and linked executables (CodeView/PDB on MSVC targets, DWARF elsewhere) ([debugging](debugging.md)) |
 | `--print-ir` / `--print-optimized-ir` | Verified IR before/after LLVM passes, with Erlang source lines as comments |
 | `--print-types` | Each module as Erlang source annotated with inferred types ([semantic](semantic.md#--print-types)); stops before LLVM |
 | `--verbose` | `[pp]`, `[parse]` and `[comp]` phase events on stderr |

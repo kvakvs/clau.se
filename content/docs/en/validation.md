@@ -32,6 +32,8 @@ cmake --build build/debug --target check-quality-all  # whole tree
 - `CLAUSE_TEST_MODE=fast` runs golden corpora at O0 positional plus O2
   specialization-off project, runs mutations once and skips `full_only` tests.
   Full mode (default) runs all driver/policy combinations.
+- `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplies the per-run limits of the golden
+  runner (60 s) and the semantic case runner (15 s) for instrumented builds.
 - `check-quality`, `make format` and `make-format.bat` cover files changed since
   `HEAD` plus untracked files; `cmake/quality_scope.py` adds translation units
   that include a changed header. Changes to `.clang-tidy`, `cmake/` or production
@@ -41,7 +43,50 @@ cmake --build build/debug --target check-quality-all  # whole tree
   native consumers link the parent build's runtime through
   `ClauseRuntimeTargets.cmake` instead of compiling it again; only
   `runtime_link` builds the runtime standalone.
-- Thresholds and suppressions are never raised to pass the gate.
+- Thresholds and suppressions are never raised to pass the gate. Two
+  third-party exceptions are configured (plan 11 steps 63-64, user decision):
+  `cmake/tidy_filter.py` drops static analyzer reports located in Boost
+  headers (Boost.Multiprecision limb-storage false positives on Linux that
+  rewriting the calling code only moves) and counts them in the output, and
+  `bugprone-exception-escape` ignores `bad_array_new_length` (MSVC's map/set
+  move constructors allocate; allocation failure is fatal anyway).
+- clang-tidy checks project headers on every host: the header filter accepts
+  `/` and `\` separators (Windows paths never matched before step 63).
+
+### Linux
+
+The same gate runs on Linux with the pinned LLVM 23.1.2 Linux SDK as host
+compiler (`CC`/`CXX` from its `bin/`), the system libstdc++, Ninja and CMake
+3.28 or newer. Boost 1.90 and toml++ 3.4.0 come from installed packages or
+are extracted into `thirdparty/` (`boost_1_90_0/`, `tomlplusplus-3.4.0/`);
+only Windows downloads them. The release archive's `ld.lld` links ICU 70
+(Ubuntu 22.04) and its `lldb` links Python 3.14; on hosts without them
+`linking_lto` needs ICU 70 on `LD_LIBRARY_PATH`, and `linking_debugger` uses
+GDB.
+
+```sh
+cmake --preset debug --fresh -G Ninja -DBUILD_TESTING=ON
+cmake --build build/debug
+ctest --preset debug -j 16
+```
+
+`check-quality` (Lizard, clang-tidy) runs on the Windows development host
+only; other hosts build and run the tests. Step 63 ran it once on Linux, which
+found what the Windows run could not see (POSIX-only sources, libstdc++
+`std::optional`), and left it clean.
+
+### Other targets
+
+32-bit and ARM targets are checked without a compiler built for them (no LLVM
+SDK exists for those hosts):
+
+- A runtime-only build (`-DCLAUSE_BUILD_COMPILER=OFF -DBUILD_TESTING=ON`) for
+  the target runs the runtime and ABI tests there: natively, in a target
+  userland (chroot), or through the host's emulator (qemu binfmt).
+- `tests/compiler/executables/cross.py` runs every executable golden and
+  program fixture with this host's `clau`, `--target-triple`, that build's
+  runtime archive and a `--linker` that reaches the target's libraries
+  (`run.py --target-option` passes them through).
 
 ## Fixtures and provenance
 
@@ -96,13 +141,25 @@ never stand in for a whole-test pass.
 
 ## Platform and sanitizer status
 
-- Native generated-code execution: Windows x64 only.
-- Linux, Apple Silicon and native 32-bit execution: pending (objects are only
-  inspected).
-- Compiler/frontend ASan, UBSan and LeakSanitizer: pending. The prebuilt Windows
-  LLVM SDK conflicts with instrumented code (`annotate_string` 0 vs 1; earlier
-  also duplicate rpmalloc/ASan allocator symbols). No check was disabled to
-  bypass it.
+- Native generated-code execution: Windows x64; Linux x86-64 (plan 11
+  step 63). 32-bit and ARM results are in the history.
+- Apple Silicon: pending (step 66).
+- Compiler and runtime ASan, UBSan and LeakSanitizer (plan 11 step 67): Linux
+  x86-64, one combined Debug configuration
+  (`-fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=undefined`),
+  full CTest with `CLAUSE_TEST_TIMEOUT_SCALE=10` (instrumented code runs
+  several times slower): no sanitizer report. The compiler, the runtime and
+  the test programs are instrumented; programs `clau` links take the sanitizer
+  runtime from a `clang++` wrapper on `PATH`, their generated code is not
+  instrumented. The four injected host-refusal tests (`codegen_failure_*`,
+  `runtime_lifecycle_failure`, `runtime_memory`) are outside ASan's scope:
+  its `operator new` aborts on an impossible size instead of throwing.
+- ThreadSanitizer (plan 11 step 68): Linux x86-64, the same instrumentation
+  scope with `-fsanitize=thread`; full CTest and the concurrency tests five
+  times each report no race after the `Executor::clear` lock-order fix. Out of
+  scope as well: the two tests that replace `operator new`.
+- On Windows the prebuilt LLVM SDK still conflicts with instrumented code
+  (`annotate_string` 0 vs 1).
 - Runtime-only ASan passes on Windows with Release probes,
   `/EHsc /fsanitize=address`, `/MT`, Clang's ASan import library and static
   runtime thunk, and the ASan DLL on `PATH`.
@@ -179,6 +236,11 @@ oracle OTP 29.1.1 / ERTS 17.1. Test counts are full CTest passes with zero skips
 | 2026-10-07 | Plan 11 step 33 closures with captured variables | 175 (171 fast) | 134 changed | Fast 171/171; full `-j 12` 175/175 in 126 s; Lizard and tidy passed after complexity fixes |
 | 2026-10-07 | Plan 11 step 34 named funs | 176 (172 fast) | 132 changed | Fast 172/172; full `-j 12` 176/176 in 152 s; Lizard 0 warnings; tidy passed |
 | 2026-10-07 | Plan 11 step 35 dynamic calls `M:F(Args)`, `apply/2,3`, runtime `fun M:F/A` (ABI 8) | 177 (173 fast) | 290 (analyzer config changed) | Fast 173/173; full `-j 12` 177/177 in 142 s; Lizard 0 warnings and tidy passed after one complexity and three tidy fixes |
+| 2026-10-09 | Plan 11 step 63 Linux x86-64 (WSL2 Ubuntu 25.04, glibc 2.41, LLVM 23.1.2 SDK clang, libstdc++ 14, GDB 16.2) | 235 | 338 | Full CTest 235/235 in 161 s; Lizard and clang-tidy clean (7 analyzer reports in Boost headers ignored); Windows gate 235/235 with headers checked |
+| 2026-10-09 | Plan 11 step 64 32-bit: Windows x86 (WoW64, clang-cl) and Linux i386 (Debian 13 chroot, clang 19) | 42 + 65 goldens | — | Runtime/ABI tests 42/42 natively on both; `cross.py` goldens 65/65 on both (`integer_limit` 64-bit-only runs skipped) |
+| 2026-10-09 | Plan 11 step 65 Linux arm64 and armhf (Debian 13 sysroots, qemu-user 9.2) | 42 + 65 goldens | — | Runtime/ABI tests 42/42 each; goldens 64/65 each (`port_spawn` `enoent`: qemu `posix_spawn` gap), run limit 900 s |
+| 2026-10-10 | Plan 11 step 67 ASan + UBSan + LeakSanitizer (Linux x86-64) | 235 | — | No sanitizer report; four injected host-refusal tests outside ASan's scope; `CLAUSE_TEST_TIMEOUT_SCALE=10` |
+| 2026-10-10 | Plan 11 step 68 ThreadSanitizer (Linux x86-64) | 233 | — | One lock-order inversion fixed (`Executor::clear`); then no report in full CTest and 15 concurrency tests x5 |
 | 2026-10-06 | Plan 11 step 27E ERTS big integer limit, `error:system_limit` | 165 (161 fast) | 157 changed | Fast 161/161; full `-j 12` 165/165 in 130 s; Lizard 0 warnings; tidy passed; 21 executable goldens reproduce under OTP |
 | 2026-10-06 | Plan 11 step 27D no map size or key-work caps | 164 (160 fast) | 13 changed | Fast 160/160; full `-j 12` 164/164 in 115 s; after a tidy fix in `bit_order`, 35 affected tests pass; Lizard 0 warnings; tidy passed |
 | 2026-10-06 | Plan 11 step 27C tuple arity limit 16,777,215 | 164 (160 fast) | 51 changed | Fast 160/160; full `-j 12` 164/164 in 121 s; Lizard 0 warnings; tidy passed |

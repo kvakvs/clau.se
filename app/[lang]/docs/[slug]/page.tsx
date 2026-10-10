@@ -79,11 +79,7 @@ export default async function DocPage({ params }: Props) {
       )}
       <article lang={doc.lang} className="prose mt-6 max-w-3xl">
         <h1>{doc.title}</h1>
-        <Markdown
-          source={doc.body}
-          locale={lang}
-          headingIds={doc.headingIds}
-        />
+        <Markdown source={doc.body} locale={lang} headingIds={doc.headingIds} />
       </article>
     </>
   );
