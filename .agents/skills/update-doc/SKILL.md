@@ -55,10 +55,11 @@ All in `messages/en.ts` first; it is the source of truth:
   the limitation is important to a user.
 - `docs.featured.*.text`: one-line summaries of the featured doc pages, if
   their content changed (prerequisites, build steps, options).
+- The paragraphs of documentation (typically first) which state implementation
+  date, referring to plan steps - should not be displayed in the web.
 
 Only claim what `docs/` or `00-finished.md` shows as delivered. Items that are
-open in `01-todo.md` or listed as unfinished are not features; at most they
-appear in `home.status` as remaining work. When a source says a feature is
+open in `01-todo.md` or listed as unfinished are not features, those can only be mentioned as planned; at most they appear in `home.status` as remaining work. When a source says a feature is
 limited to a subset, describe it as a subset.
 
 Style: technical, concise, neutral; no marketing words ("blazing",

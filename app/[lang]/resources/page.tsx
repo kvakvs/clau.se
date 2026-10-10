@@ -46,6 +46,17 @@ export default async function ResourcesPage({ params }: Props) {
           </a>
         </li>
       </ul>
+      <h2 className="mt-12 text-lg font-semibold">{t.credits}</h2>
+      <p className="mt-2 text-sm text-muted">
+        <a
+          href="https://www.flaticon.com/free-icons/carpenter"
+          title="carpenter icons"
+          rel="noopener noreferrer"
+          className="text-accent hover:underline"
+        >
+          Carpenter icons created by Flat Icons - Flaticon
+        </a>
+      </p>
     </>
   );
 }

@@ -1,7 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
 import { isLocale } from "@/lib/i18n";
 import { GITHUB_URL } from "@/lib/site";
 import { getMessages } from "@/messages";
+import logoLarge from "@/public/logo-large.png";
 
 type Props = { params: Promise<{ lang: string }> };
 
@@ -12,28 +14,36 @@ export default async function HomePage({ params }: Props) {
 
   return (
     <>
-      <section className="max-w-3xl">
-        <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-5xl">
-          {t.title}
-        </h1>
-        <p className="mt-5 text-lg text-muted">{t.intro}</p>
-        <p className="mt-4 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted">
-          {t.status}
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            href={`/${lang}/docs/`}
-            className="rounded-full bg-accent px-5 py-2.5 font-medium text-accent-fg hover:opacity-90"
-          >
-            {t.ctaDocs}
-          </Link>
-          <a
-            href={GITHUB_URL}
-            rel="noopener noreferrer"
-            className="rounded-full border border-border px-5 py-2.5 font-medium hover:border-muted"
-          >
-            {t.ctaSource}
-          </a>
+      <section className="flow-root">
+        <Image
+          src={logoLarge}
+          alt=""
+          className="float-left mr-4 mb-2 w-16 sm:mr-8 sm:mb-4 sm:w-1/5"
+          priority
+        />
+        <div className="sm:flow-root">
+          <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-5xl">
+            {t.title}
+          </h1>
+          <p className="mt-5 text-lg text-muted">{t.intro}</p>
+          <p className="mt-4 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted">
+            {t.status}
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href={`/${lang}/docs/`}
+              className="rounded-full bg-accent px-5 py-2.5 font-medium text-accent-fg hover:opacity-90"
+            >
+              {t.ctaDocs}
+            </Link>
+            <a
+              href={GITHUB_URL}
+              rel="noopener noreferrer"
+              className="rounded-full border border-border px-5 py-2.5 font-medium hover:border-muted"
+            >
+              {t.ctaSource}
+            </a>
+          </div>
         </div>
       </section>
 

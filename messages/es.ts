@@ -197,6 +197,7 @@ export const es = {
       title: "Repositorio en GitHub",
       text: "Código fuente, incidencias e historial de desarrollo.",
     },
+    credits: "Créditos de arte",
   },
   notFound: {
     title: "Página no encontrada",
