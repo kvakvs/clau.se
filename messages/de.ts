@@ -28,7 +28,7 @@ export const de = {
     intro:
       "Clause ist ein AOT-Compiler für Erlang. Er verarbeitet, parst und analysiert Erlang-Quellcode, kompiliert ihn über LLVM und linkt native Programme mit einer eigenen Laufzeitumgebung: leichtgewichtige Prozesse auf mehreren Scheduler-Threads, Nachrichtenaustausch, Ports und Garbage Collection pro Prozess.",
     status:
-      "In Entwicklung: Eine wachsende Teilmenge von Erlang lässt sich bereits heute zu nativen Programmen kompilieren und unter Windows und Linux ausführen. Noch ausstehend: Validierung auf macOS mit Apple Silicon und auf nativer ARM-Hardware sowie umfassendere Vergleiche mit den Testsuites von OTP. Die Dokumentation beschreibt, was funktioniert und wo Clause von Erlang/OTP abweicht.",
+      "In Entwicklung: Eine wachsende Teilmenge von Erlang lässt sich bereits heute zu nativen Programmen kompilieren und unter Windows und Linux ausführen. Noch ausstehend: Validierung auf macOS mit Apple Silicon und auf nativer ARM-Hardware, umfassendere Vergleiche mit den Testsuites von OTP sowie Clause-Versionen der Runtime-Module, die kernel und stdlib von OTP aufrufen. Die Dokumentation beschreibt, was funktioniert und wo Clause von Erlang/OTP abweicht.",
     ctaDocs: "Dokumentation lesen",
     ctaSource: "Quellcode auf GitHub",
     cardsTitle: "Funktionen",
@@ -76,10 +76,10 @@ export const de = {
         text: "Inferiert Funktionstypen pro Klausel; mit O2 entfallen dadurch Laufzeitprüfungen, und es werden typspezialisierte Varianten mit generischem Fallback gewählt.",
       },
       {
-        id: "debugging",
-        property: "-g · --profile",
-        title: "Debugging und Profiling",
-        text: "Zeilentabellen zum Erlang-Quellcode für native Debugger sowie ein optionaler Kostenbericht pro Funktion und pro Prozess.",
+        id: "transforms",
+        property: "parse_transform",
+        title: "Parse-Transforms",
+        text: "Wendet Parse-Transforms wie erlc an und führt sie beim Kompilieren auf einem auf dem Host installierten Erlang/OTP 29 aus; die Programme selbst benötigen OTP nie.",
       },
       {
         id: "targets",
@@ -94,7 +94,8 @@ export const de = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Präprozessor: Makros, include, include_lib, bedingte Kompilierung und Sprachfeatures",
+          "Präprozessor: Makros, include, include_lib (auch aus versionierten Anwendungsverzeichnissen), bedingte Kompilierung und Sprachfeatures",
+          "Parse-Transforms laufen auf einem Erlang/OTP 29 des Hosts, einschließlich ms_transform und qlc von OTP; --print-abstr gibt die Formen im abstrakten Format aus",
           "Erlang/OTP 29-Syntax: Ausdrücke, Muster, Records, Bitstrings, Typen und Spezifikationen, Kontrollfluss und Comprehensions",
           "Syntaxprüfung, Ausgabe des expandierten Quellcodes und eingerückte Syntaxbaum-Ansicht",
           "Diagnosen im Quellcode über mehrere Eingabedateien",
@@ -109,6 +110,7 @@ export const de = {
           "Records mit Updates und record_info/2; native, qualifizierte und anonyme Records",
           "Funs mit erfassten Variablen, benannte Funs, dynamische Aufrufe und apply",
           "Ausnahmen: error, exit, throw, catch, try ... of ... catch ... after sowie Stacktraces",
+          "Modulattribute: Prüfung der Callbacks von -behaviour, -import, informative Attribute und generiertes module_info/0,1",
         ],
       },
       {
@@ -116,10 +118,11 @@ export const de = {
         title: "Compiler",
         items: [
           "Semantische Analyse: Prüfung der Teilmenge, Variablenbindungen, Aufrufauflösung, deklarierte und inferierte Typen",
-          "Typinferenz mit Funktionstypen pro Klausel; Spezifikationen, die den inferierten Typen widersprechen, sind Kompilierfehler",
+          "Typinferenz mit Funktionstypen pro Klausel; eine Spezifikation, die den inferierten Argumenttypen widerspricht, ist ein Kompilierfehler, andere Widersprüche sind Warnungen",
           "LLVM O0, O2 und Os; Objektdateien, IR und Bitcode pro Modul; IR-Snapshots mit Erlang-Quellcode als Kommentar",
           "O2 entfernt durch die Inferenz bewiesene Typ- und Formprüfungen, mit einer begrenzten Zahl typspezialisierter Varianten",
           "Modulübergreifende Link-Time-Optimierung mit --lto",
+          "Programme lassen Exporte weg, die ihre Einstiegsfunktion nicht erreichen kann; --keep-exports behält alle",
           "Typberichte: Quellcode mit inferierten Funktionssignaturen",
           "Echte Endaufrufe und tiefe Rekursion auf einem expliziten Stack pro Prozess",
           "Eine eindeutige notimpl-Meldung für gültiges Erlang, das ein noch nicht implementiertes Feature braucht",
@@ -134,6 +137,8 @@ export const de = {
           "Prozesse, Nachrichten, selektives receive, Links, Monitore, registrierte Namen und Timer auf mehreren Scheduler-Threads",
           "Heap pro Prozess mit kopierendem Garbage Collector, Binärdaten außerhalb des Heaps und optionalen Speicherlimits",
           "Ports für Dateien, Standard-I/O, Unterprozesse und TCP/UDP-Sockets auf einem ereignisgesteuerten I/O-Thread",
+          "Das Modul erlang: Prozess-Dictionary, externes Termformat, Zeit und Timer, Prozess-Introspektion, spawn-Optionen, Aliase und Hashing",
+          "Jeder Export von OTP 29 eines Clause-Bibliotheksmoduls lässt sich kompilieren; noch nicht implementierte Funktionen lösen beim Aufruf not_implemented aus",
           "io:format mit der ~p-Formatierung von OTP; Teilmengen von lists, maps, file, io, gen_tcp, gen_udp, inet und os",
         ],
       },
@@ -141,7 +146,9 @@ export const de = {
         id: "tooling",
         title: "Projekte und Werkzeuge",
         items: [
-          "TOML-Projekte mit benannten Zielen, Quellsuche und Optionen pro Ziel",
+          "TOML-Projekte mit benannten Zielen, Quellsuche, Suchpfaden, ignorierten Verzeichnissen und Modulen sowie Optionen pro Ziel",
+          "Ein Build-Verzeichnis mit SQLite-Build-Caches für Kompilierergebnisse und die Ausgabe von Parse-Transforms",
+          "Inspektion mit --print-inputs, --print-env und --print-stage-times",
           "Kommentierte Startprojekte mit clau --new-project",
           "Ein clau-Befehl vom Erlang-Quellcode zum nativen Programm; auch Escripts lassen sich kompilieren",
           "Debug-Zeilentabellen mit -g (CodeView oder DWARF 5) und optionales Profiling mit --profile",
@@ -178,7 +185,7 @@ export const de = {
       },
       using: {
         title: "Den Compiler verwenden",
-        text: "Kommandozeilenoptionen, Inspektionsmodi, ausführbare Programme und TOML-Projekte.",
+        text: "Kommandozeilenoptionen, Inspektionsmodi, ausführbare Programme, TOML-Projekte und Parse-Transforms.",
       },
       interpreting: {
         title: "Ergebnisse richtig deuten",

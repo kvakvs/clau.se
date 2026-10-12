@@ -197,6 +197,7 @@ remains the full check that every slot names an object start, for tests.
 | Registers | `x[0..live)` (`ProcessStack::keep_registers`) | A suspended entry's arguments (step 43); every push and pop clears `live` |
 | Failure channel | Error payload (BEAM `fvalue`), `erlang:error/2,3` argument list, stack trace term | Rebound in place; captured trace frames are descriptor pointers into code |
 | Trap state | The term words of a trapping builtin's `TrapState` (step 43A) | Released when the builtin finishes or fails |
+| Process dictionary | Every key and value (step 41C) | Until erased or the process ends |
 | Mailbox | Every message in the signal inbox and the message queue (step 45), including `'EXIT'` and `'DOWN'` messages | Until a receive takes it; rewritten in place, so the receive cursor (a list position) and timeout deadline stay valid |
 | Explicit roots | The span a host passes to `collect(roots)` (8E) | Read back after the call |
 | Off-heap list | None | Links are swept and relinked, not traced |
@@ -224,6 +225,17 @@ The heap moves only at a safe point, and never while a reservation is open:
 Any other request returns `unsafe_point` and changes nothing, not even the
 failure channel of a running generated call. Allocation never moves the heap:
 a request that does not fit creates a fragment.
+
+## Message buffers
+
+Plan 11 step 41F. A `MessageBuffer`
+([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) keeps a term
+outside every process: `copy_of` copies the graph from its process heap into a
+`HeapStorage` of its own (its own lifetime token, the runtime's atoms and
+memory account, off-heap binaries shared and held), with the same `GraphCopy`
+a send uses; `copy_to` copies it into a receiver's heap. Immediates need no
+storage. The buffer is never collected and is freed with its last owner.
+Timer messages use it, so they are never re-encoded.
 
 ## Collection in generated code
 

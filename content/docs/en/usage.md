@@ -7,7 +7,7 @@
 ```
 
 On macOS, `./run-macos.sh --parse-check examples/project/src/main.erl` builds first
-and runs the latest executable, passing all arguments unchanged. It accepts `BUILD_DIR`,
+and runs the latest executable, passing all arguments unchanged. It accepts `TOOL_BUILD_DIR`,
 `BUILD_TYPE` and `JOBS` environment overrides.
 
 ```text
@@ -20,6 +20,12 @@ clau [options] <source.erl>...
   --print-pp               Print expanded Erlang source
   --print-ast              Print an indented syntax tree
   --print-source           Print each module as Erlang source
+  --print-abstr            Print each module as OTP abstract format forms
+  --parse-transform <mod>  Apply a parse transform to every module
+  --transform-path <dir>   Directory of precompiled transform modules (.beam)
+  --erl <path|none>        Host Erlang/OTP 29 erl that runs parse transforms
+  --print-inputs           List the batch's sources, including modules added by reference; do not compile
+  --print-env              Print the resolved compile environment as TOML and exit
   --print-types            Print each module as source annotated with inferred types
   --print-ir               Print verified IR with Erlang source comments before LLVM optimization
   --print-optimized-ir     Print verified IR with Erlang source comments after LLVM optimization
@@ -30,8 +36,11 @@ clau [options] <source.erl>...
   --no-type-specialization  Disable compiler variants at either optimization level
   -g                      Emit Erlang line tables; executables keep them for debuggers
   --lto                   Link modules as bitcode with link-time optimization (LLD targets)
+  --keep-exports          Keep every export of an executable callable (default: unreachable ones left out)
+  --build-dir <dir>       Keep temporary files and caches below <dir> (projects default: <manifest-dir>/build)
+  --no-cache              Neither read nor write build caches
   --verbose               Trace files and compilation phases to stderr
-  --impldebug <n[,n...]>   Enable debug output for selected implementation steps
+  --print-stage-times     Print preprocess/parse/transform time per file, compile time per batch and link time to stderr
   -I, --include <dir>      Add an include directory (last supplied searched first)
   -D, --define <name[=term]>  Define a macro (default value: true)
   --app-dir <app=dir>      Set an include_lib application directory
@@ -85,15 +94,12 @@ The parser consumes expanded tokens incrementally, so its trace can precede incl
 traces. `[comp]` adds semantic/backend phases and bounded specialization decisions
 as they start. Tracing goes to stderr in every mode, including projects.
 
-`--impldebug 23` or `--impldebug 23,24,27` selects optional implementation-step
-debug output independently of `--verbose`. Repeated options combine their selections;
-duplicates are ignored. Values are signed 32-bit decimal integers, with optional
-`+`/`-` signs and no spaces or empty list members. Steps 23–27 print inferred function
-inputs/results and parameter relations to stderr with the selected step prefix
-(for example, `[impldebug 27]`). These are analyzed lowering inputs, not an IR dump.
-Future steps can check their own number; selecting a step without debug output has
-no effect. The same selection applies to positional inputs and every selected
-project target. Frontend-only check/print actions do not run inference.
+`--print-stage-times` prints `[time] <stage> <subject>: <milliseconds> ms` on stderr as each stage
+finishes: `preprocess` (reading and preprocessing), `parse` and, for modules using parse transforms,
+`transform` (the host `erl` run and import of its forms) per source file, `compile` (analysis
+through object emission) once per batch, naming its module count and project target, and `link` per
+executable, naming its final path. The parser pulls forms from the preprocessor, so the two per-file
+times are measured separately while they interleave.
 
 Exit codes: **0** for success (including warnings), **1** for source/project errors,
 **2** for usage errors or unknown target names.

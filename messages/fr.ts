@@ -28,7 +28,7 @@ export const fr = {
     intro:
       "Clause est un compilateur AOT pour Erlang. Il prétraite, analyse et vérifie le code Erlang, le compile via LLVM et produit des exécutables natifs liés à son propre runtime : processus légers sur plusieurs threads ordonnanceurs, passage de messages, ports et ramasse-miettes par processus.",
     status:
-      "En cours de développement : un sous-ensemble croissant d'Erlang se compile déjà en exécutables natifs et s'exécute sous Windows et Linux. Reste à venir : la validation sur macOS Apple Silicon et sur du matériel ARM natif, et des comparaisons plus larges avec les suites de tests d'OTP. La documentation indique ce qui fonctionne et en quoi Clause diffère d'Erlang/OTP.",
+      "En cours de développement : un sous-ensemble croissant d'Erlang se compile déjà en exécutables natifs et s'exécute sous Windows et Linux. Reste à venir : la validation sur macOS Apple Silicon et sur du matériel ARM natif, des comparaisons plus larges avec les suites de tests d'OTP, et des versions Clause des modules runtime qu'appellent kernel et stdlib d'OTP. La documentation indique ce qui fonctionne et en quoi Clause diffère d'Erlang/OTP.",
     ctaDocs: "Lire la documentation",
     ctaSource: "Code source sur GitHub",
     cardsTitle: "Fonctionnalités",
@@ -76,10 +76,10 @@ export const fr = {
         text: "Infère des types de fonctions par clause ; en O2, ils suppriment des vérifications à l'exécution et sélectionnent des variantes spécialisées par type, avec une version générique de repli.",
       },
       {
-        id: "debugging",
-        property: "-g · --profile",
-        title: "Débogage et profilage",
-        text: "Tables de lignes du code Erlang pour les débogueurs natifs, et un rapport de coût optionnel par fonction et par processus.",
+        id: "transforms",
+        property: "parse_transform",
+        title: "Parse transforms",
+        text: "Applique les parse transforms comme le fait erlc, en les exécutant pendant la compilation sur un Erlang/OTP 29 installé sur l'hôte ; les exécutables n'ont jamais besoin d'OTP.",
       },
       {
         id: "targets",
@@ -94,7 +94,8 @@ export const fr = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Prétraitement : macros, include, include_lib, compilation conditionnelle et fonctionnalités du langage",
+          "Prétraitement : macros, include, include_lib (y compris depuis des répertoires d'applications versionnés), compilation conditionnelle et fonctionnalités du langage",
+          "Parse transforms exécutées sur un Erlang/OTP 29 de l'hôte, ms_transform et qlc d'OTP compris ; --print-abstr affiche les formes du format abstrait",
           "Syntaxe Erlang/OTP 29 : expressions, motifs, records, bitstrings, types et spécifications, structures de contrôle et comprehensions",
           "Vérification de la syntaxe, affichage du code expansé et arbre syntaxique indenté",
           "Diagnostics sur le code source de plusieurs fichiers d'entrée",
@@ -109,6 +110,7 @@ export const fr = {
           "Records avec mises à jour et record_info/2 ; records natifs, qualifiés et anonymes",
           "Funs avec captures, funs nommés, appels dynamiques et apply",
           "Exceptions : error, exit, throw, catch, try ... of ... catch ... after, et traces de pile",
+          "Attributs de module : vérification des callbacks de -behaviour, -import, attributs informatifs et génération de module_info/0,1",
         ],
       },
       {
@@ -116,10 +118,11 @@ export const fr = {
         title: "Compilateur",
         items: [
           "Analyse sémantique : vérification du sous-ensemble, liaison des variables, résolution des appels, types déclarés et inférés",
-          "Inférence de types avec des types de fonctions par clause ; les spécifications qui contredisent les types inférés sont des erreurs de compilation",
+          "Inférence de types avec des types de fonctions par clause ; une spécification qui contredit les types d'arguments inférés est une erreur de compilation, les autres contradictions sont des avertissements",
           "LLVM O0, O2 et Os ; objets, IR et bitcode par module ; instantanés d'IR annotés avec le code Erlang",
           "O2 supprime les vérifications de type et de forme prouvées par l'inférence, avec un nombre borné de variantes spécialisées par type",
           "Optimisation à l'édition de liens entre modules avec --lto",
+          "Les exécutables omettent les exports que leur fonction d'entrée ne peut pas atteindre ; --keep-exports les conserve tous",
           "Rapports de types : code source annoté avec les signatures de fonctions inférées",
           "Vrais appels terminaux et récursion profonde sur une pile explicite par processus",
           "Un message notimpl explicite pour du code Erlang valide qui nécessite une fonctionnalité pas encore implémentée",
@@ -134,6 +137,8 @@ export const fr = {
           "Processus, messages, receive sélectif, liens, moniteurs, noms enregistrés et minuteries sur plusieurs threads ordonnanceurs",
           "Tas par processus avec ramasse-miettes par copie, binaires hors tas et limites de mémoire optionnelles",
           "Ports pour les fichiers, les E/S standard, les sous-processus et les sockets TCP/UDP sur un unique thread d'E/S événementiel",
+          "Le module erlang : dictionnaire de processus, format de terme externe, temps et minuteries, introspection des processus, options de spawn, alias et hachage",
+          "Chaque export OTP 29 d'un module de bibliothèque Clause se compile ; les fonctions pas encore implémentées lèvent not_implemented à l'appel",
           "io:format avec la mise en forme ~p d'OTP ; sous-ensembles de lists, maps, file, io, gen_tcp, gen_udp, inet et os",
         ],
       },
@@ -141,7 +146,9 @@ export const fr = {
         id: "tooling",
         title: "Projets et outils",
         items: [
-          "Projets TOML avec cibles nommées, découverte des sources et options par cible",
+          "Projets TOML avec cibles nommées, découverte des sources, chemins de recherche, répertoires et modules ignorés, et options par cible",
+          "Un répertoire de build avec des caches SQLite pour les résultats de compilation et la sortie des parse transforms",
+          "Inspection avec --print-inputs, --print-env et --print-stage-times",
           "Projets de départ commentés avec clau --new-project",
           "Une seule commande clau, du code Erlang à l'exécutable natif ; les escripts se compilent aussi",
           "Tables de lignes de débogage avec -g (CodeView ou DWARF 5) et profilage optionnel avec --profile",
@@ -178,7 +185,7 @@ export const fr = {
       },
       using: {
         title: "Utiliser le compilateur",
-        text: "Options de ligne de commande, modes d'inspection, exécutables et projets TOML.",
+        text: "Options de ligne de commande, modes d'inspection, exécutables, projets TOML et parse transforms.",
       },
       interpreting: {
         title: "Comment interpréter les résultats",

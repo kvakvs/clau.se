@@ -40,15 +40,51 @@ builtin both the compiler and the runtime know:
   `register/2`, `unregister/1`, `whereis/1`, `registered/0`
   ([registered names](processes.md#registered-names));
 - messages (plan step 45): `'!'/2` (the `!` operator) and `send/2`
-  ([messages](processes.md#messages)).
+  ([messages](processes.md#messages));
+- the process dictionary (plan step 41C): `put/2`, `get/0,1`,
+  `get_keys/0,1`, `erase/0,1` ([process dictionary](processes.md#process-dictionary));
+- binary, atom and number conversions (plan step 41D): `atom_to_binary/1,2`,
+  `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`,
+  `list_to_existing_atom/1`, `integer_to_binary/1,2`, `binary_to_integer/1,2`,
+  `float_to_binary/1,2`, `binary_to_float/1`, `list_to_float/1`,
+  `binary_to_list/3`, `bitstring_to_list/1`, `list_to_bitstring/1`,
+  `split_binary/2`, `iolist_size/1`, `list_to_pid/1`, `list_to_ref/1`. They
+  share the list conversions' text rules (`conversion_text.cpp`: atom names,
+  digits, float options) and OTP's errors: float text needs digits on both
+  sides of the point (`list_to_float("1e10")` is `badarg`), an exponent past
+  the range is `badarg` and an underflow `0.0`; encodings are `utf8`,
+  `unicode` and `latin1`; they run to completion;
+- the [external term format](#external-term-format) (plan step 41E):
+  `term_to_binary/1,2`, `term_to_iovec/1,2`, `external_size/1,2`,
+  `binary_to_term/1,2`;
+- [time](#time) and unique values (plan step 41F): `monotonic_time/0,1`,
+  `system_time/0,1`, `time_offset/0,1`, `convert_time_unit/3`,
+  `timestamp/0`, `now/0`, `unique_integer/0,1`, `localtime/0`,
+  `universaltime/0`, `date/0`, `time/0`, `localtime_to_universaltime/1,2`,
+  `universaltime_to_localtime/1`, `posixtime_to_universaltime/1`,
+  `universaltime_to_posixtime/1`; [timers](processes.md#timers):
+  `start_timer/3,4`, `send_after/3,4`, `cancel_timer/1,2`, `read_timer/1,2`;
+- [process introspection](processes.md#introspection) (plan step 41G1):
+  `process_info/1,2`, `processes/0`, `group_leader/0,2`,
+  `garbage_collect/0,1,2`, `yield/0`; [system information](#system-information):
+  `statistics/1`, `system_info/1`, `memory/0,1`;
+- [spawn options and aliases](processes.md#spawn-options) (plan step 41G2):
+  `spawn_opt/2..5`, `spawn_request/1..5`, `spawn_request_abandon/1`,
+  `alias/0,1`, `unalias/1`, `monitor/3`, `hibernate/3`;
+- [fun information](funs.md#fun-information), [hashing](#hashing) and MD5
+  (plan step 41G3): `fun_info/1,2`, `fun_to_list/1`, `is_builtin/3`,
+  `phash/2`, `phash2/1,2`, `md5/1`, `md5_init/0`, `md5_update/2`,
+  `md5_final/1`;
+- [nodes](processes.md#nodes) and [code loading](#code-loading) (plan step
+  41H): `nodes/0,1,2`, `is_alive/0`, `monitor_node/2,3`,
+  `disconnect_node/1`, `module_loaded/1`, `loaded/0`, `pre_loaded/0`,
+  `delete_module/1`, `prepare_loading/2`, `finish_loading/1`,
+  `get_module_info/1,2`.
 
 Entries are only appended: an entry's index is the number generated code
 passes to the bridge service. A qualified call of a catalog builtin of another
-module (`io:format(F, A)`) also calls the bridge. Other `erlang` functions keep
-their diagnostics:
-a direct call of an unknown one is `unknown module erlang`, `fun erlang:F/A` or
-`fun F/A` of a guard BIF outside the catalog (`node/0`) and
-`fun erlang:apply/2,3` report the unavailable `dynamic calls` capability.
+module (`io:format(F, A)`) also calls the bridge. Every other `erlang`
+function reaches the [erlang library module](#erlang-module).
 
 ## How calls reach them
 
@@ -186,3 +222,146 @@ functions of typed parameters ([typed.hpp](../runtime/src/builtins/typed.hpp)),
 - The older host path `abi::v1::dispatch_builtin` (host-registered native
   modules by name, [runtime](runtime.md#code-server-and-builtins)) is separate
   and unchanged.
+
+## Erlang module
+
+Plan 11 step 41B. The compiler knows which `erlang` functions exist from two
+owned sources, never from runtime code:
+
+- `library/stdlib/erlang.terms`: OTP 29's `erlang` exports as
+  `{Name, Arity, Flags, Status}` (flags `auto_import`, `guard`; status
+  `implemented`, `{planned, Step}` or `{unavailable, Reason}`: `distribution`,
+  `tracing`, `code_loading`, `not_selected`).
+  `tests/compiler/builtins/observe_erlang.escript` observes the host OTP and
+  keeps the statuses, which are maintained by hand.
+- `tests/compiler/builtins/generate_erlang.py` turns it into
+  `library/stdlib/erlang.erl` (Clause's own stub module) and
+  `compiler/src/semantic/erlang_auto_imports.inc` (OTP's auto-import list).
+  CTest `builtins_erlang_inventory` checks both are current and that
+  `implemented` means a catalog builtin, a function the compiler handles
+  (`apply/2,3`, `is_record/1,2,3`) or a real Erlang body (`nif_error/1,2`
+  raise `error(Reason)` like OTP's stubs); `builtins_erlang_freshness`
+  (label `host_otp`) compares the inventory with the host OTP.
+
+Calls:
+
+- `erlang:F(...)`, `fun erlang:F/A`, `apply(erlang, F, [...])` and
+  `-import(erlang, ...)` of a builtin go to the builtin, as before. Any other
+  export joins the program as the library module `erlang` (compiled like
+  `lists`); its stubs raise `error({not_implemented, F, A})` with
+  `erlang:F/A` on top of the stack, only when called. A name the module does not export is
+  `undefined function erlang:F/A`.
+- An unqualified call or `fun F/A` of an OTP auto-import (`get(K)`,
+  `fun put/2`) that the module neither defines, imports nor suppresses with
+  `-compile({no_auto_import, ...})` reaches `erlang:F/A` the same way.
+- Builtins are sticky: when the module `erlang` registers, the runtime skips
+  every export a registered builtin has the name of, so `M:F(Args)` with
+  `M = erlang` and external funs bind the builtin, never a stub.
+
+## External term format
+
+Plan 11 step 41E (`erlang/term_encoding.cpp`, `erlang/term_decoding.cpp`).
+Both directions share the codec of
+[external_term.hpp](../abi/include/clause/abi/external_term.hpp) with the
+compiler, and walk terms with explicit stacks, so nesting depth costs no
+native stack.
+
+- `term_to_binary/1,2` writes OTP's bytes for a non-distributed node
+  (`nonode@nohost`, creation 0): UTF-8 atoms, `NEW_FLOAT`, `STRING_EXT` for
+  byte lists up to 65535 elements, maps in key order, pids, ports and
+  references in their `NEW_PID`, `V4_PORT` and `NEWER_REFERENCE` forms, and
+  `EXPORT_EXT` for `fun M:F/A`. Options: `{minor_version, 0..2}` (0 writes
+  float text, 0 and 1 Latin-1 atoms), `deterministic`, `compressed` and
+  `{compressed, 0..9}`; anything else is `badarg`.
+- `term_to_iovec/1,2` returns the encoding as a list of one binary;
+  `external_size/1,2` its exact size.
+- `binary_to_term/1,2` checks every length against the input before
+  allocating, ignores bytes after the term, and returns `badarg` for
+  malformed input, invalid atom text, non-finite floats, repeated map keys
+  and identities of another node; `safe` admits only existing atoms, `used`
+  returns `{Term, BytesRead}`. CTests: `executables_external_terms` (OTP
+  bytes) and `builtins_etf_fuzz` (mutated encodings decode or raise).
+
+## Time
+
+Plan 11 step 41F (`erlang/time.cpp`). Monotonic time is the steady clock;
+`native` and `perf_counter` are nanoseconds; units are the OTP atoms
+(including the deprecated plural ones) or a positive parts-per-second
+integer. `convert_time_unit/3` rounds down, as OTP. `unique_integer/0,1`
+draws from one program-wide counter, so every value is positive, unique and
+increasing whatever the options (`positive`, `monotonic`; others `badarg`).
+`now/0` is system time made strictly increasing. Calendar conversions read
+`{{Y, M, D}, {H, Mi, S}}` strictly (an invalid date or time is `badarg`) and
+use the C library's local time zone.
+
+## System information
+
+Plan 11 step 41G1 (`erlang/system.cpp`).
+
+- `statistics/1`: `wall_clock` and `runtime` (`{Total, SinceLastCall}` in
+  milliseconds), `run_queue`, `total_run_queue_lengths`,
+  `total_active_tasks`, `context_switches` (time slices run). Clause keeps no
+  reduction, garbage collection or I/O counters: `reductions`,
+  `exact_reductions`, `garbage_collection` and `io` report zeros.
+- `system_info/1`: `otp_release` (`"29"`), `version` (`"17.1"`, the ERTS
+  Clause follows), `machine` (`"Clause"`), `system_version`,
+  `system_architecture`, `wordsize` and `{wordsize, internal | external}`,
+  `process_count`/`process_limit`, `port_count`/`port_limit`,
+  `atom_count`/`atom_limit`, `schedulers`, `schedulers_online`,
+  `logical_processors*`, `thread_pool_size`, `smp_support`, `threads`,
+  `build_type`, `heap_type`, `kernel_poll`, `debug_compiled`,
+  `time_correction`, `time_warp_mode`, `endian`, `compat_rel`.
+- `memory/0,1`: OTP's types; `processes` is the runtime-wide account of
+  process memory, `atom` an estimate from the atom count, `binary`, `code`
+  and `ets` are 0.
+- Other items are `badarg`.
+
+## Hashing
+
+Plan 11 step 41G3 (`erlang/hashing.cpp`, `erlang/md5.cpp`).
+
+- `phash2/1,2` and `phash/2` hash a term's structure: exactly equal terms
+  hash equally in every program run (atoms by spelling, maps in key order,
+  `1` and `1.0` apart). `phash2/1` is in 0..2^27-1, `phash2/2` in
+  0..Range-1, `phash/2` in 1..Range; Range is 1..2^32, else `badarg`. The
+  values are Clause's own, not OTP's.
+- `md5/1` and `md5_init/0`, `md5_update/2`, `md5_final/1` give RFC 1321's
+  digests (OTP's bytes) of iodata. The context is an opaque 96-byte binary
+  of Clause's own layout; another binary is `badarg`.
+
+## Code loading
+
+Plan 11 step 41H (`erlang/code.cpp`). Every module is linked into the program
+and stays loaded; [step 71](../.agents/11-plan.md#step-71) decides about
+dynamic code. `module_loaded/1` is true for a compiled module or a module with
+runtime builtins (`erlang`, `io`, `os`); `loaded/0` and `pre_loaded/0` list
+them all. `delete_module/1` returns `undefined` for an unknown module and
+raises `error:notsup` for a loaded one. `prepare_loading/2` returns
+`{error, badfile}` (no binary is code the program can load) and
+`finish_loading/1` accepts only `[]`. `get_module_info(M[, Item])` continues
+as `M:module_info(...)`.
+
+## Source layout
+
+- The runtime implements builtins in `runtime/src/builtins/`. A large module
+  gets its own subdirectory with one translation unit per builtin family:
+  module `erlang` lives in `runtime/src/builtins/erlang/` (`core`: type tests,
+  guard BIFs, operators, raising, `display`, `halt`, `function_exported`;
+  `term_access`; `lists`: `length`, `++`, `--`; `conversions`; `processes`:
+  identities, spawning, messages, links, monitors, registered names;
+  `ports`; `dictionary`: the [process dictionary](processes.md#process-dictionary);
+  `binary_conversions` with `conversion_text`, the text rules it shares with
+  `conversions`; `term_encoding` and `term_decoding`: the external term
+  format; `time` and `timers`; `introspection` and `system`; `spawning`;
+  `fun_info`, `hashing` and `md5`; `node` and `code`).
+- Each family file defines its own `*_builtins()` table listed in
+  `production_builtins()`. A new family adds a new file and table instead of
+  growing an existing one; a file past about 400 lines is split by family
+  before it grows further. Later large modules follow the same rule
+  (`runtime/src/builtins/<module>/`).
+- Small modules (`io`, `os`) and the bridge infrastructure (`registry`,
+  `invocation`, `bridge`, `portions`, `typed`, `text`, `float_text`,
+  `output`) stay in `runtime/src/builtins/`.
+- The compiler never reads runtime sources: the catalog
+  `abi::v1::bridge_builtins` is the single list both sides share. It stays
+  one append-only array; its group comments name the implementing file.

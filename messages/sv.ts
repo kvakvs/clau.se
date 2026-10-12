@@ -28,7 +28,7 @@ export const sv = {
     intro:
       "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, portar och skräpsamling per process.",
     status:
-      "Under utveckling: en växande delmängd av Erlang kompileras till körbara program och körs redan idag på Windows och Linux. Återstår: validering på macOS med Apple Silicon och på riktig ARM-hårdvara, samt bredare jämförelser med OTP:s egna testsviter. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
+      "Under utveckling: en växande delmängd av Erlang kompileras till körbara program och körs redan idag på Windows och Linux. Återstår: validering på macOS med Apple Silicon och på riktig ARM-hårdvara, bredare jämförelser med OTP:s egna testsviter samt Clause-versioner av de runtime-moduler som OTP:s kernel och stdlib anropar. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
     ctaDocs: "Läs dokumentationen",
     ctaSource: "Källkod på GitHub",
     cardsTitle: "Funktioner",
@@ -76,10 +76,10 @@ export const sv = {
         text: "Härleder funktionstyper per klausul; med O2 tar de bort kontroller vid körning och väljer typspecialiserade varianter med en generisk variant som reserv.",
       },
       {
-        id: "debugging",
-        property: "-g · --profile",
-        title: "Felsökning och profilering",
-        text: "Radtabeller för Erlang-källkoden som debuggers på maskinkodsnivå kan läsa, och en valfri kostnadsrapport per funktion och per process.",
+        id: "transforms",
+        property: "parse_transform",
+        title: "Parse transforms",
+        text: "Tillämpar parse transforms som erlc gör och kör dem under kompileringen på en Erlang/OTP 29 installerad på värddatorn; de körbara programmen behöver aldrig OTP.",
       },
       {
         id: "targets",
@@ -94,7 +94,8 @@ export const sv = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Förbehandling: makron, include, include_lib, villkorlig kompilering och språkfunktioner",
+          "Förbehandling: makron, include, include_lib (även från versionerade applikationskataloger), villkorlig kompilering och språkfunktioner",
+          "Parse transforms körs på en Erlang/OTP 29 på värddatorn, inklusive OTP:s ms_transform och qlc; --print-abstr skriver ut formerna i det abstrakta formatet",
           "Erlang/OTP 29-syntax: uttryck, mönster, records, bitsträngar, typer och specifikationer, kontrollflöde och comprehensions",
           "Syntaxkontroll, utskrift av expanderad källkod och ett indenterat syntaxträd",
           "Diagnostik i källkoden över flera indatafiler",
@@ -109,6 +110,7 @@ export const sv = {
           "Records med uppdateringar och record_info/2; native records samt kvalificerade och anonyma records",
           "Funs med infångade variabler, namngivna funs, dynamiska anrop och apply",
           "Undantag: error, exit, throw, catch, try ... of ... catch ... after samt stackspår",
+          "Modulattribut: kontroll av callbacks för -behaviour, -import, informativa attribut och genererad module_info/0,1",
         ],
       },
       {
@@ -116,10 +118,11 @@ export const sv = {
         title: "Kompilator",
         items: [
           "Semantisk analys: kontroll av delmängden, variabelbindningar, anropsupplösning, deklarerade och härledda typer",
-          "Typhärledning med funktionstyper per klausul; specifikationer som motsäger härledda typer ger kompileringsfel",
+          "Typhärledning med funktionstyper per klausul; en specifikation som motsäger de härledda argumenttyperna ger kompileringsfel, andra motsägelser ger varningar",
           "LLVM O0, O2 och Os; objektfiler, IR och bitkod per modul; IR-ögonblicksbilder med Erlang-källkod",
           "O2 tar bort typ- och formkontroller som härledningen bevisat, med ett begränsat antal typspecialiserade varianter",
           "Länktidsoptimering över moduler med --lto",
+          "Körbara program utelämnar de exporter som startfunktionen inte kan nå; --keep-exports behåller alla",
           "Typrapporter: källkod med härledda funktionssignaturer",
           "Riktiga svansanrop och djup rekursion på en explicit stack per process",
           "Ett tydligt notimpl-meddelande för giltig Erlang som kräver en funktion som ännu inte finns",
@@ -134,6 +137,8 @@ export const sv = {
           "Processer, meddelanden, selektiv receive, länkar, monitorer, registrerade namn och timrar på flera schemaläggartrådar",
           "Heap per process med kopierande skräpsamlare, binärer utanför heapen och valfria minnesgränser",
           "Portar för filer, standard-I/O, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd",
+          "Modulen erlang: processordbok, externt termformat, tid och timrar, processinspektion, spawn-alternativ, alias och hashning",
+          "Varje OTP 29-export i en Clause-biblioteksmodul kompileras; funktioner som ännu inte är implementerade ger not_implemented när de anropas",
           "io:format med OTP:s ~p-formatering; delmängder av lists, maps, file, io, gen_tcp, gen_udp, inet och os",
         ],
       },
@@ -141,7 +146,9 @@ export const sv = {
         id: "tooling",
         title: "Projekt och verktyg",
         items: [
-          "TOML-projekt med namngivna mål, hittande av källfiler och inställningar per mål",
+          "TOML-projekt med namngivna mål, hittande av källfiler, sökvägar, ignorerade kataloger och moduler samt inställningar per mål",
+          "En byggkatalog med SQLite-byggcacher för kompileringsresultat och utdata från parse transforms",
+          "Inspektion med --print-inputs, --print-env och --print-stage-times",
           "Kommenterade startprojekt med clau --new-project",
           "Ett clau-kommando från Erlang-källkod till körbart program; även escripts kan kompileras",
           "Felsökningsradtabeller med -g (CodeView eller DWARF 5) och valfri profilering med --profile",
@@ -178,7 +185,7 @@ export const sv = {
       },
       using: {
         title: "Använda kompilatorn",
-        text: "Kommandoradsflaggor, inspektionslägen, körbara program och TOML-projekt.",
+        text: "Kommandoradsflaggor, inspektionslägen, körbara program, TOML-projekt och parse transforms.",
       },
       interpreting: {
         title: "Hur man tolkar resultaten",
