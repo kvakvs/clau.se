@@ -65,7 +65,9 @@ Visual Studio x64 environment themselves when the shell is not a developer shell
 `%ProgramFiles%\LLVM\bin` to `PATH` when `clang-cl` is missing. A build directory configured
 with another generator or compiler is reconfigured from scratch; set `CLAUSE_TOOLCHAIN=default`
 to keep CMake's own choice (for example MSVC `cl` in a separate directory). Build defaults are
-`BUILD_DIR=build/debug`, `BUILD_TYPE=Debug`, and native build tool parallelism
+`BUILD_DIR=build/debug` (testing), `TOOL_BUILD_DIR=build/tool` (`make build`, `make-build.bat`, `clau.bat`,
+`run-macos.sh`: testing off, so they never reconfigure the testing build), `BUILD_TYPE=Debug`, and native build tool
+parallelism
 (override with `JOBS=N`); environment variables
 `CMAKE`, `CTEST`, `CMAKE_ARGS`, and `CLANG_FORMAT` also override the corresponding tools/options.
 `make-test.bat` configures with testing enabled, builds all targets, then runs CTest,
@@ -121,7 +123,7 @@ For a build directory without a preset, use `cmake --build <dir> --parallel`.
 The Windows preset places the executable in `build/windows/bin/<Config>/clau.exe`
 and the runtime in `build/windows/lib/<Config>/clause_runtime.lib`.
 
-Alternatively, use `make build` to build only `clau` and its dependencies,
+Alternatively, use `make build` to build only `clau` and its dependencies in `build/tool`,
 or `make test` to build and run the full test suite. For a different configuration:
 
 ```sh
@@ -135,6 +137,7 @@ Pass these options when configuring to override defaults:
 |---------------------------------------------|---------------------------------------------------------------|
 | `-DCLAUSE_BOOST_ROOT=/path/to/boost`    | Select a Boost installation or full source tree               |
 | `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Select the pinned TOML dependency |
+| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Select the pinned SQLite amalgamation (build cache) |
 | `-DCLAUSE_OTP_AUDITS=ON` | Enable optional live OTP/reference audits; default is OFF |
 | `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | Select OTP 29+ for optional audits; unused by normal tests |
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Select an installed Windows Clang executable |

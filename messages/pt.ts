@@ -28,7 +28,7 @@ export const pt = {
     intro:
       "Clause é um compilador AOT para Erlang. Pré-processa, analisa e verifica o código Erlang, compila-o via LLVM e gera executáveis nativos com o seu próprio runtime: processos leves em várias threads do escalonador, troca de mensagens, portas e recolha de lixo por processo.",
     status:
-      "Em desenvolvimento: um subconjunto crescente de Erlang já compila para executáveis nativos e executa em Windows e Linux. Falta ainda: validação em macOS com Apple Silicon e em hardware ARM nativo, e comparações mais amplas com os conjuntos de testes do próprio OTP. A documentação indica o que funciona e em que o Clause difere do Erlang/OTP.",
+      "Em desenvolvimento: um subconjunto crescente de Erlang já compila para executáveis nativos e executa em Windows e Linux. Falta ainda: validação em macOS com Apple Silicon e em hardware ARM nativo, comparações mais amplas com os conjuntos de testes do próprio OTP e versões Clause dos módulos de runtime chamados pelo kernel e pela stdlib do OTP. A documentação indica o que funciona e em que o Clause difere do Erlang/OTP.",
     ctaDocs: "Ler a documentação",
     ctaSource: "Código no GitHub",
     cardsTitle: "Funcionalidades",
@@ -76,10 +76,10 @@ export const pt = {
         text: "Infere tipos de funções por cláusula; em O2, estes eliminam verificações em runtime e selecionam variantes especializadas por tipo, com uma variante genérica de recurso.",
       },
       {
-        id: "debugging",
-        property: "-g · --profile",
-        title: "Depuração e perfilagem",
-        text: "Tabelas de linhas do código Erlang para depuradores nativos e um relatório de custos opcional por função e por processo.",
+        id: "transforms",
+        property: "parse_transform",
+        title: "Parse transforms",
+        text: "Aplica parse transforms tal como o erlc, executando-os durante a compilação num Erlang/OTP 29 instalado no anfitrião; os executáveis nunca precisam do OTP.",
       },
       {
         id: "targets",
@@ -94,7 +94,8 @@ export const pt = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Pré-processamento: macros, include, include_lib, compilação condicional e funcionalidades da linguagem",
+          "Pré-processamento: macros, include, include_lib (também a partir de diretórios de aplicações com versão), compilação condicional e funcionalidades da linguagem",
+          "Parse transforms executados num Erlang/OTP 29 do anfitrião, incluindo ms_transform e qlc do OTP; --print-abstr imprime as formas do formato abstrato",
           "Sintaxe de Erlang/OTP 29: expressões, padrões, records, bitstrings, tipos e especificações, controlo de fluxo e comprehensions",
           "Verificação de sintaxe, saída do código expandido e árvore sintática indentada",
           "Diagnósticos de código-fonte em vários ficheiros de entrada",
@@ -109,6 +110,7 @@ export const pt = {
           "Records com atualizações e record_info/2; records nativos, qualificados e anónimos",
           "Funs com capturas, funs com nome, chamadas dinâmicas e apply",
           "Exceções: error, exit, throw, catch, try ... of ... catch ... after, e rastreios de pilha",
+          "Atributos de módulo: verificação de callbacks de -behaviour, -import, atributos informativos e module_info/0,1 gerado",
         ],
       },
       {
@@ -116,10 +118,11 @@ export const pt = {
         title: "Compilador",
         items: [
           "Análise semântica: verificação do subconjunto, ligação de variáveis, resolução de chamadas, tipos declarados e inferidos",
-          "Inferência de tipos com tipos de funções por cláusula; especificações que contradizem os tipos inferidos são erros de compilação",
+          "Inferência de tipos com tipos de funções por cláusula; uma especificação que contradiz os tipos de argumentos inferidos é um erro de compilação, as restantes contradições são avisos",
           "LLVM O0, O2 e Os; objetos, IR e bitcode por módulo; instantâneos de IR anotados com o código Erlang",
           "O2 elimina verificações de tipo e de forma comprovadas pela inferência, com um número limitado de variantes especializadas por tipo",
           "Otimização em tempo de ligação entre módulos com --lto",
+          "Os executáveis omitem as exportações que a função de entrada não consegue alcançar; --keep-exports mantém-nas todas",
           "Relatórios de tipos: código-fonte anotado com as assinaturas de funções inferidas",
           "Chamadas de cauda reais e recursão profunda numa pilha explícita por processo",
           "Uma mensagem notimpl explícita para Erlang válido que precisa de uma funcionalidade ainda não implementada",
@@ -134,6 +137,8 @@ export const pt = {
           "Processos, mensagens, receive seletivo, links, monitores, nomes registados e temporizadores em várias threads do escalonador",
           "Heap por processo com coletor de lixo por cópia, binaries fora do heap e limites de memória opcionais",
           "Portas para ficheiros, E/S padrão, subprocessos e sockets TCP/UDP numa única thread de E/S orientada a eventos",
+          "O módulo erlang: dicionário de processo, formato externo de termos, tempo e temporizadores, introspeção de processos, opções de spawn, aliases e hashing",
+          "Todas as exportações do OTP 29 de um módulo da biblioteca do Clause compilam; as funções ainda não implementadas lançam not_implemented quando chamadas",
           "io:format com a formatação ~p do OTP; subconjuntos de lists, maps, file, io, gen_tcp, gen_udp, inet e os",
         ],
       },
@@ -141,7 +146,9 @@ export const pt = {
         id: "tooling",
         title: "Projetos e ferramentas",
         items: [
-          "Projetos TOML com alvos nomeados, descoberta de código-fonte e opções por alvo",
+          "Projetos TOML com alvos nomeados, descoberta de código-fonte, caminhos de pesquisa, diretórios e módulos ignorados, e opções por alvo",
+          "Um diretório de compilação com caches SQLite para resultados de compilação e saída de parse transforms",
+          "Inspeção com --print-inputs, --print-env e --print-stage-times",
           "Projetos iniciais comentados com clau --new-project",
           "Um único comando clau, do código Erlang ao executável nativo; os escripts também compilam",
           "Tabelas de linhas de depuração com -g (CodeView ou DWARF 5) e perfilagem opcional com --profile",
@@ -178,7 +185,7 @@ export const pt = {
       },
       using: {
         title: "Usar o compilador",
-        text: "Opções de linha de comandos, modos de inspeção, executáveis e projetos TOML.",
+        text: "Opções de linha de comandos, modos de inspeção, executáveis, projetos TOML e parse transforms.",
       },
       interpreting: {
         title: "Como interpretar os resultados",

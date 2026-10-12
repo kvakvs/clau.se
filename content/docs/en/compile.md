@@ -36,11 +36,21 @@ run ([funs](funs.md)). Rejected with diagnostics even in unused functions:
 processes and messaging.
 Accepted attributes: `module`, `export`, `file`, tuple and native `record`,
 `export_record`, `import_record`, type/spec
-forms, `doc`/`moduledoc`, `author`, `vsn`, `copyright`, `deprecated`,
-`-compile` with `{no_auto_import, ...}` or warning-only `nowarn_*` options (for
-example `nowarn_deprecated_catch`) and `-import` of `erlang` guard BIFs. Other
-attributes (`on_load`, parse transforms, other
-`compile` options, parameterized modules) are rejected.
+forms, `doc`/`moduledoc`, `behaviour`/`behavior` ([behaviours](semantic.md#behaviours)),
+any informational attribute (`vsn`, `author`, `copyright`, `deprecated`,
+`dialyzer`, user-defined `-name(Term)`; kept for
+[`module_info(attributes)`](semantic.md#predefined-functions)),
+`-import(Module, [F/A, ...])` ([imports](semantic.md#imports)) and `-compile`
+with options that change nothing Clause emits: `{no_auto_import, ...}`, warning
+options (`nowarn_*`, `warn_*`, `{nowarn_unused_function, [...]}`) and
+optimization, debug and reporting hints (`inline`, `{inline, [F/A]}`,
+`{inline_size, N}`, `{inline_effort, N}`, `inline_list_funcs`, `debug_info`,
+`deterministic`, `report*`, `verbose`, ...). `{parse_transform, Module}` runs
+the transform on the host Erlang/OTP before analysis
+([parse transforms](transforms.md)). `on_load`, `nifs`, `export_all`, other `compile`
+options and parameterized modules are rejected; the diagnostic names them, for example
+`[behavior-changing attributes] notimpl [module="m" operation="-compile option export_all"]`.
+Every module gets `module_info/0,1`.
 Sources starting with `#!` follow [escript rules](executables.md#escripts)
 (implicit module and `main/1` export, `-mode` accepted).
 Type/spec forms are analyzed but never change generated code. Syntax-only modes
@@ -81,6 +91,13 @@ Other actions on the same sources:
 & $tool -O2 --no-type-specialization --verbose examples/compile/answer.erl examples/compile/client.erl
 ```
 
+## Abstract format printing
+
+`--print-abstr` (a frontend action) prints each parsed module as the OTP
+[abstract format](https://www.erlang.org/doc/apps/erts/absform.html) forms
+`epp` would hand a parse transform, one `file:consult/1` term per line, the
+same terms `erlc +to_abstr` writes ([transforms](transforms.md)).
+
 ## Source printing
 
 `--print-source` (a frontend action, like `--print-ast`) prints each parsed
@@ -113,18 +130,24 @@ in `printing.hpp`; `compiler/src/printing/source_*`) is reusable:
 | `--artifact-dir DIR` | Artifact root (requires `--emit`) |
 | `-o PATH` / `--output PATH` | Link an executable ([linking](executables.md#linking)); conflicts with `--emit` |
 | `--linker PATH`, `--runtime-library PATH` | Clang driver and runtime archive for `-o` |
+| `--no-cache` | Neither read nor write [build caches](projects.md#build-caches) |
+| `--build-dir DIR` | Where Clause keeps temporary files (below `DIR/tmp`); replaces every selected project target's `build_dir`; positional inputs have none without it ([build directory](projects.md#build-directory)) |
 | `--entry MODULE[:FUNCTION]` | Executable entry function/1; validated in every compiling mode and adds the `clausev1_start` startup artifact ([executables](executables.md#startup-object)) |
 | `--target-triple TRIPLE` | Target machine; `--target` is project target selection |
 | `-O0` / `-O2` / `-Os` | Default generic code + LLVM O0 / bounded specialization + LLVM O2 / LLVM Os, no specialization, one section per symbol and linker dead-stripping of unreferenced code and data |
 | `--no-type-specialization` | Disable variants regardless of option order |
 | `--lto` | Link the modules as bitcode with LLD link-time optimization (Windows MSVC and ELF targets; needs `-o` or a linking project build) ([linking](executables.md#linking)) |
+| `--keep-exports` | Keep every export of an executable callable instead of leaving out those it cannot reach; needs `-o` or a linking project build ([export liveness](executables.md#export-liveness)) |
 | `-g` | Erlang line tables in objects and linked executables (CodeView/PDB on MSVC targets, DWARF elsewhere) ([debugging](debugging.md)) |
 | `--print-ir` / `--print-optimized-ir` | Verified IR before/after LLVM passes, with Erlang source lines as comments |
 | `--print-types` | Each module as Erlang source annotated with inferred types ([semantic](semantic.md#--print-types)); stops before LLVM |
-| `--verbose` | `[pp]`, `[parse]` and `[comp]` phase events on stderr |
-| `--impldebug n[,n...]` | Implementation-step debug output on stderr (e.g. `23`: inference summaries) |
+| `--verbose` | `[pp]`, `[parse]` and `[comp]` phase events on stderr, then the [directory index](projects.md#directory-index) summary `[index] ...` |
+| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` on stderr: `plan` per project manifest (loading it and expanding every selected target's patterns), `preprocess`, `parse` and `transform` (modules with parse transforms) per source file, `compile` per batch (module count, project target), `link` per executable; ` (cached)` follows a stage that reused a [cached](projects.md#build-caches) result. Before a batch's `compile` total come its phases with the same subject: `index`, `calls`, `declared-types`, `inference`, `contracts`, `lower`, `optimize`, `emit` (those that ran). After `inference`: `inference pass N` lines with the pass's work steps out of the inference work budget (`N of BUDGET work steps`) and how it ended (`inputs changed`, `fun results changed`, `settled`, or the final pass after unsettled passes), naming the function running when the budget ran out; then `inference slowest <module>:<function>/<arity>` for the 10 functions (recursive groups name one member `and N more`) that took longest over all passes, with their work steps and that work's share of the budget of the passes that ran them (`877450 work steps, 43.9% of 10 passes of 200000 budget`), and `widened to term()` when a budget widened one of their facts. A cached compile prints no phases |
+| `--print-env` | Print the resolved compile environment as TOML on stdout and exit without processing sources ([environment report](#environment-report)) |
+| `--print-inputs` | Preprocess and parse the inputs, add the modules they name as compilation does, then list every source of the batch on stdout and stop before compilation ([projects](projects.md#cli-and-target-selection)) |
 
-- Without `--emit`, compilation verifies objects in memory and writes nothing.
+- Without `--emit`, compilation verifies objects in memory and writes nothing
+  outside the [build directory](projects.md#build-directory).
 - Positional inputs form one batch; each project target is its own batch.
 - Artifact roots: `build/aot` (positional) or `build/aot/<hex-target>` under the
   manifest directory. Explicit roots are invocation-relative.
@@ -138,6 +161,87 @@ in `printing.hpp`; `compiler/src/printing/source_*`) is reusable:
   comment headers and are not one parseable module. Use `--emit llvm-ir` for
   tool input. Source-line comments show original text (unexpanded macros) and
   survive optimization through debug locations.
+
+## Environment report
+
+`--print-env` validates the whole command line (conflicts, readable positional
+inputs, project planning), then prints what that command would use as one TOML
+document on stdout, exits 0 and reads no source. Paths are absolute, with `/`.
+
+```toml
+# clau compile environment (--print-env)
+command = ["clau", "--print-env", "-O2", "-o", "app", "main.erl"]  # as given
+actions = ["link"]          # see below
+working_directory = "/work"
+
+[[targets]]                 # one per selected project target; one for positional inputs
+name = "app"                # project targets only
+project = "/work/project.toml"
+sources = ["/work/src/main.erl"]           # globs and search paths resolved
+library_directory = "/clau/library"     # application dirs, searched before source_search_paths
+build_dir = "/work/build"   # "" for positional inputs without --build-dir
+entry = "main:main"         # or "auto" when linking without --entry
+output = "/work/app"        # linking only: final name (".exe" on Windows)
+linker = "/usr/bin/clang++" # linking only; "" when none is found
+runtime_library = "/clau/lib/libclause_runtime.a"
+
+[targets.options]           # manifest option names
+source_search_paths = []    # directories, patterns expanded
+include_dirs = []           # search order, patterns expanded
+defines = []
+applications = { "stdlib" = "/otp/lib/stdlib" }  # last mapping wins
+enabled_features = ["maybe_expr"]                # OTP defaults plus changes
+
+[targets.backend]
+target_triple = "x86_64-unknown-linux-gnu"  # host when not given
+optimization = "O2"
+type_specialization = true  # O2 without --no-type-specialization
+debug_info = false
+lto = false
+keep_exports = false        # --keep-exports or the project option
+emit = "none"               # or obj, llvm-ir, llvm-bc
+artifact_dir = "/work/build/aot"
+```
+
+(Arrays print one item per line.) `actions` lists the frontend actions
+(`print-pp`, `parse-check`, `print-ast`, `print-source`, `print-abstr`, else
+`preprocess-check`; `print-inputs` alone replaces them), else the inspections
+(`print-types`, `print-ir`, `print-optimized-ir`), else `emit`, `link` (`-o`) or
+`compile`. In a project build, targets with an `output` link too. Modules found
+later by name (through `source_search_paths` or the library) are not listed:
+finding them needs parsing (`--print-inputs` does that). `--print-env` cannot be combined with
+`--new-project`.
+
+## Compile cache
+
+A batch with a build directory (every project target, positional inputs with
+`--build-dir`) keeps its compile outcome in the
+[build cache](projects.md#build-caches) (plan 11 step 62D4): the diagnostics in
+order, failure, and, when an executable or `--emit` needs them, the objects
+(or bitcode) of every module and the startup module. A later build of the same
+batch with the same options replays the diagnostics and links or publishes the
+kept objects exactly like fresh ones; `--print-stage-times` then shows
+`[time] compile ... (cached)`. `--print-ir`, `--print-optimized-ir` and
+`--print-types` always recompute, and `--no-cache` neither reads nor writes.
+
+- **Reuse unit: the whole batch.** Analysis, type inference, specialization
+  budgets (per target), export liveness and the startup module span every
+  module, so one module's object depends on facts of others (callee types,
+  records, behaviours, which functions stay live). Those facts have no
+  canonical form to hash per module today, so a per-module key could not be
+  proven sound; any change to any module of the batch recompiles the batch.
+- **Key.** The `clau` version and executable identity; every input's path and
+  fingerprint (each file the frontend read for it, path and bytes, in order:
+  the source, its includes and `include_lib` files, and the reply of its parse
+  transforms; the preprocessing options; the generated text of placeholders),
+  predefined forms and escript status; the resolved triple, optimization
+  level, `--emit`, `--no-type-specialization`, `-g`, `--lto`,
+  `--keep-exports`, whether an executable is linked, the entry selection and
+  the project target. Entries of one target with other options are kept side
+  by side.
+- **Storage.** Each output is a part of its own (step 62D5), so an object
+  larger than the store's inline limit becomes a content-addressed blob file,
+  shared when two option sets produce identical objects.
 
 ## Backend
 

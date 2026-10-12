@@ -308,6 +308,111 @@ process its own name (`Signals::name`).
   signalled, so a `'DOWN'` or `'EXIT'` receiver can register the name again,
   as in OTP.
 
+## Process dictionary
+
+Plan 11 step 41C. `put/2`, `get/0,1`, `get_keys/0,1` and `erase/0,1`
+behave as OTP's: `put/2` and `erase/1` return the previous value or
+`undefined`, `erase/0` returns every `{Key, Value}` and empties the
+dictionary, keys match with exact equality (`1` and `1.0` are two keys).
+
+- Each process has its own dictionary; a spawned process starts empty.
+- Entries are words of the process heap held in `ProcessDictionary`
+  ([process_dictionary.hpp](../runtime/include/process_dictionary.hpp)) and
+  visited as collection roots ([roots](runtime-heap.md#roots-and-safe-points));
+  they are released with the process.
+- The order of `get/0` and `get_keys/0,1` is unspecified, as in OTP.
+  Lookup scans the entries linearly; immediate keys compare by word.
+
+## Timers
+
+Plan 11 step 41F (`builtins/erlang/timers.cpp`, `scheduler/timers.cpp`).
+`start_timer/3,4` and `send_after/3,4` arm a timer in the executor's wheel
+(the one [receive timeouts](#receive-timeouts) use) that sends `Msg`, or
+`{timeout, TimerRef, Msg}`, to a pid or registered name when it fires.
+
+- The message is copied when the timer starts into a `MessageBuffer`
+  ([message buffers](runtime-heap.md#message-buffers)), a heap block of the
+  timer's own, and copied again into the receiver's heap when it fires, as a
+  send copies: any term, local funs included, travels unchanged.
+- A receiver running on a worker gets the message when its slice ends. A
+  registered name is resolved when the timer fires; a name nobody holds, or a
+  pid of an ended process, drops the message. Timers sent to a pid are
+  released when that process ends.
+- Time is relative milliseconds in 0..2^49-1, or with `{abs, true}` an
+  absolute `erlang:monotonic_time(millisecond)`; anything else is `badarg`. A
+  deadline past the wheel's reach is armed again when that slot comes.
+- `cancel_timer/1,2` and `read_timer/1,2` return the milliseconds left or
+  `false`; `{async, true}` returns `ok` and sends `{cancel_timer, Ref, Left}`
+  (`{read_timer, ...}`), `{info, false}` returns `ok` without a result.
+
+## Introspection
+
+Plan 11 step 41G1 (`builtins/erlang/introspection.cpp`,
+`scheduler/introspection.cpp`). `process_info/1,2` reads another process
+under the executor's lock and copies its terms (messages, dictionary) into the
+caller's heap; a process running on another worker is read once its slice
+ends. A pid of no live process gives `undefined`.
+
+- Items: `registered_name` (`[]` alone when unregistered), `status`
+  (`running`, `runnable`, `waiting`), `message_queue_len`, `messages`,
+  `links`, `monitors`, `monitored_by`, `dictionary`, `trap_exit`,
+  `group_leader`, `heap_size`, `total_heap_size`, `stack_size`, `memory`
+  (words of the heap, its fragments and off-heap binaries, and the stack),
+  `reductions` (0), `priority` (`normal`), `error_handler`,
+  `garbage_collection`. `process_info/1` lists them from `status` to
+  `garbage_collection`.
+- OTP items Clause does not keep (`current_function`, `initial_call`,
+  `current_stacktrace`, ...) raise `error:{notsup, Item}`; unknown items are
+  `badarg`.
+- `processes/0` lists live pids in creation order. A spawned process inherits
+  its parent's group leader; the first process leads itself.
+  `group_leader/2` of a pid of no live process is `badarg`.
+- `garbage_collect/0,1,2` asks for a collection at the target's next
+  safepoint and returns `true` (`false` for no live process); with
+  `{async, RequestId}` it returns `async` and sends
+  `{garbage_collect, RequestId, Result}`. `yield/0` ends the time slice at
+  the next function entry.
+
+## Spawn options
+
+Plan 11 step 41G2 (`builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`).
+
+- `spawn_opt/2..5` take `link`, `monitor`, `{monitor, MonitorOptions}` and
+  the tuning options `{priority, P}`, `{fullsweep_after, N}`,
+  `{min_heap_size, N}`, `{min_bin_vheap_size, N}`, `{max_heap_size, S}`,
+  `{message_queue_data, M}`, `{async_dist, B}`; tuning options are checked
+  and accepted, not applied. A node other than `nonode@nohost` is `badarg`.
+- `spawn_request/1..5` spawns at once and sends `{Tag, ReqId, ok, Pid}`
+  (`{Tag, ReqId, error, Reason}` on failure, `badopt` for an invalid option)
+  as `{reply_tag, Tag}` and `{reply, yes | no | error_only | success_only}`
+  ask; with `monitor` the request id is the monitor reference.
+  `spawn_request_abandon/1` returns `false`: the reply is already sent.
+- `hibernate(M, F, A)` waits until the mailbox holds a message, then calls
+  `M:F(A...)` in place of the call; the stack is kept, so the result returns
+  to the caller.
+
+## Aliases
+
+An alias is a reference messages can be sent to (`Alias ! Msg`): `alias/0,1`
+(`explicit_unalias`, or `reply` for one message), or a monitor made with
+`monitor/3`'s `{alias, explicit_unalias | demonitor | reply_demonitor}`
+(`demonitor` ends with the monitor, `reply_demonitor` also ends the monitor
+on its first message). `unalias/1` ends an alias of the caller. A send to a
+reference that is no active alias, or whose owner ended, is dropped. A reply
+alias is consumed only when its message is delivered, after any wait for a
+busy owner. `monitor/3`'s `{tag, Tag}` replaces `'DOWN'` in the monitor
+message; port monitors take no options.
+
+## Nodes
+
+Plan 11 step 41H (`builtins/erlang/node.cpp`). A Clause program is one node
+that is not distributed, `nonode@nohost`, and answers as such an OTP node:
+`nodes/0` is `[]`, `nodes(this | known)` `[nonode@nohost]`, other types
+`[]`; `nodes/2` gives `{nonode@nohost, #{connection_id => undefined,
+node_type => this}}` for the keys asked. `is_alive/0` is `false`,
+`monitor_node/2,3` raise `error:notalive` and `disconnect_node/1` returns
+`ignored`.
+
 ## Exit signals
 
 Every exit signal comes from a running process (`exit/2`,

@@ -7,7 +7,7 @@ macro/include origins, and later inputs are still diagnosed.
 ## Module and call checks
 
 - Module declaration required and unique; function arities 0..255; no duplicate
-  definitions; every export exists and is listed once. Quoted/Unicode names keep
+  definitions; every export exists (a repeated export warns, as in OTP). Quoted/Unicode names keep
   their exact identity.
 - Every function is checked, including unused and unreachable code.
 - Calls resolve within the batch by module/name/arity. Remote calls (including
@@ -21,6 +21,105 @@ macro/include origins, and later inputs are still diagnosed.
   into strongly connected components (iterative Tarjan) in callee-before-caller
   order; a component is recursive when it has several members or a member
   calls itself.
+
+## Behaviours
+
+Plan 11 step 65A, following OTP's
+[behaviours](https://www.erlang.org/doc/system/design_principles.html#behaviours),
+`erl_internal:add_predefined_functions` and `erl_lint`'s `check_behaviour`.
+
+- A module declaring `-callback` gets OTP's predefined, exported
+  `behaviour_info/1`: `callbacks` gives the declared callbacks in source order,
+  `optional_callbacks` those of the well-formed `-optional_callbacks` lists
+  (callbacks qualified with a module are left out). The frontend appends it
+  as a function at the `-module` line (`driver/predefined`). As in OTP the
+  module's own source cannot name it: an `-export`, local call, `fun
+  behaviour_info/1` or `-spec` of it is an undefined function; remote calls
+  (also self-qualified) reach it. `-callback` beside a hand-written
+  `behaviour_info/1` is an error
+  (`cannot define callback attibute for F/A when behaviour_info is defined`,
+  OTP's spelling).
+- `-behaviour(M)` and `-behavior(M)` may repeat. `M` resolves in the batch; a
+  name with a library module (`library.md`) adds that module like a literal
+  call does. Diagnostics use OTP's text at the attribute name:
+  - `undefined callback function F/A (behaviour 'M')` for each required,
+    non-optional callback the module does not export (sorted);
+  - `conflicting behaviours -- callback F/A required by both 'M2' and 'M1'
+    (line L, column C)` when an earlier behaviour also requires it (an
+    optional callback counts when exported);
+  - `behaviour M undefined` when `M` is not in the batch or has no
+    `behaviour_info/1` (OTP behaviours such as `gen_server` are not part of
+    Clause yet), plus OTP's module-name errors for names that cannot be
+    modules (`the module name must not be empty`, `... must be an atom`, ...).
+- Warnings do not fail compilation. `-compile` options `nowarn_behaviours`
+  (the whole check, module-name errors included), `nowarn_undefined_behaviour_func`,
+  `nowarn_undefined_behaviour` and `nowarn_conflicting_behaviours` turn them
+  off.
+- Not evaluated: a hand-written exported `behaviour_info/1` of a behaviour
+  module, so its users' callbacks are not checked, and OTP's ill-defined
+  and deprecated-callback warnings never occur
+  ([differences](differences.md#errors-stack-traces-and-reports)).
+- Evidence: `tests/fixtures/lint` (OTP-generated diagnostics, CTest
+  `lint_diagnostics`), `executables_behaviours`, `semantic` CLI cases.
+
+## Imports
+
+Plan 11 step 65C, following `erl_lint`'s import rules.
+
+- `-import(Module, [F/A, ...])` makes a local call `F(...)` the remote call
+  `Module:F(...)`: the module must be in the batch (a library module joins it
+  like a literal call) and export the function, or be a builtin module
+  (`-import(io, [format/2])`, `-import(erlang, [display/1])`). An import
+  takes precedence over an auto-imported BIF of the same name.
+- Errors with OTP's text: `function F/A already imported from M` (the whole
+  attribute is then ignored), `defining imported function F/A`,
+  `creating a fun from imported name F/A is not allowed`. An imported
+  function in a guard is an illegal guard call (except erlang guard BIFs).
+- Warning `import directive overrides auto-imported BIF F/A -- ...` unless
+  `no_auto_import` names it or `nowarn_bif_clash` is given; Clause knows the
+  auto-imported BIFs it implements.
+- Evidence: `executables_imports`, lint cases `imports_conflicts`,
+  `imports_fun`, `imports_bif`, semantic CLI cases.
+
+## Predefined functions
+
+Plan 11 step 65B, following OTP's
+[modules](https://www.erlang.org/doc/system/modules.html) and
+`erl_internal:add_predefined_functions`. The frontend appends
+`module_info/0,1` to every compiled module (after a generated
+`behaviour_info/1`) as Erlang functions returning literal data
+(`driver/predefined`, `semantic/module_info`); `Module::predefined_` counts
+these trailing forms, which are always exported and left out of
+`--print-types`.
+
+- `module_info()` gives `[{module,_},{exports,_},{attributes,_},{compile,_},{md5,_}]`;
+  `module_info(Key)` also answers `functions`, `nifs` (`[]`) and `native`
+  (`false`), and raises `badarg` for any other key.
+- `exports`: the exported functions in definition order (escripts add
+  `main/1`), then `behaviour_info/1` when generated, `module_info/0`,
+  `module_info/1`. `functions`: every function in definition order, then the
+  same predefined ones.
+- `attributes`: every attribute except `module`, exports and imports,
+  type/spec/callback forms, records, `export_type`, `optional_callbacks`,
+  `export_record`, `compile`, `file`, documentation and `feature`, in source
+  order; a value that is not a list is wrapped in one (`-tags(a)` is
+  `{tags,[a]}`). Without `-vsn`, `{vsn,[N]}` comes first, `N` being `md5` read
+  as an unsigned big-endian integer, as OTP derives it.
+- `md5`: MD5 of the module's printed source (`print_source`: macros expanded,
+  includes inlined, comments and layout dropped). `compile`:
+  `[{version,ClauseVersion},{options,[]},{source,AbsolutePath}]`.
+- Unlike `behaviour_info/1`, the module's own source sees them: local calls
+  and `fun module_info/1` work. Defining either is an error
+  (`function module_info/0 already defined`); exporting one, like any repeated
+  export, only warns (`function module_info/0 already exported`).
+- Attributes are data; only `on_load`, `nifs` and non-inert `-compile`
+  options are rejected as behavior-changing.
+- The generated functions have no source line (OTP gives them none): no
+  debug locations, IR source comments or `--print-types` entries.
+  `module_info/0` holds the same literals as `module_info/1`, so it makes no
+  calls.
+- Evidence: `executables_module_info` (OTP stdout; derived values by shape),
+  `tests/fixtures/lint` cases `module_info_defined`, `exports_repeated`.
 
 ## Bindings
 
@@ -82,9 +181,12 @@ any semantic error clears the module's binding and normalization tables.
 A private type graph represents all parsed type forms independently of runtime
 layout: singletons, ranges, containers, map field roles, function products and
 unresolved applications. Unions flatten and deduplicate; `term()` is top and
-`none()` bottom. Defaults: 16,384 nodes, 16 union members, 100,000 work items per
-translation. Exhaustion widens to `term()` with a visible flag and never narrows
-a representation.
+`none()` bottom. Defaults: 1,048,576 nodes, 256 union members, 200,000 work items
+per declared type walk (resolution, translation, expansion) and 8,000,000 per
+whole-program inference pass; a debug build of `clau` (no `NDEBUG`) allows 16,000
+and 1,000,000 so large programs still compile quickly, and may widen more.
+Exhaustion widens to `term()` with a visible flag and never narrows a
+representation.
 
 Declared metadata (`-type`, `-opaque`, `-nominal`, `-export_type`, `-spec`,
 `-callback`, `-optional_callbacks`) follows the OTP typespec reference and
@@ -338,8 +440,13 @@ Inference is separate from declared types and never trusts specs.
   facts are discarded, so only facts from the final assumptions remain.
 - A shared work budget bounds inference; exhaustion loses precision and falls
   back to generic code, never rejects a program.
-- Specifications that contradict inference are errors (step 58I,
-  `semantic/types/contracts`). A declared type becomes the facts it holds (or
+- Specifications that contradict inference are diagnosed (step 58I,
+  `semantic/types/contracts`): a contradicted argument entry domain is an
+  error; a contradicted result, and a call whose argument facts every
+  overload rejects, are warnings (the call may sit on a path that never
+  runs). Specifications
+  never become facts: inference, specialization and code generation use the
+  inferred types, so the program behaves as its code says either way. A declared type becomes the facts it holds (or
   more): built-in types by name (`byte()` is `0..255`, `timeout()` is
   `non_neg_integer() | infinity`, `iodata()` and `iolist()` lists of any
   shape), aliases by their definition, opaque and nominal types by their
@@ -350,7 +457,7 @@ Inference is separate from declared types and never trusts specs.
   inference proves: the inferred result (unless unknown, or `none()`: a
   function that never returns fits any result), an argument's entry domain,
   or a call's argument facts against every overload. `none()`/`no_return()`
-  admits only a function that never returns. The error names the function,
+  admits only a function that never returns. The diagnostic names the function,
   the declared type as written and the inferred one. Because inferred facts
   may hold more values than the code produces, only a disjoint pair is a
   contradiction: a declared type narrower than the inferred one is

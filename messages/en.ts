@@ -26,7 +26,7 @@ export const en = {
     intro:
       "Clause is an ahead-of-time compiler for Erlang. It preprocesses, parses and analyzes Erlang source, compiles it through LLVM and links native executables with its own runtime: lightweight processes on several scheduler threads, message passing, ports and per-process garbage collection.",
     status:
-      "Work in progress: a growing subset of Erlang compiles to native executables and runs on Windows and Linux today. Still to come: validation on macOS Apple Silicon and native ARM hardware, and wider comparisons with OTP's own test suites. The documentation lists what works and where Clause differs from Erlang/OTP.",
+      "Work in progress: a growing subset of Erlang compiles to native executables and runs on Windows and Linux today. Still to come: validation on macOS Apple Silicon and native ARM hardware, wider comparisons with OTP's own test suites, and Clause versions of the runtime modules that OTP's kernel and stdlib call. The documentation lists what works and where Clause differs from Erlang/OTP.",
     ctaDocs: "Read the documentation",
     ctaSource: "Source on GitHub",
     cardsTitle: "Features",
@@ -74,10 +74,10 @@ export const en = {
         text: "Infers per-clause function types; at O2 they remove runtime checks and select type-specialized variants with a generic fallback.",
       },
       {
-        id: "debugging",
-        property: "-g · --profile",
-        title: "Debugging and profiling",
-        text: "Erlang source line tables for native debuggers, and an opt-in cost report per function and per process.",
+        id: "transforms",
+        property: "parse_transform",
+        title: "Parse transforms",
+        text: "Applies parse transforms as erlc does, running them on an Erlang/OTP 29 installed on the host while compiling; the executables never need OTP.",
       },
       {
         id: "targets",
@@ -92,7 +92,8 @@ export const en = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Preprocessing: macros, includes, include_lib, conditional compilation and language features",
+          "Preprocessing: macros, includes, include_lib (also from versioned application directories), conditional compilation and language features",
+          "Parse transforms run on a host Erlang/OTP 29, OTP's ms_transform and qlc included; --print-abstr prints the abstract format forms",
           "Erlang/OTP 29 syntax: expressions, patterns, records, bitstrings, types and specifications, control flow and comprehensions",
           "Syntax checking, expanded source output and an indented syntax tree view",
           "Source diagnostics across multiple input files",
@@ -107,6 +108,7 @@ export const en = {
           "Records with updates and record_info/2; native, qualified and anonymous records",
           "Funs with captures, named funs, dynamic calls and apply",
           "Exceptions: error, exit, throw, catch, try ... of ... catch ... after, and stack traces",
+          "Module attributes: -behaviour callback checks, -import, informational attributes and generated module_info/0,1",
         ],
       },
       {
@@ -114,10 +116,11 @@ export const en = {
         title: "Compiler",
         items: [
           "Semantic analysis: subset checks, variable bindings, call resolution, declared and inferred types",
-          "Type inference with per-clause function types; specifications that contradict inferred types are compile errors",
+          "Type inference with per-clause function types; a specification that contradicts the inferred argument types is a compile error, other contradictions are warnings",
           "LLVM O0, O2 and Os; per-module objects, IR and bitcode; IR snapshots annotated with Erlang source",
           "O2 removes type and shape checks proven by inference, with bounded type-specialized variants",
           "Link-time optimization across modules with --lto",
+          "Executables leave out the exports their entry function cannot reach; --keep-exports keeps them all",
           "Type reports: source annotated with inferred function signatures",
           "Proper tail calls and deep recursion on an explicit per-process stack",
           "One explicit notimpl message for legal Erlang that needs a feature not implemented yet",
@@ -132,6 +135,8 @@ export const en = {
           "Processes, messages, selective receive, links, monitors, registered names and timers on several scheduler workers",
           "Per-process heaps with a copying garbage collector, off-heap binaries and optional memory limits",
           "Ports for files, standard I/O, subprocesses and TCP/UDP sockets on one event-driven I/O thread",
+          "The erlang module: process dictionary, external term format, time and timers, process introspection, spawn options, aliases and hashing",
+          "Every OTP 29 export of a Clause library module compiles; functions not implemented yet raise not_implemented when called",
           "io:format with OTP's ~p pretty printing; subsets of lists, maps, file, io, gen_tcp, gen_udp, inet and os",
         ],
       },
@@ -139,7 +144,9 @@ export const en = {
         id: "tooling",
         title: "Projects and tooling",
         items: [
-          "TOML projects with named targets, source discovery and per-target options",
+          "TOML projects with named targets, source discovery, search paths, ignored directories and modules, and per-target options",
+          "A build directory with SQLite build caches for compile results and parse transform output",
+          "Inspection with --print-inputs, --print-env and --print-stage-times",
           "Annotated starter projects with clau --new-project",
           "One clau command from Erlang source to a native executable; escripts compile too",
           "Debug line tables with -g (CodeView or DWARF 5) and opt-in profiling with --profile",
@@ -175,7 +182,7 @@ export const en = {
       },
       using: {
         title: "Using the compiler",
-        text: "Command line options, inspection modes, executables and TOML projects.",
+        text: "Command line options, inspection modes, executables, TOML projects and parse transforms.",
       },
       interpreting: {
         title: "How to interpret the results",
