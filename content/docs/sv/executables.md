@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: 06042fa
-sourceSha256: aaec2d5d2a83da50b160d09c8b37ecf1648199279e5aed4b35ef794633bf589a
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 84319a420ecb674ad4d7c524783b1696997988d90503989810d27f6feb553bc4
+translatedAt: 2026-10-15
 ---
 # Körbara filer
 
@@ -15,6 +15,9 @@ manifestet ([länkning](#linking), [projekt](projects.md#executables)).
 
 Ingångspunkten är en exporterad funktion med aritet 1 som tar emot
 argumentlistan.
+En vald `FUNCTION` utan `FUNCTION/1` kan i stället vara en exporterad
+`FUNCTION/0`: den körs utan programmets argument (runtime-alternativen tas
+ändå bort). Standard (inget val) är alltid `main/1`.
 
 | Källa | Skrivsätt | Omfattning |
 | --- | --- | --- |
@@ -39,10 +42,10 @@ argumentlistan.
 | Fel | Diagnostik (exit 1) |
 | --- | --- |
 | Modulen finns inte i batchen | `<origin>: entry module M is not among the compiled modules` (ursprung: `--entry` eller manifestets `file:line:col [target t] (entry)`) |
-| Ingen `F/1` | `<file>:<line>:<col>: entry function M:F/1 is not defined` vid moduldeklarationen |
-| Endast andra ariteter | `... is not defined; found F/N, but the entry receives one argument (the argument list)` vid den definitionen |
-| `F/1` exporteras inte | `<file>:<line>:<col>: entry function M:F/1 is not exported` vid definitionen |
-| Inget val, ingen export av `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1; FUNCTION defaults to main)` |
+| Varken `F/1` eller `F/0` | `<file>:<line>:<col>: entry function M:F/1 is not defined` vid moduldeklarationen |
+| Endast andra ariteter | `... is not defined; found F/N, but the entry takes the argument list (FUNCTION/1) or nothing (FUNCTION/0)` vid den definitionen |
+| `F/1` (annars `F/0`) exporteras inte | `<file>:<line>:<col>: entry function M:F/A is not exported` vid definitionen |
+| Inget val, ingen export av `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main)` |
 | Inget val, flera | `ambiguous entry point: main/1 is exported by a, b; choose the entry with ...` (samma tips) |
 
 För projektmål anger tipset även manifestnyckeln: `... --entry MODULE[:FUNCTION] or with
@@ -52,7 +55,7 @@ entry = "MODULE[:FUNCTION]" in this target's [[targets]] table of the project ma
 [[targets]]
 name = "app"
 sources = ["src/*.erl"]
-entry = "app:start"   # calls app:start/1; plain "app" calls app:main/1
+entry = "app:start"   # calls app:start/1 (or app:start/0); plain "app" calls app:main/1
 ```
 
 ## Argument
@@ -83,6 +86,7 @@ samma sätt; ett värde anges i nästa argument eller efter `=`.
 | `--max-stack BYTES` | Tak för varje process ramstack; standard utan tak |
 | `--max-memory BYTES` | Tak för det sammanlagda minnet för alla processer (heapar, binaries utanför heapen, stackar); standard utan tak |
 | `--schedulers N` | Schemaläggarens arbetstrådar som kör processer, 1 till 1 024; standard en per logisk processor, som OTP:s `+S` ([arbetstrådar](processes.md#workers)) |
+| `--profile FILE` | Skriver en rapport över anrop och egen tid per funktion och per process till `FILE` när programmet avslutas ([profilering](profiling.md)); avstängt som standard |
 | `--args-file FILE` | Alternativfil som OTP:s `vm.args`: reserverat, rapporterar `runtime option --args-file is not implemented` |
 | `--` | Avslutar runtime-alternativen; alla följande argument går till `Entry` |
 
@@ -135,7 +139,7 @@ den stoppar programmet först efter genererad uppstädning.
   runtime-fel och felrapporter från andra processer som kraschar
   ([processer](processes.md#exits)).
 - Rapporten är en rad `uncaught exception <class>: <reason in ~w form>`,
-  senare följd av stackramar (step 15). Dess exakta text är inte ett stabilt
+  senare följd av stackramar. Dess exakta text är inte ett stabilt
   gränssnitt; tester matchar den med mönster.
 
 ## Uppstartsobjekt
@@ -191,6 +195,82 @@ varje dataobjekt i en egen sektion och länkar med `--gc-sections` (ELF),
 `-dead_strip` (Mach-O) eller `/OPT:REF /OPT:ICF` (MSVC), så att kod som ingen
 väg från ingångspunkten når tas bort.
 
+`--lto` kompilerar modulerna och startmodulen till LLVM-bitkod i stället för
+objekt och länkar med `-flto -fuse-ld=lld`, så att LLD optimerar programmets
+genererade kod som en enhet mot det inbyggda runtime-arkivet. Modul- och
+startdeskriptorer, exporterade ingångar och `main` förblir refererade och
+överlever; program beter sig som utan alternativet. Endast LLD läser den här
+kompilatorns bitkod, så `--lto` godtas för Windows MSVC- och ELF-mål; andra
+misslyckas före länkningen med
+`--lto is not supported for target <triple>: it needs LLD`.
+`--lto` kräver en körbar fil som utdata (`-o` eller ett projektbygge som
+länkar). Den installerade Clang/LLD måste vara samma LLVM-version som `clau`
+(23.1).
+
+### Levande exporter
+
+En körbar fil utelämnar de exporter den inte kan nå, så att eliminering av död
+kod med `-Os` och `--lto` tar bort bibliotekskod som programmet aldrig anropar.
+Direkt efter upplösningen av anrop, före typhärledningen, startar en analys av
+hela batchen vid ingångsfunktionen
+och markerar som levande allt som en levande funktion anropar direkt (även
+genom `-import` och OTP:s automatiska importer), varje `fun F/A` och literal
+`fun M:F/A`, och de literala målen för `apply/3`, `spawn/3`, `spawn_link/3`,
+`spawn_monitor/3`, `spawn_opt/4,5`, `spawn_request/3,5`, `hibernate/3` och
+`make_fun/3` (varje aritet av `M:F` när argumentlistan inte är literal),
+samt `file:write/2` så snart `io:format/3`, `io:fwrite/3`, `io:put_chars/2`
+eller `io:nl/1` är levande (deras inbyggda funktioner skriver till en
+processenhet genom den).
+Den förblir konservativ:
+
+- en modul vars namnatom används som ett värde någonstans i levande kod
+  (skickas som argument, lagras, skickas som meddelande, `?MODULE`, en
+  record-tagg, `M:F(...)` med en funktion som bestäms vid körning,
+  `fun M:F/A` med en del som bestäms vid körning) behåller varje export, vilket
+  också behåller callbacks i behaviour-moduler som startas via namn;
+- så snart levande kod har både ett anrop med en modul som bestäms vid körning
+  (`M:F(...)`, `apply/3` eller en spawn med en variabel modul, `fun M:F/A` med
+  en variabel modul, `binary_to_term/1,2`) och en inbyggd funktion som
+  producerar atomer (`list_to_atom/1`, `list_to_existing_atom/1`,
+  `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`, `binary_to_term/1,2`,
+  `fun_info/1,2`, `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`,
+  `pre_loaded/0`), behålls varje export i varje modul.
+
+En funktion som inget levande når får ingen kod alls. En utelämnad export
+behåller sitt namn i modulens exporttabell utan kod, så att
+`function_exported/3` och `module_info(exports)` svarar som om den vore
+exporterad, medan ett dynamiskt anrop som når den ger `undef`
+([skillnader](differences.md#errors-stack-traces-and-reports)).
+Det kan bara hända när ett modulnamn kommer utanför analysen: en
+stackspårning, en undantagsterm eller data utifrån programmet. `--verbose`
+spårar resultatet per modul (`phase=liveness detail="dropped-exports=3"`, eller
+`detail="kept-all-exports reason='m' is used as a value in main:main/1"`).
+
+En funktion som inget levande når typhärleds heller aldrig och kontrolleras
+aldrig mot sin `-spec`: inferensen täcker endast levande kod, vilket är
+snabbare för program som använder lite av stora biblioteksmoduler
+(`bench_gc`: 68 ms till 10 ms) och kan bara snäva in levande funktioners
+fakta, eftersom onåbara anropare inte längre slår samman sina argument. En
+specifikation som motsägs endast i onåbar kod rapporteras därför för
+`--emit`-artefakter men inte för den körbara filen.
+
+`--keep-exports` (eller projektalternativet `keep_exports = true`) behåller
+varje export anropbar, som före step 62C. Analysen gäller körbara filer (`-o`
+eller ett projektbygge som länkar) och IR- och assemblerinspektioner som får en
+ingångspunkt (`--entry` eller målets `entry` i manifestet), som då visar den
+körbara filens kod; `--emit`-artefakter, avsedda för andra program, behåller
+varje export.
+
+Svaga referenser i exporttabellen som löses av länkaren utvärderades i stället
+och avvisades: svaga externa symboler i COFF kräver en standarddefinition och
+låter inte `/OPT:REF` ta bort målet, och svaga referenser i Mach-O binder
+endast importerade dylib-symboler, så ingen form fungerar i alla tre
+objektformaten.
+
+`-g` behåller Erlangs radtabeller för debuggrar: i den körbara filen (ELF),
+eller i en `<name>.pdb` som publiceras bredvid den (MSVC-mål)
+([felsökning](debugging.md)).
+
 - `PATH` är relativ till anropet. För Windows-mål läggs `.exe` till när
   filnamnet saknar filändelse. Dess katalog måste finnas.
 - Länkare: `--linker PATH` (en sökväg eller ett programnamn), annars
@@ -205,7 +285,9 @@ väg från ingångspunkten når tas bort.
   måste matcha målets arkitektur och objektformat; `--target-triple` för ett
   annat mål kräver därför en runtime byggd för det.
 - Objekten och den körbara filen mellanlagras i en privat
-  `.clause-link-*`-katalog bredvid utdata, som tas bort efteråt. Utdata
+  `.clause-link-*`-katalog bredvid utdata, som tas bort efteråt; den ligger
+  där, inte i [byggkatalogen](projects.md#build-directory), eftersom det
+  slutliga namnbytet inte får korsa volymer. Utdata
   ersätts först efter en lyckad länkning, så varje fel lämnar en befintlig fil
   oförändrad. Utdata får inte vara en katalog eller vara ett alias för en
   indatafil.

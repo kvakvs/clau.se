@@ -1,13 +1,13 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 06042fa
-sourceSha256: b86a14bcde03a998409e7048283225de3a5f8f84ded889ba64544a4671571cbc
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 9883758a534ec454ceeb011c2dc1e6e2d1893aca483c1b3ca7f36f99319bc537
+translatedAt: 2026-10-15
 ---
 # Contrat du tas de processus
 
 Les tas de processus suivent la conception classique d'ERTS. Cette note en est
-le contrat ; le plan 11 phase C (steps 8A–8I) l'a livré, et les steps
+le contrat ; le plan 11 phase C l'a livré, et les steps
 ultérieurs nommés ci-dessous l'étendent.
 [runtime.md](runtime.md#process-memory) résume l'API.
 
@@ -35,7 +35,12 @@ parcoureur analyse à partir de son premier mot :
   `BoxedKind`, les bits 7 et au-delà le nombre de mots qui suivent l'en-tête.
   Un terme boxed pointe sur son en-tête. Le compte couvre chaque mot de préfixe,
   de charge utile et de remplissage, si bien que le parcoureur saute la charge
-  utile non tracée sans l'interpréter.
+  utile non tracée sans l'interpréter. Il a 25 bits sur les cibles 32 bits (au
+  plus 33 554 431 mots) et 57 sur les cibles 64 bits (`BoxHeader::MAX_COUNT`) :
+  la limite d'arité des tuples (2^24 - 1) et le plus grand bignum
+  (131 072 mots en 32 bits) y tiennent par assertion statique, les maps le
+  vérifient à leur construction, et les cellules cons et les cellules de taille
+  fixe n'ont pas de grand compte.
 - **Cellule cons** : deux mots de terme (tête, queue) sans en-tête. Un terme de
   liste pointe sur la tête. Une tête n'est jamais un en-tête car aucun terme n'a
   l'étiquette `00`.
@@ -47,21 +52,24 @@ parcoureur analyse à partir de son premier mot :
 
 Aucune cellule n'a besoin d'un alignement plus strict qu'un mot. `memory/heap_walk` analyse une zone cellule par cellule et `ProcessHeap::verify`
 vérifie un tas entier (8C). Les cellules ne contiennent que des mots et des
-octets, à l'exception du `std::shared_ptr` du binary hors tas (ci-dessous), si
-bien qu'une cellule se déplace en copiant ses mots.
+octets, à l'exception du `std::shared_ptr` du binary hors tas et du pointeur
+d'arbre de la map hors tas (ci-dessous), si bien qu'une cellule se déplace en
+copiant ses mots.
 
 | Type | Mots après l'en-tête | Mots tracés |
 | --- | --- | --- |
 | cons (sans en-tête) | 2 mots au total | tête, queue |
 | `tuple` | n emplacements d'éléments | tous |
-| `map` | 2n emplacements : les clés dans l'ordre exact des termes, chacune suivie de sa valeur | tous |
+| `map` | 2n emplacements : les clés dans l'ordre exact des termes, chacune suivie de sa valeur ; au plus 32 entrées | tous |
+| `tree_map` | nombre d'entrées, racine de l'arbre hors tas, lien de map hors tas : 3 mots ([maps hors tas](#off-heap-maps)) | aucun sur le tas ; les mots de l'arbre |
 | `native_record` | adresse du `RecordDefinition` du runtime, puis n valeurs de champs dans l'ordre de définition | valeurs |
 | `fun_closure` | adresse du `FunDefinition` du runtime, puis n valeurs capturées ([funs](funs.md)) | valeurs |
 | `bignum` | mot de signe, puis les limbes de la magnitude, les moins significatifs d'abord | aucun |
 | `floating` | 8 octets : 1 mot (64 bits) ou 2 mots (32 bits) | aucun |
 | `reference` | 8 octets : le numéro de référence ([pids et références](terms.md#pids-and-references)) | aucun |
 | `heap_binary` | longueur en bits, puis les octets de données arrondis aux mots (au plus 64 octets) | aucun |
-| `refc_binary` | décalage en bits, longueur en bits, `std::shared_ptr` (2 mots), lien hors tas : 5 mots | aucun |
+| `refc_binary` | décalage en bits, longueur en bits, premier octet du tampon (lu par le code généré), fin et limite d'ajout, `std::shared_ptr` (2 mots), lien hors tas : 8 mots | aucun |
+| `sub_binary` | décalage en bits dans l'original, longueur en bits, le `heap_binary` ou `refc_binary` original (jamais un sous-binary) : 3 mots | l'original |
 | `filler` | n mots inutilisés | aucun |
 
 Le compte d'une `map` est en mots (entrées = compte / 2). Les pids sont des immédiats, admis d'après les numéros émis
@@ -77,11 +85,12 @@ tout tas de processus, partagé par comptage de références (ProcBin et `Binary
 de BEAM).
 
 - Sa cellule boxed `refc_binary` contient un `std::shared_ptr` vers le tampon,
-  un décalage en bits et une longueur en bits ; les tranches d'un grand binary
-  sont de nouvelles cellules `refc_binary` partageant le tampon (les
-  sous-binaries d'ERTS ne sont pas utilisés). Copier une cellule vers un autre
-  processus copie le `shared_ptr` ([copie entre tas](#copying-between-heaps)),
-  jamais les octets.
+  un décalage en bits et une longueur en bits. Les tranches d'un grand binary (et
+  les tranches de celles-ci) sont des cellules `sub_binary` qui nomment la
+  cellule originale, comme les sous-binaries d'ERTS : une tranche ne prend
+  aucune référence sur le tampon et maintient l'original en vie. Copier une
+  cellule vers un autre processus copie le `shared_ptr`
+  ([copie entre tas](#copying-between-heaps)), jamais les octets.
 - Chaque cellule est chaînée dans la liste hors tas de son processus via son mot
   de lien. Cette liste est le seul moyen de retrouver l'état C++ de ces
   cellules.
@@ -97,15 +106,98 @@ de BEAM).
   processus pour ce tampon meure, et une fois au compte global du runtime de sa
   création jusqu'à sa libération.
 - `std::shared_ptr` fait deux pointeurs dans toutes les STL prises en charge ;
-  un `static_assert` maintient la taille de la cellule à cinq mots après
+  un `static_assert` maintient la taille de la cellule à huit mots après
   l'en-tête pour les deux largeurs.
+
+### Références à handle
+
+Une référence à handle est une référence qui détient aussi un tampon hors tas,
+comme une référence magique d'OTP détient une ressource ; les tableaux
+`atomics` y vivent ([atomics et compteurs](builtins.md#atomics-and-counters)).
+
+- Sa cellule a le type `reference` et la disposition de `refc_binary` : huit
+  mots après l'en-tête, le numéro de référence de 64 bits dans les mots de
+  décalage et de longueur en bits (là où une cellule de référence simple le
+  garde), puis le `shared_ptr` et le mot de lien. Chaque service de référence ne
+  lit que le numéro, si bien qu'elle se compare, se hache, s'affiche et s'encode
+  comme une référence simple.
+- Elle est listée, déplacée, balayée, imputée et copiée exactement comme une
+  cellule de binary hors tas (`layout::off_heap_cell`) ; son tampon est libéré
+  lorsque la dernière copie de la référence, dans n'importe quel processus,
+  meurt.
+- Un registre global au processus associe les numéros des handles vivants à
+  leurs tampons (références faibles), si bien que `binary_to_term/1` d'un handle
+  encodé reconstruit un handle partageant le tampon tant que celui-ci vit, et
+  une référence simple ensuite. Les entrées expirées sont retirées à mesure que
+  le registre grandit.
+
+## Maps hors tas
+
+Une map de plus de 32 entrées (`MAP_SMALL_MAP_LIMIT` d'OTP) est un talon (stub)
+`tree_map` de 4 mots sur le tas qui nomme un arbre B+ persistant privé au
+processus (`terms/map_tree`). Les maps plus petites restent des cellules `map`.
+
+- Les feuilles contiennent jusqu'à 32 mots de clé et de valeur dans l'ordre
+  exact des clés ; les branches contiennent jusqu'à 32 enfants avec leurs
+  premières clés et leurs nombres d'entrées, si bien que la recherche et l'accès
+  par position sont en O(log n). Les mots de clé et de valeur pointent dans le
+  tas du propriétaire : contrairement aux binaries, l'arbre contient des termes.
+- Une mise à jour copie le chemin vers chaque feuille modifiée et partage tous
+  les autres nœuds avec la map source, qui reste inchangée, si bien que
+  construire une map clé par clé coûte O(n log n) au lieu de O(n^2). Les nœuds
+  sont comptés par références ; les nœuds créés par une même mise à jour
+  portent son jeton d'édition et sont modifiés sur place jusqu'à la publication
+  du talon. Une mise à jour échouée libère ce qu'elle a construit.
+- Chaque talon est chaîné dans la liste des maps hors tas de son processus. Une
+  collecte copie un talon comme toute cellule et, lorsqu'elle parcourt la copie,
+  réécrit les mots de clé et de valeur de l'arbre du talon, en visitant chaque
+  nœud partagé une fois par collecte. Le balayage rechaîne ensuite les talons
+  déplacés et libère les arbres des talons morts ; le démontage les libère
+  tous.
+- Les mots des nœuds sont imputés au processus comme mots hors tas (avec les
+  binaries : assez d'entre eux demandent une collecte) et au compte global du
+  runtime. Les nœuds libérés sont gardés pour réutilisation, jusqu'à 1 024 de
+  chaque genre par processus (environ 1 Mo au plus), car une mise à jour par
+  copie de chemin alloue un nœud par niveau et une collecte libère les anciens
+  chemins ensemble.
+- Copier une map vers un autre tas (messages, `MessageBuffer`) construit un
+  nouvel arbre dans la destination à partir des entrées traduites.
+- Une mise à jour possédée (`MapOperation::update_owned`) dont le compilateur a
+  prouvé que la source n'est plus lue ensuite reprend la référence d'arbre du
+  talon source et modifie sur place chaque nœud qu'elle atteint par des nœuds
+  non partagés, en ne copiant que les nœuds partagés. Le talon source est laissé
+  consommé (pas d'arbre, taille 0) ; une mise à jour possédée échouée lui rend
+  l'arbre. Le compilateur ne marque une mise à jour comme possédée que lorsque
+  la fonction a construit elle-même la map source (`M = <map expression or
+  comprehension>` dans le même corps de clause), ne lit `M` nulle part ailleurs
+  et ne la capture jamais dans une fun (`semantic/map_ownership`).
 
 ## Zones
 
 - **Tas.** Un bloc `[start, top, end)` par processus avec allocation par
   incrément de pointeur (8G). Il est créé par la première allocation du
   processus, dimensionné à `max(min_heap_words, request)` afin que cette
-  requête tienne toujours, et possédé par ce seul processus.
+  requête tienne toujours, et possédé par ce seul processus. Le code généré y
+  alloue directement les petits tuples et les petites listes par incrément de
+  pointeur via `FrameState::heap_top`/`heap_limit` : `HeapStorage::absorb`
+  intègre ces mots au sommet et à `used_words_` avant toute opération sur le
+  tas (réservation, admission, collecte, vérification, requêtes d'utilisation)
+  et `expose` montre de nouveau les mots libres après chacune. L'allocation en
+  ligne ne crée jamais de fragment et reste désactivée sous un budget par
+  processus.
+- **Zones de littéraux**. Les littéraux composés de chaque module — chaînes et
+  listes constantes, tuples de constantes, flottants et littéraux bignum — sont
+  disposés par le compilateur sous forme de cellules de tas dans une variable
+  globale en lecture seule (`ModuleDescriptor::literals`), enregistrée pour tout
+  le runtime (`detail::LiteralAreas`, un instantané trié sans verrou) lors de
+  l'enregistrement du module. Les termes de tous les processus peuvent y
+  pointer : l'admission et `TermAccess::object` lisent les cellules via
+  `HeapStorage::readable` (tas, fragments, puis littéraux) ; le ramasse-miettes
+  laisse les mots littéraux tels quels (`owned` reste limité au tas) ; les
+  copies entre tas et vers les tampons de messages continuent d'y pointer (une
+  racine littérale n'a pas besoin de copie) ; le vérificateur les accepte. Les
+  littéraux ne contiennent que des immédiats (uniquement des atomes fixes) et
+  des mots d'autres littéraux.
 - **Fragments.** Lorsqu'une requête ne tient pas et que le tas ne peut pas
   bouger, elle va dans le fragment le plus récent si elle y tient, sinon dans un
   nouveau fragment dimensionné pour la contenir (au moins la taille minimale du
@@ -117,7 +209,7 @@ de BEAM).
   à la prochaine collecte hôte
   ([collecte dans le code généré](#collection-in-generated-code)).
 - **Pile.** Les cadres générés (registres Y de BEAM) vivent sur une pile plate
-  par processus, séparée du tas (`ProcessStack`, step 19). Chaque cadre est un
+  par processus, séparée du tas (`ProcessStack`). Chaque cadre est un
   en-tête de quatre mots (décalage de l'en-tête de l'appelant, descripteur,
   reprise, gestionnaire) suivi d'emplacements de termes (termes déversés
   compris) et d'emplacements bruts de déversement ; les cadres sont chaînés par
@@ -145,9 +237,9 @@ de BEAM).
   taille dont ses données vivantes ont besoin (8H) ; si l'allocation de ce bloc
   échoue, le plus grand est conservé. Aucun des deux n'est plus petit que
   `min_heap_words`. Les deux tailles comptent les mots de la pile du processus
-  comme vivants (step 26), car ERTS garde la pile à l'intérieur du bloc de tas.
+  comme vivants, car ERTS garde la pile à l'intérieur du bloc de tas.
 - Avec un budget défini (ci-dessous), un nouveau bloc contient au plus ses mots vivants plus la moitié du
-  budget restant après eux et les tampons hors tas (`block_limit`, step 27),
+  budget restant après eux et les tampons hors tas (`block_limit`),
   jamais moins que `min_heap_words`. L'autre moitié reste libre pour les
   fragments et les nouveaux tampons hors tas, si bien que les déchets alloués
   après une collecte atteignent le point sûr suivant comme déclencheur au lieu
@@ -174,7 +266,7 @@ de BEAM).
 - Une limite optionnelle globale au runtime, `RuntimeOptions::memory_limit_bytes`
   (par défaut `UNLIMITED_HEAP_BYTES` ; les programmes la définissent avec
   `--max-memory`), borne la mémoire de tous les processus ensemble : blocs de
-  tas, fragments, tampons hors tas et capacité des piles (step 27A). OTP n'a pas
+  tas, fragments, tampons hors tas et capacité des piles. OTP n'a pas
   de telle limite ; cela se rapproche le plus de l'exécution de la VM sous une
   limite mémoire du système d'exploitation, mais fait échouer un seul processus
   au lieu du nœud.
@@ -182,7 +274,7 @@ de BEAM).
   de tas et toutes les piles) est débité à la création d'un bloc, d'un fragment,
   d'un tampon hors tas ou d'une capacité de pile et crédité à sa suppression ;
   un tampon partagé par plusieurs processus est imputé une fois et restitué
-  lorsque sa dernière référence meurt (step 28). Le démontage restitue toutes les
+  lorsque sa dernière référence meurt. Le démontage restitue toutes les
   imputations du processus.
   `Runtime::memory_bytes()` indique le total.
 - Pour chaque processus, la limite agit comme un budget égal au stockage qu'il
@@ -218,20 +310,22 @@ que chaque emplacement désigne un début d'objet.
 
 ## Racines et points sûrs
 
-`ProcessContext::visit_roots` énumère chaque mot racine pour le ramasse-miettes
-(step 23). À un point sûr, rien d'autre ne détient de mots du tas du
+`ProcessContext::visit_roots` énumère chaque mot racine pour le ramasse-miettes.
+À un point sûr, rien d'autre ne détient de mots du tas du
 processus :
 
 | Propriétaire | Mots racines | Notes |
 | --- | --- | --- |
-| Emplacements de termes des cadres | Les `roots` premiers emplacements de chaque cadre de la pile (step 19) | Les cadres du fond n'en ont aucun ; les indices de reprise et de gestionnaire sont des entiers |
+| Emplacements de termes des cadres | Les `roots` premiers emplacements de chaque cadre de la pile | Les cadres du fond n'en ont aucun ; les indices de reprise et de gestionnaire sont des entiers |
 | Emplacements bruts des cadres | Aucun | Valeurs natives déversées ; le code généré n'y garde aucun mot du tas à un point sûr (règle de rechargement du step 24) |
-| Registres | `x[0..live)` (`ProcessStack::keep_registers`) | Les arguments d'une entrée suspendue (step 43) ; chaque empilement et dépilement efface `live` |
+| Registres | `x[0..live)` (`ProcessStack::keep_registers`) | Les arguments d'une entrée suspendue ; chaque empilement et dépilement efface `live` |
 | Canal d'échec | Charge utile d'erreur (`fvalue` de BEAM), liste d'arguments de `erlang:error/2,3`, terme de trace de pile | Reliés sur place ; les cadres de trace capturés sont des pointeurs de descripteurs vers le code |
-| État d'interception (trap) | Les mots de terme du `TrapState` d'un builtin qui intercepte (step 43A) | Libérés lorsque le builtin se termine ou échoue |
-| Boîte aux lettres | Chaque message dans la boîte de réception des signaux et la file de messages (step 45), y compris les messages `'EXIT'` et `'DOWN'` | Jusqu'à ce qu'un receive le prenne ; réécrits sur place, donc le curseur de receive (une position dans la liste) et l'échéance du timeout restent valides |
+| État d'interception (trap) | Les mots de terme du `TrapState` d'un builtin qui intercepte | Libérés lorsque le builtin se termine ou échoue |
+| Dictionnaire de processus | Chaque clé et chaque valeur | Jusqu'à leur effacement ou la fin du processus |
+| Boîte aux lettres | Chaque message dans la boîte de réception des signaux et la file de messages, y compris les messages `'EXIT'` et `'DOWN'` | Jusqu'à ce qu'un receive le prenne ; réécrits sur place, donc le curseur de receive (une position dans la liste) et l'échéance du timeout restent valides |
 | Racines explicites | La plage qu'un hôte passe à `collect(roots)` (8E) | Relues après l'appel |
 | Liste hors tas | Aucun | Les liens sont balayés et rechaînés, non tracés |
+| Maps hors tas | Aucun directement : les mots de clé et de valeur de l'arbre de chaque talon que la collecte copie | Réécrits lors du parcours du talon copié ; la liste est balayée comme la liste des binaries |
 
 Aucune cellule du tas ne détient d'épingle. Les atomes sont des immédiats et la
 table des atomes n'est jamais collectée. Les cellules de fun désignent le code
@@ -262,9 +356,21 @@ Toute autre requête retourne `unsafe_point` et ne change rien, pas même le can
 d'échec d'un appel généré en cours. L'allocation ne déplace jamais le tas :
 une requête qui ne tient pas crée un fragment.
 
+## Tampons de messages
+
+Un `MessageBuffer`
+([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) garde un terme
+en dehors de tout processus : `copy_of` copie le graphe depuis le tas de son
+processus dans un `HeapStorage` qui lui est propre (son propre jeton de durée de
+vie, les atomes et le compte mémoire du runtime, les binaries hors tas partagés
+et détenus), avec le même `GraphCopy` qu'un envoi ; `copy_to` le copie dans le
+tas d'un destinataire. Les immédiats n'ont besoin d'aucun stockage. Le tampon
+n'est jamais collecté et est libéré avec son dernier propriétaire. Les messages
+des timers l'utilisent, si bien qu'ils ne sont jamais réencodés.
+
 ## Collecte dans le code généré
 
-Décision du plan 11 step 24 (2026-10-06), implémentée au step 26
+Implémentée au step 26
 ([implémentation](#implementation)). Le code
 généré n'effectue de collecte qu'à quelques **points sûrs** (safepoints) où
 chaque terme vivant se trouve déjà dans une racine. Tout le reste, y compris
@@ -279,7 +385,7 @@ une vérification.
 | Déclencheur | Condition au point sûr | Équivalent ERTS |
 | --- | --- | --- |
 | Tas plein | Un fragment existe : une allocation n'a pas tenu dans le bloc de tas depuis la dernière collecte | Le sommet du tas atteint la fin du tas |
-| Pression des binaries hors tas | Les mots hors tas atteignent la limite du tas binaire virtuel : 46 422 mots au départ, après chaque collecte le double des mots hors tas survivants, jamais moins, mais au plus les survivants plus la moitié du budget laissé libre après le bloc de tas (step 27) | `bin_vheap_sz` / tas binaire virtuel |
+| Pression des binaries hors tas | Les mots hors tas atteignent la limite du tas binaire virtuel : 46 422 mots au départ, après chaque collecte le double des mots hors tas survivants ou les survivants plus les mots vivants du tas, selon la plus grande valeur (jamais moins de 46 422 ; collectes de binaries amorties), mais au plus les survivants plus la moitié du budget laissé libre après le bloc de tas | `bin_vheap_sz` / tas binaire virtuel |
 | `erlang:garbage_collect/0` | Toujours ; arrive avec les familles de builtins (steps 36-37) sous forme de point sûr forcé | Balayage complet explicite |
 
 Le nouveau bloc est dimensionné pour les mots vivants **plus les mots de pile
@@ -303,14 +409,14 @@ résultats de service uniques.
 Ne sont pas des points sûrs (sections critiques, qui continuent d'allouer dans
 des fragments) : tous les autres services du runtime, y compris les services
 d'allocation, de construction et de correspondance ; `CLAUSE_return_v1` ; la
-propagation des exceptions ; et plus tard la remise des messages (step 45). Les
+propagation des exceptions ; et plus tard la remise des messages. Les
 services peuvent donc détenir des mots bruts du tas en C++ pendant toute leur
 exécution, et leurs tableaux d'entrée et leurs sorties n'ont pas besoin d'être
 rechargés.
 
 ### Processus en attente et suspendus
 
-Plan step 51. Un processus qui ne s'exécute pas n'est jamais collecté : il attend
+Un processus qui ne s'exécute pas n'est jamais collecté : il attend
 dans un receive, est en file après un yield ou un trap, ou n'a pas encore
 démarré, et tout ce qu'il détient est déjà une racine (ses cadres, les registres
 de l'entrée ou de la continuation à laquelle il reprendra, l'état de trap et
@@ -355,16 +461,16 @@ déjà une erreur dans `lower_frames`).
   une collecte réécrit les mots de la pile sur place et ne déplace jamais la
   pile ; chaque transfert la relit dans le prologue du corps comme auparavant.
 - L'optimisation s'exécute après `lower_frames` et ne peut pas remplacer un
-  rechargement par l'ancienne valeur SSA : l'adresse du cadre provient de
-  `CLAUSE_frame_v1`, donc l'appel de point sûr peut écrire chaque emplacement
-  (prototype ci-dessous).
+  rechargement par l'ancienne valeur SSA : l'adresse du cadre est chargée depuis
+  le `FrameState` du contexte, et l'appel opaque de point sûr peut écrire chaque
+  emplacement à travers elle (prototype ci-dessous).
 
 ### Comportement en cas d'échec
 
 - Une collecte à un point sûr n'enregistre jamais d'échec. Lorsque son nouveau
   bloc ne peut pas être alloué (`out_of_memory`), le tas reste tel quel et
   l'exécution continue avec des fragments.
-- **Épuisement de la mémoire** (step 27). Sans plafond, la mémoire ne s'épuise
+- **Épuisement de la mémoire**. Sans plafond, la mémoire ne s'épuise
   que lorsque l'hôte refuse un bloc de tas, un fragment, un tampon hors tas ou
   une croissance de pile : `out_of_memory`. Avec un budget optionnel ou une
   [limite globale du runtime](#runtime-memory-limit) définis, une requête
@@ -381,8 +487,6 @@ déjà une erreur dans `lower_frames`).
   sont collectés d'abord.
 
 ### Implémentation
-
-Step 26 (2026-10-06) :
 
 - `ProcessStack::safepoint(live)` interroge `ProcessHeap::wants_collection()`
   (un fragment existe, ou les mots hors tas ont atteint `binary_limit_words_`),
@@ -408,8 +512,6 @@ Step 26 (2026-10-06) :
   cadre, et une charge utile d'erreur capturée après le déroulement de cadres qui
   allouent puis conservée pendant une longue boucle qui alloue.
 
-Step 27 (2026-10-06) :
-
 - `collected_size` plafonne le bloc à `block_limit(live)` ; `shrink` s'exécute
   aussi lorsque le bloc dépasse la limite des mots survivants ; `collect`
   plafonne `binary_limit_words_` aux survivants plus la moitié du budget laissé
@@ -430,8 +532,6 @@ Step 27 (2026-10-06) :
   (72 Mo) tout en en abandonnant quatre par itération et affiche le compte comme
   le fait OTP. `runtime_collection` `near_budget` vérifie les deux plafonds avec
   un budget de 10 000 mots (bloc de tas et tampons hors tas).
-
-Step 27A (2026-10-06) :
 
 - Limite globale du runtime et `--max-heap`, `--max-stack`, `--max-memory`
   ([limite mémoire du runtime](#runtime-memory-limit)). Des exécutions de
@@ -493,8 +593,8 @@ mots hors tas.
 ## Copie entre tas
 
 `ProcessHeap::add(value)`, ou de manière équivalente `value.copy_to(heap)`,
-retourne un terme du tas de destination (step 28, `size_object` et
-`copy_struct` de BEAM) :
+retourne un terme du tas de destination (`size_object` et `copy_struct` de
+BEAM) :
 
 - Les immédiats et les atomes du même runtime n'ont besoin d'aucun stockage, et
   un terme du tas de destination conserve son identité. Un graphe d'un autre
@@ -506,7 +606,8 @@ retourne un terme du tas de destination (step 28, `size_object` et
 - Un parcours unique avec une pile explicite (sans récursion) trouve chaque objet
   distinct atteignable depuis la valeur, indexé par adresse, si bien que le
   partage interne survit : `{T, T}` copie `T` une seule fois, contrairement au
-  `copy_struct` par défaut d'ERTS, qui aplatit le partage. La copie est une
+  `copy_struct` par défaut d'ERTS, qui aplatit le partage. Les adresses vont dans
+  une table à adressage ouvert (`boost::unordered_flat_map`). La copie est une
   réservation unique de la somme de leurs mots, dans le bloc de tas ou un
   fragment, remplie dans l'ordre du parcours avec les pointeurs réécrits vers
   les copies.

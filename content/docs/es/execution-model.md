@@ -1,12 +1,12 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 06042fa
-sourceSha256: 4496f092872f90d6a3fb46c26f67950a76fa663502d4f2c80d8be45d55c8a599
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
+translatedAt: 2026-10-15
 ---
 # Modelo de ejecución: marcos y continuaciones
 
-Decisión del plan 11 step 17 (2026-10-05). Fija cómo las funciones Erlang
+Fija cómo las funciones Erlang
 generadas llaman, retornan, se suspenden y fallan una vez que llegan la
 recursión, las llamadas de cola (tail calls) y los procesos. El step 19
 implementó las llamadas, los retornos, las llamadas de cola y los marcos
@@ -94,7 +94,7 @@ excepción no capturada.
   apilar un marco; los argumentos se quedan en `x[0..arity)`, que pasan a ser
   los únicos registros del proceso que hay que enraizar. Al reanudar se
   rellena el presupuesto y se transfiere a `resume_at`, que repite la entrada.
-  Las esperas posteriores (`receive`, step 46) guardan un índice de
+  Las esperas posteriores (`receive`) guardan un índice de
   continuación del cuerpo en lugar de una entrada.
 - **Salida.** Retornar al marco inferior registra una salida normal;
   desenrollar hasta él registra una excepción no capturada. En ambos casos el
@@ -192,10 +192,35 @@ carencias:
   transferencias `musttail`. La especialización de tipos y los puntos de
   prueba trabajan sobre la forma nativa; el backend ejecuta `lower_frames`
   antes de la inspección de la IR y `optimize` lo ejecuta si aún hace falta.
-- **Entrada y cuerpo.** No hay una función de entrada separada: el llamante
-  llama a `CLAUSE_enter_v1(context, callee.frame)`, que apila el marco, copia
-  los argumentos y devuelve el cuerpo del llamado. Una llamada de cola usa
-  `CLAUSE_tail_v1`, que primero libera el marco del llamante.
+- **Entrada y cuerpo.** No hay una función de entrada separada. La tabla de
+  estado del proceso anterior es `abi::v1::FrameState`, al comienzo de cada
+  contexto, de modo que el código generado se transfiere en línea (revisión
+  de ABI 9): una entrada gasta una reducción, apila el marco puesto a cero,
+  copia los argumentos desde los registros y se transfiere al cuerpo del
+  llamado; una entrada de cola reutiliza primero el lugar del llamante; un
+  retorno desapila y se transfiere al cuerpo del llamante. Cada ruta recurre a
+  `CLAUSE_enter_v1`, `CLAUSE_tail_v1` o `CLAUSE_return_v1` cuando el heap
+  quiere una recolección, el proceso está en perfilado, no queda ninguna
+  reducción, la pila debe crecer o alcanza su límite, o el llamado es un
+  builtin. La comprobación de fallo tras una llamada lee la palabra `failed`
+  del estado. Una llamada de cola a sí misma mantiene su marco donde está:
+  gasta una reducción, restablece las palabras de reanudación y de manejador
+  del marco y el recuento de vivos y copia los argumentos más allá de los
+  registros, sin reescribir la cabecera ni poner a cero las ranuras (cada una
+  contiene cero o una palabra de término que las recolecciones reescriben, y
+  el cuerpo escribe una ranura antes de leerla).
+- **Parámetros en registros** (revisión de ABI 10). El código es
+  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: cada transferencia
+  pasa los tres primeros registros X como parámetros de C, de modo que los
+  primeros argumentos de una llamada y el resultado de un retorno permanecen
+  en registros de la máquina. Un cuerpo lee sus primeros argumentos de los
+  parámetros al empezar y el resultado de la llamada de `x0` al reanudarse;
+  `lower_frames` vuelca cualquiera de ellos a una ranura solo cuando está vivo
+  a través de una llamada o un punto seguro. Las rutas de servicio guardan los
+  parámetros en el array de registros antes del servicio y los vuelven a
+  cargar después. Como todos los cuerpos comparten un mismo prototipo, LLVM
+  convierte en un bucle una llamada de cola a sí misma cuyo apilado en línea
+  vuelve al mismo cuerpo.
 - **Las posiciones de cola** son la última expresión del cuerpo de una
   cláusula, seguida a través de bloques, paréntesis y cuerpos de cláusulas de
   `case` e `if`. Las llamadas dentro de `catch`, `try`, `maybe` y de los
@@ -208,20 +233,21 @@ carencias:
   mismo cuerpo. Sus cursores y su acumulador viven en ranuras de términos, así
   que ningún valor SSA da la vuelta a un bucle y un punto de reanudación
   dentro de él no necesita nada más que los volcados habituales.
-- **Cesiones** (step 43, [procesos](processes.md)). `CLAUSE_enter_v1` y
-  `CLAUSE_tail_v1` gastan una de las reducciones del proceso; si no queda
-  ninguna, registran la función en la que se entra
+- **Cesiones** ([procesos](processes.md)). Cada entrada, en línea o a
+  través de `CLAUSE_enter_v1` y `CLAUSE_tail_v1`, gasta una de las reducciones
+  del proceso; si no queda ninguna, toman el control los servicios, que
+  registran la función en la que se entra
   (`ProcessStack::resume_`, el `resume_at` del modelo), conservan sus
   argumentos como raíces de registro y devuelven un código que termina la
   porción de tiempo, de modo que la pila nativa se desenrolla hasta el
   ejecutor, que más tarde repite la entrada. Las cabeceras de bucle no ceden
   el control. El recolector enumera las ranuras de términos de los marcos, los
   registros que una suspensión mantiene vivos
-  (`ProcessStack::keep_registers`) y el canal de fallos (step 23,
-  [raíces](runtime-heap.md#roots-and-safe-points)). Las entradas de función y
+  (`ProcessStack::keep_registers`) y el canal de fallos
+  ([raíces](runtime-heap.md#roots-and-safe-points)). Las entradas de función y
   las cabeceras de los bucles de comprehension son puntos seguros que
-  recolectan cuando el heap lo pide (step 26,
-  [recolección en el código generado](runtime-heap.md#collection-in-generated-code));
+  recolectan cuando el heap lo pide
+  ([recolección en el código generado](runtime-heap.md#collection-in-generated-code));
   las ranuras de volcado en bruto nunca contienen términos.
 - **Sin límite.** La pila crece hasta que el anfitrión rechaza la memoria, lo
   que falla con `out_of_memory` (salida 70, [ejecutables](executables.md)),

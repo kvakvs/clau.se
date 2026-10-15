@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 06042fa
-sourceSha256: 0f7d89ad7d9a7b44ece9255eeeda2ea552e3290554f1549ffddde04ed6b5bd6d
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
+translatedAt: 2026-10-15
 ---
 # Référence des sources Erlang/OTP
 
@@ -10,8 +10,8 @@ Clause suit la branche officielle `maint-29`. La révision épinglée (pin),
 vérifiée, se trouve dans
 [`references/otp-pin.cmake`](../references/otp-pin.cmake) :
 
-- Révision `21776803ecd11f5fa948732c0ec66b8f325dedfc` (commit amont daté du
-  2026-09-22), confirmée inchangée pour la dernière fois le 2026-10-03.
+- Révision `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2, commit
+  amont daté du 2026-10-14), actualisée le 2026-10-14.
 - Oracle installé utilisé pour les résultats de référence (goldens) et les
   audits : OTP 29.1.1 / ERTS 17.1.
 
@@ -71,3 +71,4 @@ Les enregistrements historiques conservent la révision sur laquelle ils ont
 | 2026-09-28 | Passage à `maint-29` ; grammaire et dix fichiers du corpus identiques | `21776803ecd11f5fa948732c0ec66b8f325dedfc` |
 | 2026-10-01 – 10-03 | Récupéré à nouveau avant chaque étape motifs/guards ; inchangé | identique |
 | 2026-10-03 | Plan 11 step 1 : 14 tests d'audit réussis, 19 corpus reproduits | identique |
+| 2026-10-14 | Actualisé vers OTP 29.1.2 : empreintes de la grammaire, du scanner, du préprocesseur et de `phase6/otp.tsv` inchangées (`genop.tab` : commentaire seulement) ; 17 tests d'audit réussis et 19 corpus reproduits avec l'oracle 29.1.1 ; révision enregistrée par les goldens d'exécutables, de lint, de programmes et d'affichage mise à jour (sorties inchangées, `external_terms` garde sa sortie de map dépendant de l'ordre des atomes) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |

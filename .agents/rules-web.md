@@ -33,7 +33,7 @@ dependencies, few components, no speculative abstractions.
 ## Project Layout
 
 ```
-app/                 routes (layout.tsx, page.tsx, docs/, resources/)
+app/                 routes (layout.tsx, page.tsx, docs/, benchmarks/, resources/)
 components/          shared UI components (one component per file)
 lib/                 non-UI code: i18n, theme, docs loading, helpers
 messages/            translation dictionaries: <locale>.ts, index.ts
@@ -147,6 +147,9 @@ scripts/             build helper scripts (e.g. docs sync)
   commit, a dirty flag and the sync date in `content/docs-meta.json`. Commit
   the copy. Never import from `../clau` directly in app code; never edit
   `content/docs/en/` by hand.
+- `sync-docs` leaves out internal plan step references (paragraph lead-ins
+  like `Plan 11 step 41T (paths).`, parentheticals like `(OPT0.2A)`); headings
+  and code blocks are never changed.
 - Translations live in `content/docs/<locale>/<same name>.md` with frontmatter
   (`sourceCommit`, `sourceSha256`, `translatedAt`) written by
   `pnpm docs-stamp <locale> <file>`. How to translate:
@@ -162,6 +165,9 @@ scripts/             build helper scripts (e.g. docs sync)
   `../clau` docs and progress notes with the `/update-doc` skill
   (`.agents/skills/update-doc/`), which also translates the changed strings
   and records the source commit in `content/home-meta.json`.
+- Benchmarks page data comes from `pnpm sync-benchmarks`, which reads the
+  newest report of `../clau/benchmarks/history/` into
+  `content/benchmarks.json` (commit it; host name left out).
 - Table of contents order is defined explicitly in `lib/docs.ts` (Getting
   started, Building the compiler, Using the compiler, Interpreting results,
   Differences from Erlang/OTP, then remaining files alphabetically by

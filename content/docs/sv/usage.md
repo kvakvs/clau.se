@@ -1,8 +1,8 @@
 ---
 source: docs/usage.md
-sourceCommit: 06042fa
-sourceSha256: 69cd5cc2e8c6acc6bf67d677812a78d984940084e75d4930fbdcdf681e488435
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: d4118cc040e610cc84df916720e96a6009b90b6a1cbfe086434dc5800fe49461
+translatedAt: 2026-10-15
 ---
 # Använda kompilatorn
 
@@ -14,7 +14,7 @@ translatedAt: 2026-10-09
 
 På macOS bygger `./run-macos.sh --parse-check examples/project/src/main.erl`
 först och kör sedan den senaste körbara filen, med alla argument oförändrade.
-Det godtar åsidosättningar via miljövariablerna `BUILD_DIR`, `BUILD_TYPE` och
+Det godtar åsidosättningar via miljövariablerna `TOOL_BUILD_DIR`, `BUILD_TYPE` och
 `JOBS`.
 
 ```text
@@ -27,16 +27,29 @@ clau [options] <source.erl>...
   --print-pp               Print expanded Erlang source
   --print-ast              Print an indented syntax tree
   --print-source           Print each module as Erlang source
+  --print-abstr            Print each module as OTP abstract format forms
+  --parse-transform <mod>  Apply a parse transform to every module
+  --transform-path <dir>   Directory of precompiled transform modules (.beam)
+  --erl <path|none>        Host Erlang/OTP 29 erl that runs parse transforms
+  --print-inputs           List the batch's sources, including modules added by reference; do not compile
+  --print-env              Print the resolved compile environment as TOML and exit
   --print-types            Print each module as source annotated with inferred types
   --print-ir               Print verified IR with Erlang source comments before LLVM optimization
   --print-optimized-ir     Print verified IR with Erlang source comments after LLVM optimization
+  --print-asm              Print each module's assembly with IR and Erlang source comments
   --emit obj|llvm-ir|llvm-bc  Write one artifact per module
   --artifact-dir <dir>     Override the artifact root (requires --emit)
   --target-triple <triple>  Select the machine/OS/ABI
   -O0 / -O2 / -Os         Generic O0 (default) / speed / size optimization
   --no-type-specialization  Disable compiler variants at either optimization level
+  -g                      Emit Erlang line tables; executables keep them for debuggers
+  --lto                   Link modules as bitcode with link-time optimization (LLD targets)
+  --keep-exports          Keep every export of an executable callable (default: unreachable ones left out)
+  --build-dir <dir>       Keep temporary files and caches below <dir> (projects default: <manifest-dir>/build)
+  --no-cache              Neither read nor write build caches
+  --cache-inference-in-dirs <pattern>  Cache inference results of modules in matching directories (besides OTP's)
   --verbose               Trace files and compilation phases to stderr
-  --impldebug <n[,n...]>   Enable debug output for selected implementation steps
+  --print-stage-times     Print preprocess/parse/transform time per file, compile time per batch and link time to stderr
   -I, --include <dir>      Add an include directory (last supplied searched first)
   -D, --define <name[=term]>  Define a macro (default value: true)
   --app-dir <app=dir>      Set an include_lib application directory
@@ -79,14 +92,19 @@ slutstatus.
 clau -O2 -o demo answer.erl client.erl && ./demo
 clau -O2 --emit obj answer.erl client.erl
 clau --print-ir --print-optimized-ir -O2 answer.erl
+clau --print-asm -O2 answer.erl
 clau --print-types answer.erl client.erl
 ```
 
 IR-inspektion tillåter båda stegen tillsammans och stannar före generering av
 objekt. Flera ögonblicksbilder är separata moduler; använd `--emit llvm-ir` för
 enskilda assemblerfiler.
+`--print-asm` skriver ut varje moduls målassembler där varje följd av
+instruktioner kommenteras med den IR-instruktion och Erlang-rad den kommer från
+([assemblerlistningar](compile.md#assembly-listings)).
 Typinspektion stannar före LLVM och skriver ut varje modul som källkod med
-härledda funktionssignaturer och annoteringar av formen `Expression :: Type`.
+härledda funktionssignaturer och avslutande kommentarer `% Type` på varje rads
+yttersta uttryck.
 Den godtar alternativ för preprocessor, projekt och utförlighet, men avvisar
 andra åtgärder, utdatadestinationer och backend-policy. Se
 [kompileringsalternativ](compile.md).
@@ -100,17 +118,14 @@ spårningen av inkluderingar. `[comp]` lägger till semantiska faser och
 backend-faser samt beslut om begränsad specialisering när de startar. Spårning
 går till stderr i varje läge, även för projekt.
 
-`--impldebug 23` eller `--impldebug 23,24,27` väljer valfri felsökningsutdata
-för implementationssteg oberoende av `--verbose`. Upprepade alternativ
-kombinerar sina val; dubbletter ignoreras. Värden är decimala 32-bitars heltal
-med tecken, med valfritt `+`/`-` och utan mellanslag eller tomma listelement.
-Steg 23–27 skriver ut härledda funktionsindata/-resultat och
-parameterrelationer till stderr med det valda stegets prefix (till exempel
-`[impldebug 27]`). Detta är analyserade indata till sänkningen (lowering), inte en
-IR-dump. Framtida steg kan kontrollera sitt eget nummer; att välja ett steg utan
-felsökningsutdata har ingen effekt. Samma val gäller positionella indata och
-varje valt projektmål. Rena frontend-åtgärder för kontroll/utskrift kör inte
-typhärledning.
+`--print-stage-times` skriver ut `[time] <stage> <subject>: <milliseconds> ms`
+på stderr när varje steg avslutas: `preprocess` (läsning och förbehandling),
+`parse` och, för moduler som använder parse transforms, `transform` (körningen
+av värdens `erl` och importen av dess former) per källfil, `compile` (analys
+till och med generering av objekt) en gång per batch, med antal moduler och
+projektmål, och `link` per körbar fil, med dess slutliga sökväg. Parsern hämtar
+former från preprocessorn, så de två tiderna per fil mäts separat medan de
+varvas.
 
 Slutstatus: **0** vid lyckat utfall (även med varningar), **1** för fel i
 källkod/projekt, **2** för användningsfel eller okända målnamn.
@@ -124,9 +139,7 @@ Standardkompilering utan `-o` skriver ingen körbar fil.
 Se [preprocessorn](preprocessor.md), [användning av parsern](parser.md) och
 [valideringsstatus](validation.md) för mer information.
 
-
 ## Projekt
-
 
 Kör det medföljande exemplet med två mål:
 

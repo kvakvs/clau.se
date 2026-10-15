@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: 06042fa
-sourceSha256: 4a59e74a8f74a79a05ce095a1fed17c4ee5fc1249c50e25b2b78fe555376445b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: e64ac7a96a11727f6f9c0e83247c36a9b3b2b047fd551a417344938602e864b3
+translatedAt: 2026-10-15
 ---
 # Análise semântica
 
@@ -14,7 +14,8 @@ as entradas seguintes continuam a ser diagnosticadas.
 ## Verificações de módulos e chamadas
 
 - A declaração de módulo é obrigatória e única; aridades de funções 0..255;
-  sem definições duplicadas; cada exportação existe e é listada uma única vez.
+  sem definições duplicadas; cada exportação existe (uma exportação repetida
+  gera um aviso, como no OTP).
   Os nomes entre aspas/Unicode mantêm a sua identidade exata.
 - Todas as funções são verificadas, incluindo o código não usado e
   inalcançável.
@@ -30,6 +31,111 @@ as entradas seguintes continuam a ser diagnosticadas.
   dividido em componentes fortemente conexas (Tarjan iterativo) pela ordem
   chamado-antes-do-chamador; uma componente é recursiva quando tem vários
   membros ou quando um membro se chama a si próprio.
+
+## Behaviours
+
+Segue os
+[behaviours](https://www.erlang.org/doc/system/design_principles.html#behaviours)
+do OTP, `erl_internal:add_predefined_functions` e o `check_behaviour` do
+`erl_lint`.
+
+- Um módulo que declara `-callback` recebe o `behaviour_info/1` predefinido e
+  exportado do OTP: `callbacks` dá os callbacks declarados pela ordem do
+  código-fonte, `optional_callbacks` os das listas `-optional_callbacks` bem
+  formadas (os callbacks qualificados com um módulo ficam de fora). O frontend
+  acrescenta-o como função na linha de `-module` (`driver/predefined`). Tal
+  como no OTP, o próprio código-fonte do módulo não o pode nomear: um
+  `-export`, uma chamada local, `fun
+  behaviour_info/1` ou uma `-spec` dele é uma função indefinida; as chamadas
+  remotas (também as qualificadas com o próprio módulo) alcançam-no.
+  `-callback` ao lado de um `behaviour_info/1` escrito à mão é um erro
+  (`cannot define callback attibute for F/A when behaviour_info is defined`,
+  com a grafia do OTP).
+- `-behaviour(M)` e `-behavior(M)` podem repetir-se. `M` é resolvido no lote;
+  um nome com um módulo de biblioteca (`library.md`) acrescenta esse módulo
+  tal como uma chamada literal. Os diagnósticos usam o texto do OTP no nome do
+  atributo:
+  - `undefined callback function F/A (behaviour 'M')` para cada callback
+    obrigatório e não opcional que o módulo não exporta (ordenados);
+  - `conflicting behaviours -- callback F/A required by both 'M2' and 'M1'
+    (line L, column C)` quando um behaviour anterior também o exige (um
+    callback opcional conta quando é exportado);
+  - `behaviour M undefined` quando `M` não está no lote ou não tem
+    `behaviour_info/1` (os behaviours do OTP como `gen_server` ainda não fazem
+    parte do Clause), mais os erros de nome de módulo do OTP para nomes que não
+    podem ser módulos (`the module name must not be empty`,
+    `... must be an atom`, ...).
+- Os avisos não fazem falhar a compilação. As opções de `-compile`
+  `nowarn_behaviours` (toda a verificação, incluindo os erros de nome de
+  módulo), `nowarn_undefined_behaviour_func`, `nowarn_undefined_behaviour` e
+  `nowarn_conflicting_behaviours` desligam-nos.
+- Não avaliado: um `behaviour_info/1` exportado escrito à mão de um módulo de
+  behaviour, pelo que os callbacks dos seus utilizadores não são verificados,
+  e os avisos do OTP de callbacks mal definidos ou obsoletos nunca ocorrem
+  ([diferenças](differences.md#errors-stack-traces-and-reports)).
+- Evidência: `tests/fixtures/lint` (diagnósticos gerados pelo OTP, CTest
+  `lint_diagnostics`), `executables_behaviours`, casos CLI de `semantic`.
+
+## Imports
+
+Segue as regras de import do `erl_lint`.
+
+- `-import(Module, [F/A, ...])` faz de uma chamada local `F(...)` a chamada
+  remota `Module:F(...)`: o módulo tem de estar no lote (um módulo de
+  biblioteca junta-se a ele como numa chamada literal) e exportar a função, ou
+  ser um módulo builtin (`-import(io, [format/2])`,
+  `-import(erlang, [display/1])`). Um import tem precedência sobre uma BIF
+  auto-importada com o mesmo nome.
+- Erros com o texto do OTP: `function F/A already imported from M` (todo o
+  atributo é então ignorado), `defining imported function F/A`,
+  `creating a fun from imported name F/A is not allowed`. Uma função importada
+  num guard é uma chamada de guard ilegal (exceto as BIFs de guard de erlang).
+- Aviso `import directive overrides auto-imported BIF F/A -- ...` salvo se
+  `no_auto_import` o nomear ou for dado `nowarn_bif_clash`; o Clause conhece
+  as BIFs auto-importadas que implementa.
+- Evidência: `executables_imports`, casos de lint `imports_conflicts`,
+  `imports_fun`, `imports_bif`, casos CLI de `semantic`.
+
+## Funções predefinidas
+
+Segue os [módulos](https://www.erlang.org/doc/system/modules.html) do OTP e
+`erl_internal:add_predefined_functions`. O frontend acrescenta
+`module_info/0,1` a cada módulo compilado (depois de um `behaviour_info/1`
+gerado) como funções Erlang que devolvem dados literais
+(`driver/predefined`, `semantic/module_info`); `Module::predefined_` conta
+estas formas finais, que são sempre exportadas e ficam fora de
+`--print-types`.
+
+- `module_info()` dá `[{module,_},{exports,_},{attributes,_},{compile,_},{md5,_}]`;
+  `module_info(Key)` responde também a `functions`, `nifs` (`[]`) e `native`
+  (`false`), e lança `badarg` para qualquer outra chave.
+- `exports`: as funções exportadas pela ordem de definição (os escripts
+  acrescentam `main/1`), depois `behaviour_info/1` quando gerado,
+  `module_info/0`, `module_info/1`. `functions`: todas as funções pela ordem de
+  definição, depois as mesmas predefinidas.
+- `attributes`: todos os atributos exceto `module`, exportações e imports,
+  formas type/spec/callback, records, `export_type`, `optional_callbacks`,
+  `export_record`, `compile`, `file`, documentação e `feature`, pela ordem do
+  código-fonte; um valor que não é uma lista é envolvido numa
+  (`-tags(a)` é `{tags,[a]}`). Sem `-vsn`, `{vsn,[N]}` vem primeiro, sendo `N`
+  o `md5` lido como inteiro big-endian sem sinal, tal como o OTP o deriva.
+- `md5`: MD5 do código-fonte impresso do módulo (`print_source`: macros
+  expandidas, inclusões incorporadas, comentários e disposição descartados).
+  `compile`: `[{version,ClauseVersion},{options,[]},{source,AbsolutePath}]`.
+- Ao contrário de `behaviour_info/1`, o próprio código-fonte do módulo vê-as:
+  as chamadas locais e `fun module_info/1` funcionam. Definir qualquer uma
+  delas é um erro (`function module_info/0 already defined`); exportar uma,
+  como qualquer exportação repetida, apenas gera um aviso
+  (`function module_info/0 already exported`).
+- Os atributos são dados; apenas `on_load`, `nifs` e as opções de `-compile`
+  não inertes são rejeitados por alterarem o comportamento.
+- As funções geradas não têm linha no código-fonte (o OTP não lhes dá
+  nenhuma): sem localizações de depuração, comentários de código-fonte no IR
+  nem entradas em `--print-types`. `module_info/0` contém os mesmos literais
+  que `module_info/1`, pelo que não faz chamadas.
+- Evidência: `executables_module_info` (stdout do OTP; valores derivados pela
+  forma), casos de `tests/fixtures/lint` `module_info_defined`,
+  `exports_repeated`.
 
 ## Vinculações
 
@@ -93,7 +199,12 @@ etiquetadas com o contexto de cabeça/guard/corpo. A análise é determinística
   `fun M:F/A` são leituras da expressão fun (`Function::fun_operands`).
 
 Os percursos são iterativos, com um orçamento por módulo de 1 000 000 unidades
-de trabalho. O esgotamento ou qualquer erro semântico limpa as tabelas de
+de trabalho, ou 32 por expressão quando isso for mais: os parsers gerados
+precisam de cerca de 10 por expressão (o `erl_parse` do OTP, com 139 093
+expressões, gasta 1 290 198). A resolução de serviços tem um orçamento do
+mesmo tamanho; percorre as formas `-compile` e `-import` do módulo à procura do
+estado de auto-importação de um nome uma vez por nome, não uma vez por chamada
+(cada uma dos milhares de cláusulas do `erl_parse` chama `hd/1`). O esgotamento ou qualquer erro semântico limpa as tabelas de
 vinculações e de normalização do módulo.
 
 ## Tipos e especificações
@@ -102,9 +213,13 @@ Um grafo de tipos privado representa todas as formas de tipos analisadas,
 independentemente da disposição em runtime: singletons, intervalos,
 contentores, papéis dos campos de maps, produtos de funções e aplicações não
 resolvidas. As uniões são achatadas e deduplicadas; `term()` é o topo e
-`none()` o fundo. Predefinições: 16 384 nós, 16 membros por união, 100 000
-itens de trabalho por tradução. O esgotamento alarga para `term()` com uma flag
-visível e nunca estreita uma representação.
+`none()` o fundo. Predefinições: 1 048 576 nós, 256 membros por união, 200 000
+itens de trabalho por percurso de um tipo declarado (resolução, tradução,
+expansão) e 8 000 000 por passagem de inferência de todo o programa; uma
+compilação de depuração do `clau` (sem `NDEBUG`) permite 16 000 e 1 000 000,
+para que os programas grandes continuem a compilar depressa, e pode alargar
+mais. O esgotamento alarga para `term()` com uma flag visível e nunca estreita
+uma representação.
 
 Os metadados declarados (`-type`, `-opaque`, `-nominal`, `-export_type`,
 `-spec`, `-callback`, `-optional_callbacks`) seguem a referência de typespecs
@@ -132,14 +247,14 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
 - As entradas exportadas, e as entradas das funções que `fun F/A` nomeia, são
   termos arbitrários. Uma função em que só se entra por chamadas diretas do
   lote (nem exportada nem nomeada por uma fun) toma como entradas a junção
-  (join) dos factos dos argumentos dos seus locais de chamada (step 58F,
-  `semantic/types/inference_inputs`), correspondidos pelos padrões da cabeça de
+  (join) dos factos dos argumentos dos seus locais de chamada
+  (`semantic/types/inference_inputs`), correspondidos pelos padrões da cabeça de
   cada cláusula; as chamadas recursivas também contam. As entradas começam em
   `none()` (uma função que nada chama nunca é executada e infere `none()`) e
   crescem ao longo de passagens pelo lote: 8 passagens juntam, as seguintes
   alargam como os resultados recursivos; as entradas que não estabilizaram
   após 16 passagens tornam-se `term()` (relatadas como alargadas).
-- Os literais têm factos exatos (step 58B):
+- Os literais têm factos exatos:
   os inteiros de qualquer tamanho e os caracteres são singletons, os átomos
   átomos singleton, os floats `float()`, as strings listas não vazias dos seus
   caracteres (`[]` para `""`), e `-`/`+` de um número literal mantém o seu
@@ -153,7 +268,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   `binary`/`bitstring` pelo facto do seu valor ou por qualquer múltiplo da sua
   unidade (`<<1, Rest/binary>>` é `nonempty_binary()`). Um operando que nunca
   produz um valor (`none()`) torna a construção `none()`.
-- Os operadores e os builtins (step 58C, `semantic/types/inference_operators`)
+- Os operadores e os builtins (`semantic/types/inference_operators`)
   calculam o seu resultado a partir dos factos dos seus operandos. Os
   singletons inteiros são dobrados exatamente até 4 096 bits por operando e
   resultado (incluindo bignums; um maior é
@@ -184,10 +299,11 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
 - As funções de identidade/projeção mantêm relações exatas com os argumentos,
   propagadas através de chamadas locais e remotas aninhadas, com variáveis
   novas por chamada.
-- Contentores (step 58D, `semantic/types/inference_containers`): uma lista
+- Contentores (`semantic/types/inference_containers`): uma lista
   `[E1, ..., En | T]` junta os seus elementos à frente do facto da cauda (uma
   lista própria quando a cauda o é, `nonempty_improper_list(H, T)` quando não
-  é uma lista, `term()` quando é desconhecida); `++`, `--`, `hd/1`, `tl/1`,
+  é uma lista, `nonempty_maybe_improper_list()` quando é desconhecida ou pode
+  ser imprópria: uma célula nunca é vazia, também num padrão como `[H | _]`); `++`, `--`, `hd/1`, `tl/1`,
   `element/2`, `setelement/3`, `tuple_to_list/1` e `map_get/2` leem e
   reconstroem os factos dos elementos membro a membro de uma união, sendo que
   um membro que lançaria não acrescenta nada. Uma atualização de map mantém as
@@ -198,23 +314,31 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   índice do campo. Uma list comprehension é uma lista possivelmente vazia dos
   factos dos seus modelos, uma binary comprehension um número qualquer de
   cópias do tamanho do seu modelo, uma map comprehension `map()`.
-- Funs (step 58E, `semantic/types/inference_funs`): `fun F/A` é uma fun da sua
+- Funs (`semantic/types/inference_funs`): `fun F/A` é uma fun da sua
   aridade que devolve o resultado inferido da função (o de um builtin ou, com
   uma aridade variável, `fun()`), `fun M:F/A` uma que devolve `term()`, e uma
   fun anónima uma que devolve os resultados juntos das suas cláusulas,
   incluindo os valores capturados. Uma chamada de um valor junta os resultados
-  das suas funs dessa aridade que os seus argumentos selecionam (step 58L;
-  `term()` para uma fun desconhecida, `none()` quando nenhum membro pode ser
+  das suas funs dessa aridade que os seus argumentos selecionam (`term()` para uma fun desconhecida, `none()` quando nenhum membro pode ser
   chamado assim).
   Uma fun anónima vinculada inteira a uma variável e chamada através dela é
   avaliada novamente para essa chamada, com os seus padrões a corresponder aos
   factos dos argumentos, no máximo com 4 dessas chamadas de profundidade, e os
   factos da sua primeira avaliação são repostos depois
-  (`Double = fun(Y) -> Y * 2 end, Double(3)` é 6). `apply/2,3` e as chamadas
-  dinâmicas permanecem `term()`. Como `fun F/A` pode nomear uma função
-  inferida mais tarde, as passagens pelo lote também se repetem até cada fun
-  dessas ter lido o resultado final da sua função; caso contrário, uma última
-  passagem dá-lhes resultados `term()`.
+  (`Double = fun(Y) -> Y * 2 end, Double(3)` é 6). `apply(F, Args)` (também
+  `erlang:apply/2`) é uma chamada de `F` com os argumentos que `Args` contém:
+  os elementos de uma lista própria literal, caso contrário os do seu facto
+  (`[]`, uma lista de posições conhecidas, ou tantas cópias do elemento de uma
+  lista própria quantas a aridade única de `F` aceita); uma fun anónima
+  vinculada é avaliada novamente como acima (`apply(fun kind/1, [1])`
+  seleciona `kind(1)`). `apply(M, F, Args)` cujos `M` e `F` são átomos
+  conhecidos que nomeiam uma função exportada do lote lê os tipos de função
+  dessa função como `fun F/A`. Os argumentos de comprimento desconhecido,
+  outros alvos e `M:F(Args)` com nomes variáveis permanecem `term()`. Como
+  `fun F/A` e `apply/3` podem nomear uma função inferida mais tarde, as
+  passagens pelo lote também se repetem até cada leitura dessas ter visto o
+  resultado final da sua função; caso contrário, uma última passagem dá-lhes
+  resultados `term()`.
 - As atribuições de valor completo no corpo e os aliases copiam o facto do
   lado direito (`Y = 42, Z = Y, id(Z)` infere 42); os padrões de tuplo, lista,
   map e record em tuplo dão às suas variáveis os factos das partes a que
@@ -222,7 +346,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   valor examinado), nas cláusulas `of` de um `try` (a partir do valor do seu
   corpo) e em geradores (a partir dos elementos da sua entrada ou das chaves e
   valores do map). Os valores não provados permanecem `term()` sem relações.
-- Estreitamento (narrowing) (step 58G, `semantic/types/inference_narrowing`,
+- Estreitamento (narrowing) (`semantic/types/inference_narrowing`,
   `inference_scopes`, `meet`): dentro de uma cláusula de função, `case`,
   `receive` ou fun, cada padrão interseta (meet) o valor a que corresponde
   (uma forma de literal, tuplo, lista, record em tuplo, map ou bitstring; o
@@ -239,8 +363,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   acumulando os limites de um teste (`10 >= X, X >= 0` é `0..10`); dois
   inteiros provados comparados estreitam-se mutuamente pelos seus limites
   (`X > Y` com `Y` em `0..5` faz `X` pelo menos 1), e `/=`, `=/=` com uma
-  constante deslocam para dentro um limite do intervalo igual a ela
-  (step 58H1). Um valor que possa ser um float ou outro termo não é
+  constante deslocam para dentro um limite do intervalo igual a ela. Um valor que possa ser um float ou outro termo não é
   estreitado. Uma conjunção aplica
   cada teste à vez, uma disjunção junta o que cada alternativa prova, `not` e
   os testes falsos não provam nada. Uma cláusula a seguir a outra cujos
@@ -256,11 +379,11 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   resultado. Os factos estreitados só valem dentro da sua cláusula ou operando;
   `catch`, o operando direito de `orelse` e cada cláusula repõem os factos de
   antes deles. Após um `case`, `if`, `receive`, `try` ou `maybe`, o facto de
-  uma variável é a junção dos seus factos no fim de cada cláusula que termina
-  (step 58H), pelo que `case X of forever -> ...; N when
+  uma variável é a junção dos seus factos no fim de cada cláusula que termina,
+  pelo que `case X of forever -> ...; N when
   is_integer(N), N >= 0 -> ... end` deixa `X` como
   `non_neg_integer() | forever`.
-- `try` e `maybe` (step 58J1): um `try` é a junção dos valores das suas
+- `try` e `maybe`: um `try` é a junção dos valores das suas
   cláusulas `of` (o do seu corpo, sem `of`) e dos valores das suas cláusulas
   catch; o corpo `after` não acrescenta nada. As cláusulas `of` começam a
   partir dos factos no fim do corpo e correspondem ao seu valor como as
@@ -279,7 +402,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   `try` juntam os do fim do seu corpo (sem `of`) e os de cada cláusula que
   termina; após um `maybe`, os do fim do seu corpo, os de cada cláusula `else`
   que termina e, sem `else`, os de antes dele.
-- Usos (step 58H, `semantic/types/inference_uses`): uma operação que lança a
+- Usos (`semantic/types/inference_uses`): uma operação que lança a
   menos que um operando tenha um tipo prova esse tipo para a variável que leu,
   depois de a operação retornar: a aritmética e `-`/`+` unários um
   `number()`, `div`, `rem`, os operadores de bits e `bnot` um `integer()`,
@@ -298,7 +421,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
 - Domínios de entrada e de sucesso: o domínio de entrada de cada argumento é a
   junção, sobre as cláusulas de função possíveis, do seu facto após a cabeça e
   o guard (o facto estreitado de uma variável simples, caso contrário o do
-  padrão); o seu domínio de sucesso (step 58H) é a junção, sobre as cláusulas
+  padrão); o seu domínio de sucesso é a junção, sobre as cláusulas
   que terminam, do seu facto no respetivo retorno normal. `--print-types`
   mostra o domínio de sucesso como entradas (`bounded(1..10) -> 1..10`,
   `inc(X) -> X + 1` como `inc(number()) -> number()`), ou o domínio de entrada
@@ -309,17 +432,18 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   sobrevive se todas as cláusulas devolverem o mesmo argumento. Um `case` ou
   `if` junta os resultados das suas cláusulas da mesma forma; uma vinculação
   definida por várias das suas cláusulas permanece `term()`.
-- Tipos de função (step 58K, `semantic/types/function_types`): além do resumo
+- Tipos de função (`semantic/types/function_types`): além do resumo
   em união acima, uma função mantém um tipo de função por cada cláusula
   possível, como as sobrecargas de uma `-spec`: os factos dos argumentos após
   a cabeça e o guard (o facto estreitado de uma variável simples, caso
   contrário o do padrão) e o resultado da cláusula (`none()` para uma cláusula
   que lança sempre; as cláusulas impossíveis não acrescentam nenhum). Uma
-  cláusula cujo corpo termina num `case` ou `if` divide-se num tipo de função
-  por cada ramo possível, com os factos dos argumentos após o padrão e o guard
-  desse ramo e o resultado do ramo (um nível: um `case` aninhado não se divide
-  mais). Os tipos de função com entradas iguais fundem-se (os seus resultados
-  juntam-se); para além de 8, os últimos fundem-se num só, com as entradas e
+  cláusula cujo resultado é um [facto dependente](#dependent-facts) dos seus
+  argumentos (um `case` ou `if` que a termina, ou uma variável vinculada a um,
+  aninhado a qualquer profundidade) divide-se num tipo de função por cada
+  cláusula desse facto, com os factos dos seus parâmetros intersetados com os
+  argumentos que nomeiam. Os tipos de função com entradas iguais fundem-se (os
+  seus resultados juntam-se); para além de 32, os últimos fundem-se num só, com as entradas e
   os resultados juntos. As componentes recursivas iteram-nos com os
   resultados, juntando (e depois alargando) o resultado de cada tipo em cada
   ronda; uma componente que não converge mantém apenas os seus resumos em
@@ -330,7 +454,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   dos seus resultados juntos com quaisquer entradas (intersetar uma fun de
   quaisquer entradas, como faz o uso `F(A)`, mantém-nos). A especialização,
   os domínios e as verificações de especificações leem o resumo em união.
-- As chamadas selecionam tipos de função (step 58L): uma chamada de uma função
+- As chamadas selecionam tipos de função: uma chamada de uma função
   com tipos de função lê, por ordem, cada tipo cujas entradas todos os factos
   dos argumentos intersetam, e para após um exato (padrões de variáveis novas
   usadas uma vez, átomos e inteiros literais, `[]` e tuplos destes; sem guard
@@ -351,7 +475,7 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   corresponder não acrescenta nada (`F = fun(1) -> one; (_) -> other end, F(2)`
   é `other`). As componentes recursivas convergem nos resultados e nos tipos
   de função.
-- As chamadas avaliam novamente a função chamada (step 58M): quando os factos
+- As chamadas avaliam novamente a função chamada: quando os factos
   dos argumentos de uma chamada estão dentro das entradas da função chamada e
   são mais estreitos numa delas, o corpo da função chamada é avaliado
   novamente com eles como entradas, como uma fun anónima vinculada, e o
@@ -374,14 +498,39 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   [domínio de inferência](#inference-domain)), e uma chamada recursiva pendente
   não acrescenta nada a uma junção. Uma função que nunca pode retornar
   permanece `none()`. Uma componente que não convergiu após 8 rondas mais 4 por
-  membro alarga todos os membros para `term()` (relatado como alargado, tal
-  como o esgotamento do orçamento) e uma ronda final recalcula os factos das
+  membro, ou cujas rondas gastaram mais de um oitavo do orçamento da passagem,
+  alarga todos os membros para `term()` (relatado como alargado, tal como o
+  esgotamento do orçamento) e uma ronda final recalcula os factos das
   expressões; os factos de expressões das rondas anteriores são descartados,
-  pelo que só restam os factos dos pressupostos finais.
+  pelo que só restam os factos dos pressupostos finais. Uma componente assim
+  é memorizada: as passagens seguintes dão de imediato `term()` aos seus
+  membros e executam apenas essa ronda final, em vez de voltarem a iterar até
+  ao limite. A passagem que alarga todas as entradas para `term()` esquece as
+  componentes memorizadas, pelo que cada uma tem mais uma resolução com essas
+  entradas.
+- As rondas nunca encolhem o resumo de um membro: os seus tipos de função
+  juntam-se com os da ronda anterior tipo a tipo (os resultados juntam-se, as
+  entradas alteradas juntam-se e o tipo deixa de ser exato) ou, quando o
+  número de tipos mudou, os tipos de ambas as rondas fundem-se. Como rede de
+  segurança, cada membro guarda os seus últimos 4 resumos, e um que regresse a
+  qualquer deles fica `term()` sem tipos de função durante o resto da
+  resolução, o que permite aos outros membros convergir.
+- Uma ronda só percorre os membros que leem um resumo alterado desde o seu
+  último percurso: cada percurso regista os resumos que lê (chamadas,
+  resultados de chamadas, `fun F/A`), um resumo alterado marca os seus
+  leitores e um membro não marcado mantém os seus factos de expressões. A
+  primeira ronda percorre todos os membros, pelo que, com todos os membros
+  marcados, uma ronda é a ronda completa dos passos anteriores.
 - Um orçamento de trabalho partilhado limita a inferência; o esgotamento perde
   precisão e recorre a código genérico, nunca rejeita um programa.
-- As especificações que contradizem a inferência são erros (step 58I,
-  `semantic/types/contracts`). Um tipo declarado torna-se os factos que contém
+- As especificações que contradizem a inferência são diagnosticadas
+  (`semantic/types/contracts`): um domínio de entrada de um argumento
+  contradito é um erro; um resultado contradito, e uma chamada cujos factos
+  dos argumentos todas as sobrecargas rejeitam, são avisos (a chamada pode
+  estar num caminho que nunca é executado). As especificações nunca se tornam
+  factos: a inferência, a especialização e a geração de código usam os tipos
+  inferidos, pelo que o programa se comporta de qualquer forma como o seu
+  código diz. Um tipo declarado torna-se os factos que contém
   (ou mais): os tipos built-in pelo nome (`byte()` é `0..255`, `timeout()` é
   `non_neg_integer() | infinity`, `iodata()` e `iolist()` listas de qualquer
   forma), os aliases pela sua definição, os tipos opacos e nominais pela sua
@@ -393,7 +542,8 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   (exceto se desconhecido, ou `none()`: uma função que nunca retorna serve
   para qualquer resultado), o domínio de entrada de um argumento, ou os factos
   dos argumentos de uma chamada face a todas as sobrecargas.
-  `none()`/`no_return()` só admite uma função que nunca retorna. O erro nomeia
+  `none()`/`no_return()` só admite uma função que nunca retorna. O diagnóstico
+  nomeia
   a função, o tipo declarado tal como foi escrito e o inferido. Como os factos
   inferidos podem conter mais valores do que o código produz, só um par
   disjunto é uma contradição: um tipo declarado mais estreito do que o
@@ -401,9 +551,90 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   compilador do OTP não verifica especificações
   ([diferenças](differences.md#language-edge-cases)).
 
+### Factos dependentes
+
+Código-fonte: `semantic/types/dependent`. Um `case`, `if` ou `try ... of`
+comporta-se como uma fun das variáveis que as suas cláusulas estreitam,
+aplicada a elas: o seu valor é um facto dependente, um tipo de função por cada
+cláusula possível.
+
+- Parâmetros: as variáveis vinculadas antes da construção que o seu valor
+  examinado (a última expressão do corpo de um `try`) e os seus guards leem,
+  pela ordem do código-fonte (as variáveis que os padrões das suas cláusulas
+  vinculam são novas em cada cláusula, não parâmetros); no máximo 4, o
+  estreitamento de um posterior é esquecido. Cada cláusula possível mantém os
+  factos dos parâmetros após o seu padrão e guard e o seu valor (`none()` para
+  uma cláusula que nunca termina); é exata, como um tipo de função (58L),
+  quando um `case` ou `try` faz corresponder um parâmetro ou um tuplo de
+  parâmetros com um padrão e um guard exatos, ou um `if` tem um guard exato.
+- Um valor examinado que é um tuplo de variáveis estreita cada variável para
+  o seu elemento do valor correspondido, e a variável de um padrão de tuplo é
+  vinculada ao mesmo valor que o elemento do valor examinado na sua posição
+  (`case {X, Y} of {A, b} when is_integer(A) -> ...` estreita `X` e `Y`).
+- Um `try ... of` depende das suas cláusulas `of`; as suas cláusulas catch
+  podem seguir qualquer valor do seu corpo, pelo que os seus valores juntos se
+  juntam ao valor de cada cláusula
+  (`try X of 1 -> one; _ -> other catch _:_ -> error end` é
+  `$try_of_operator(X :: 1) -> error | one; (X :: _) -> error | other`).
+- `receive` e `maybe ... else` continuam a ser a junção das suas cláusulas: as
+  suas cláusulas fazem corresponder uma mensagem ou um valor de `?=` falhado
+  que nada fora delas pode nomear, pelo que nenhuma leitura poderia escolher
+  entre elas.
+- Uma cláusula cujo valor é ele próprio dependente (um `case` ou `if`
+  aninhado, ou a leitura de uma variável dependente) contribui com um tipo de
+  função por cada cláusula dele sobre a união das duas listas de parâmetros,
+  com as entradas intersetadas. Os tipos em que nunca se pode entrar (uma
+  entrada `none()`, ou dentro das entradas de um tipo exato anterior) são
+  descartados, tal como os parâmetros cujos factos são iguais em todos os
+  tipos; as entradas iguais fundem-se e, para além de 32 tipos, os últimos
+  fundem-se (58K). Uma construção cujos tipos restantes dão todos o mesmo
+  valor, ou que não estreita nenhum parâmetro, é a sua junção simples.
+- Todos os outros consumidores leem o facto apagado, a junção dos valores das
+  cláusulas. Os factos que saem da função percorrida (resultados, tipos de
+  função, factos de funs) são apagados; as junções só mantêm uma dependência
+  quando ambos os lados têm a mesma.
+- Uma variável vinculada a um valor dependente mantém-no. Ler a variável
+  seleciona as cláusulas em que os factos atuais dos seus parâmetros entram
+  (ordem de 58L, parando numa cláusula exata cujas entradas os contêm) e cujos
+  valores intersetam o facto estreitado da própria variável, e o facto da
+  leitura é a junção dos seus valores
+  (`Y = case X of 1 -> one; _ -> other end, case X of 1 -> Y end` lê `one`).
+- Uma variável que todas as cláusulas de um `case` ou `if` vinculam é a junção
+  dos seus factos no fim das cláusulas que terminam, dependente dos parâmetros
+  da construção tal como o seu valor:
+  `case X of 1 -> Y = 5; _ -> Y = 6 end, Y` infere `(1) -> 5; (_) -> 6`.
+  A mesma junção aplica-se depois de `receive`, `try` e `maybe`, sem
+  dependência.
+- Os operadores, os builtins, as construções de tuplos, listas, maps e
+  records, e as chamadas de funções do lote (com os seus tipos de função
+  selecionados como em 58L, sem voltar a estreitar os argumentos) com
+  operandos dependentes são avaliados uma vez por cada combinação das
+  cláusulas dos operandos, com os valores dessas cláusulas no lugar dos factos
+  dos operandos e as suas entradas intersetadas: as leituras de uma mesma
+  variável tomam a mesma cláusula, os outros operandos combinam-se, no máximo
+  16 combinações (para além disso, o uso é a junção simples). `R + 1` com
+  `R = case X of a -> 1; b -> 2 end` infere `(a) -> 2; (b) -> 3`.
+- Estreitar uma variável dependente (um padrão, um guard, um uso) estreita
+  também os seus parâmetros para a junção das entradas das cláusulas em que se
+  entra cujos valores intersetam o facto estreitado, e por sua vez os
+  parâmetros destes, até 4 níveis: depois de
+  `R = case X of a -> 1; b -> 2 end`, `case R of 1 -> X end` lê `X` como `a`.
+- O resultado dependente de uma cláusula de função divide-a (ver Tipos de
+  função): os parâmetros que nomeiam um argumento, ou um nome vinculado ao seu
+  valor, intersetam a sua entrada; os outros são descartados (um tipo assim só
+  é exato se a sua entrada for qualquer termo). `nested_case(X, L)` com
+  `case X of 1 -> case L of spanish -> uno;
+  _ -> one end; _ -> other end` infere `(1, spanish) -> uno; (1, _) -> one;
+  (_, _) -> other`.
+- `--print-types` anota um valor dependente como um tipo de função com o nome
+  da sua construção, cada entrada a seguir ao nome do seu parâmetro:
+  `case X of 1 -> one; _ -> other end` termina em
+  `end. % $case_of_operator(X :: 1) -> one; (X :: _) -> other`; um `if`
+  imprime `$if_operator`, um `try ... of` `$try_of_operator`.
+
 ### Domínio de inferência
 
-Decisão do plan 11 step 58A (`semantic/types/lattice`). Um facto é um conjunto
+Código-fonte: `semantic/types/lattice`. Um facto é um conjunto
 de valores que uma variável ou um resultado pode ter. Os factos juntam-se onde
 o fluxo de controlo se encontra (cláusulas, ramos) e alargam-se entre as
 rondas de uma componente recursiva; cada orçamento abaixo alarga de forma
@@ -421,9 +652,9 @@ impressos como tipos Erlang, as categorias pelos seus nomes built-in.
 | Números | `number()` | Um intervalo ou categoria de inteiros junto com `float()` | Inteiros singleton com `float()` permanecem `1 \| float()` |
 | Átomos | `ok`, `error \| ok`, `boolean()` | União de singletons; exatamente `false` e `true` imprimem `boolean()` | Mais de 8 singletons tornam-se `atom()` |
 | Identificadores | `pid()`, `port()`, `reference()` | — | — |
-| Tuplos | `{ok, 1}`, `tuple()`, `#point{x :: 0, y :: _}` | Os tuplos do mesmo tamanho cujos primeiros elementos não sejam dois átomos diferentes (a sua etiqueta) juntam-se elemento a elemento; os outros permanecem membros separados | Mais de 16 elementos tornam-se `tuple()`, a menos que todos os elementos sejam conhecidos; mais de 8 formas separadas tornam-se `tuple()`. Um tuplo com o nome e o tamanho de um record em tuplo visível é impresso como o record (step 58J) |
-| Listas | `[]`, `[T]`, `[T, ...]`, `nonempty_improper_list(H, T)`, `[1, a]`, `[a, b \| T]` | Os elementos juntam-se; `[]` com uma lista não vazia dá uma possivelmente vazia; as listas impróprias juntam cabeças e caudas. As listas de dois ou mais elementos conhecidos mantêm as suas posições (step 58J; uma notação do Clause, a linguagem de tipos não tem nenhuma, elementos impressos com `\|` entre parênteses): as listas posicionais do mesmo comprimento juntam-se posição a posição, caso contrário juntam-se como listas simples | Uma lista de `0..1114111` (`char()`) imprime `string()` ou `nonempty_string()`; uma lista possivelmente vazia de `_` imprime `list()` |
-| Maps | `#{}`, `#{a := 1}`, `#{1..17 => a}`, `map()` | Os maps com as mesmas chaves juntam-se valor a valor; os maps de outras chaves juntam-se numa única associação das suas chaves e valores juntos (`=>`: qualquer chave pode faltar, step 58J) | Mais de 16 chaves juntam-se numa única associação |
+| Tuplos | `{ok, 1}`, `tuple()`, `#point{x :: 0, y :: _}` | Os tuplos do mesmo tamanho cujos primeiros elementos não sejam dois átomos diferentes (a sua etiqueta) juntam-se elemento a elemento; os outros permanecem membros separados | Mais de 16 elementos tornam-se `tuple()`, a menos que todos os elementos sejam conhecidos; mais de 8 formas separadas tornam-se `tuple()`. Um tuplo com o nome e o tamanho de um record em tuplo visível é impresso como o record |
+| Listas | `[]`, `[T]`, `[T, ...]`, `nonempty_improper_list(H, T)`, `[1, a]`, `[a, b \| T]` | Os elementos juntam-se; `[]` com uma lista não vazia dá uma possivelmente vazia; as listas impróprias juntam cabeças e caudas. As listas de dois ou mais elementos conhecidos mantêm as suas posições (uma notação do Clause, a linguagem de tipos não tem nenhuma, elementos impressos com `\|` entre parênteses): as listas posicionais do mesmo comprimento juntam-se posição a posição, caso contrário juntam-se como listas simples | Uma lista de `0..1114111` (`char()`) imprime `string()` ou `nonempty_string()`; uma lista possivelmente vazia de `_` imprime `list()` |
+| Maps | `#{}`, `#{a := 1}`, `#{1..17 => a}`, `map()` | Os maps com as mesmas chaves juntam-se valor a valor; os maps de outras chaves juntam-se numa única associação das suas chaves e valores juntos (`=>`: qualquer chave pode faltar) | Mais de 16 chaves juntam-se numa única associação |
 | Funs | `fun((term()) -> 1)`, `fun()` | As funs de uma aridade juntam os seus resultados; outras aridades dão `fun()` | — |
 | Bitstrings | `<<_:16>>`, `<<_:3, _:_*2>>`, `binary()` | O tamanho menor mais cada diferença de tamanhos como unidade | Base e unidade 0/8, 8/8, 0/1, 1/1 imprimem `binary()`, `nonempty_binary()`, `bitstring()`, `nonempty_bitstring()` |
 
@@ -433,11 +664,16 @@ impressos como tipos Erlang, as categorias pelos seus nomes built-in.
   declarados; mais de 8 membros tornam-se `term()`.
 - Os contentores aninham-se no máximo 4 níveis; um facto mais profundo
   torna-se `term()`.
+- Uma união descarta um membro tuplo exato que outro tuplo exato do mesmo
+  tamanho contém (de dois que se contêm mutuamente, fica o anterior), para que
+  um conjunto de valores tenha uma única união; sem isso, as recursões sobre
+  árvores alcançavam os mesmos valores em formas alternadas e as suas rondas
+  nunca estabilizavam.
 - Uma componente recursiva junta os resultados durante 8 rondas (ciclos de até
   8 funções convergem exatamente) e depois alarga-os. Uma componente que não
   convergiu após mais 4 rondas por membro alarga todos os membros para
   `term()` e é relatada como alargada, tal como um orçamento esgotado.
-- O estreitamento (plan steps 58G, 58H, `Lattice::meet`) é a interseção
+- O estreitamento (58H, `Lattice::meet`) é a interseção
   (meet) dos factos, os valores que ambos contêm (ou mais, mas `none()` apenas
   quando não partilham nenhum): os padrões e os guards (testes de tipo como
   `is_integer/1` estreitam o seu argumento para a categoria) estreitam dentro
@@ -449,11 +685,56 @@ impressos como tipos Erlang, as categorias pelos seus nomes built-in.
   apenas do código e nunca decidem uma representação com base na palavra de
   uma spec.
 
-O rebaixamento (lowering) consome estes factos. O IR gerado nunca converte um
-inteiro num ponteiro para o heap; cada resultado de serviço falível só é
+O rebaixamento (lowering) consome estes factos. Em `-O2` com especialização de
+tipos, os factos dos argumentos juntos a partir dos chamadores e das
+expressões removem verificações de tag, de forma e de serviços
+([provas](specialization.md#proofs)); as únicas conversões para ponteiros do
+heap são essas leituras provadas. Cada resultado de serviço falível só é
 carregado no seu caminho de sucesso, e as verificações de forma dominam a
 extração. Política de especialização:
 [specialization.md](specialization.md).
+
+### Cache de inferência
+
+Os módulos nos diretórios da [cache de inferência](projects.md#inference-cache)
+podem começar uma compilação com os resultados que uma compilação anterior
+guardou: resumos, entradas locais e factos de expressões das suas funções.
+`infer` mantém-nos fixos em todas as passagens, nunca percorre uma componente
+cujos membros os reutilizam todos, e percorre todas as outras funções como
+habitualmente, lendo os resumos guardados como quaisquer outros.
+
+- **De que dependem os factos de um módulo.** As funções exportadas e as
+  funções que um `fun F/A` nomeia começam em `term()`; as entradas de todas as
+  outras funções vêm dos seus chamadores, que estão no mesmo módulo; um facto
+  só nomeia uma função de outro módulo através de um átomo: uma chamada
+  remota, `fun M:F/A`, ou `apply/2,3` sobre um facto de átomo (e só lê a
+  disposição de records de outro módulo através de um native record que
+  qualifica ou importa), e cada facto de átomo vem de um átomo que o módulo
+  escreve ou de um facto de um módulo que alcança. Assim, os factos de um
+  módulo dependem apenas do seu próprio código e do código dos módulos do lote
+  que os seus átomos nomeiam, transitivamente. A chave dos seus resultados
+  guardados cobre exatamente isso: a identidade do `clau`, a impressão digital
+  do módulo (o seu código-fonte, cada ficheiro que inclui, as opções de
+  pré-processamento e a resposta de uma parse transform), as formas
+  predefinidas, o estado de escript e de biblioteca, e o mesmo para cada
+  módulo do lote que os seus átomos alcançam. Um módulo alcançado assim que não
+  tenha impressão digital torna o módulo impossível de guardar em cache.
+- **Vivacidade.** A vivacidade das exportações só remove funções, e um
+  chamador removido só estreita as entradas das funções que chamava: os
+  factos calculados com mais funções vivas continuam válidos. Os resultados
+  guardados são reutilizados quando contêm todas as funções vivas agora
+  (`results do not fit` caso contrário); as funções deixadas de fora não
+  recebem nada.
+- **Mistura.** Resultados guardados e novos podem encontrar-se num lote: os
+  factos de cada módulo valem para todas as execuções do programa, digam o que
+  disserem os factos de outro módulo, pelo que um módulo novo que leia um
+  resumo guardado (ou o inverso) continua correto. Uma componente recursiva
+  com membros de ambos os tipos é percorrida inteira.
+- **Precisão.** Os resultados reutilizados são os da compilação que os
+  guardou. Os resultados de um módulo novo podem ainda diferir de uma
+  compilação sem a cache: o orçamento da passagem deixa de pagar pelos módulos
+  reutilizados, e as identidades do grafo, pelas quais alguns membros de
+  uniões são ordenados, são numeradas de outra forma.
 
 ## `--print-types`
 
@@ -469,14 +750,14 @@ permanecem no stderr.
 -module(branches).
 -export([mixed/1]).
 
-%% inferred: mixed(_) -> 1..2
+%% inferred: mixed(1) -> 1; (_) -> 2
 mixed(X) ->
     case X of
         1 ->
             1;
         _ ->
             2
-    end :: 1..2.
+    end. % $case_of_operator(X :: 1) -> 1; (X :: _) -> 2
 ```
 
 - Uma linha `%% module` nomeia o módulo, o seu código-fonte, o alvo do projeto
@@ -495,13 +776,17 @@ mixed(X) ->
   `f(integer()) -> integer(); (atom()) -> string()`
   (`semantic::types::function_source`). Uma `-spec` fica junto da função logo a seguir a
   ela, separada das outras formas por uma linha em branco.
-- As expressões cujo facto diz mais do que `term()` são anotadas
-  `Expression :: Type` (um tipo conhecido esconde uma relação com um argumento,
-  que só aparece para um valor que não se sabe ser mais nada): entre
-  parênteses dentro de outras expressões, sem eles
-  para uma expressão completa do corpo. Os termos literais (literais, e tuplos,
-  listas, maps construídos e bitstrings de literais) e as correspondências não
-  são anotados (o lado direito de uma correspondência é).
+- A expressão mais exterior de cada linha (uma expressão do corpo, ou o valor
+  examinado de um `case`) cujo facto diz mais do que `term()` é anotada com um
+  comentário final `% Type` depois da pontuação da linha (um tipo conhecido
+  esconde uma relação com um argumento, que só aparece para um valor que não
+  se sabe ser mais nada): no máximo uma anotação por linha, nenhuma para as
+  expressões aninhadas nela, para que a saída continue a ser Erlang válido.
+  Uma expressão do corpo em várias linhas leva a sua anotação na última linha
+  (`end, % ...`). Os termos literais (literais, e tuplos, listas, maps
+  construídos e bitstrings de literais) não são anotados; uma correspondência
+  mostra o seu valor. Um valor dependente é impresso como um tipo de função da
+  sua construção ([factos dependentes](#dependent-facts)).
 - Um valor que a inferência provou ser igual a um dos argumentos da função, e
   que não se sabe ser mais nada, é impresso com o nome desse argumento, uma
   variável de tipo: a variável que lhe dá a primeira cláusula que vincula o
@@ -559,19 +844,19 @@ sum() -> 1 + 2.
   valor desse tipo. As categorias são esperadas sob os seus nomes built-in, os
   conjuntos de inteiros limitados como intervalos. Todas as funções atingem o
   seu tipo esperado.
-- `clauses.erl` abrange os tipos de função (step 58K): testes de tipo e
+- `clauses.erl` abrange os tipos de função: testes de tipo e
   padrões literais por cláusula, entradas iguais fundidas, uma cláusula em que
   os chamadores nunca entram, mais cláusulas do que o orçamento, uma função
   recursiva, uma única cláusula, um `case` e um `if` a terminar o corpo, um
   `case` aninhado e um `case` que não é o último, funs anónimas com várias
   cláusulas, `fun F/A`, junções de funs iguais e diferentes, e uma cláusula que
-  lança sempre; a seleção de chamadas (step 58L): um teste de tipo, um
+  lança sempre; a seleção de chamadas: um teste de tipo, um
   primeiro ramo exato, argumentos desconhecidos, nenhum tipo admitido, o
   estreitamento após a chamada, um argumento literal, um intervalo sobre duas
   cláusulas, chamadas aninhadas, uma função local com vários chamadores, uma
   função chamada recursiva, e funs com várias cláusulas vinculadas, num tuplo,
   passadas a uma função local e chamadas com um argumento desconhecido; e a
-  avaliação por chamada (step 58M): resultados por chamada, aninhamento até ao
+  avaliação por chamada: resultados por chamada, aninhamento até ao
   orçamento de profundidade e para além dele, uma função chamada acima do
   orçamento de tamanho, uma função chamada recursiva e argumentos
   desconhecidos.

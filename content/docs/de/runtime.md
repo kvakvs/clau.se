@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 06042fa
-sourceSha256: 6baeafe0372058547653e00c8d05e2f39a894329ac165b982d1553ad6ba2093e
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 487cb38fceea0b489183ca4c47c3c3b8494d2df44fd821e82de92e1c896f5864
+translatedAt: 2026-10-15
 ---
 # Runtime
 
@@ -141,6 +141,15 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
 - Eine `ModuleRegistry` bildet exakten Namen/Stelligkeit (≤ 255) auf ein
   aufrufbares Objekt ab, das nur mit `Term` arbeitet. `load` friert sie ein und
   veröffentlicht sie; Duplikate oder Fehler veröffentlichen nichts.
+- Die Registrierung indiziert außerdem die Bindungen erzeugter Module in
+  Hash-Maps: Modul-, Record- und Fun-Deskriptoren auf ihre Bindungen und
+  Definitionen sowie Atomwörter von `Module:Function/Arity` auf Export-Frames.
+  Dynamische Aufrufe, `apply/3`, `fun M:F/A` zur Laufzeit und
+  Deskriptor-Abfragen brauchen daher erwartet konstante Zeit in der Anzahl der
+  Module und Exporte (etwa 80 ns pro Export-Abfrage in Debug mit 10 oder 400
+  Modulen). Die Indizes werden innerhalb der Registrierung gebaut: Ein
+  abgewiesenes Modul fügt keinen Eintrag hinzu, und sie ändern sich nur unter
+  der exklusiven Sperre des Servers.
 - `resolve` unterscheidet fehlendes Modul und fehlenden Export.
   `ResolvedFunction` hält das Modul-Image fest; `call` prüft Stelligkeit,
   Argumente und Ergebnisse und verwandelt Host-Ausnahmen in Fehler.
@@ -163,6 +172,35 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
   funs, die zur Laufzeit gebaut werden.
 - `CodeServer::unload` ist zurückgestellt; dynamisches Laden wird nicht
   unterstützt.
+
+## Persistente Terme
+
+Quelle: `memory/persistent_terms`. Eine Tabelle pro Runtime, im Besitz von
+`Runtime::Impl` und erreichbar über `ProcessContext::persistent_terms()`, hält
+die Terme von `persistent_term` (Builtins: step 41M2).
+
+- Ein Schlüssel und sein Wert werden jeweils in einen `MessageBuffer`
+  ([Nachrichtenpuffer](runtime-heap.md#message-buffers)) außerhalb jedes
+  Prozesses kopiert, sodass sie den Prozess überleben, der sie gespeichert hat,
+  und keine Speicherbereinigung sie verschiebt.
+- Einträge werden über einen Hash des Schlüssels (die Builtins verwenden den
+  Term-Hash von `phash2`) und exakte Gleichheit gefunden, direkt im Puffer
+  verglichen (`MessageBuffer::value`).
+- Ein Lesen kopiert den Wert in den Heap des Lesers (entschieden 2026-10-14).
+  OTP gibt stattdessen eine Referenz in einen Literalbereich heraus und kopiert
+  nur beim Ersetzen oder Löschen über eine globale Speicherbereinigung; die
+  Zulassung von Clause akzeptiert nur Wörter aus den eigenen Bereichen des
+  Prozesses, daher bräuchten Literale an Ort und Stelle eine neue gemeinsame
+  Term-Region. Das Kopieren hält jeden Prozess-Heap in sich abgeschlossen: Ein
+  ersetzter oder gelöschter Wert wird freigegeben, wenn der letzte Leser, der
+  ihn noch kopiert, seine Pufferreferenz aufgibt, und keine globale
+  Speicherbereinigung ist nötig. Lesevorgänge kosten die Größe des Werts
+  ([Unterschiede](differences.md)).
+- Eine geteilte Sperre bedient Leser auf beliebig vielen Workern; Schreiben und
+  Löschen nehmen sie exklusiv und kopieren nie, während sie sie halten. CTest
+  `runtime_persistent_terms` deckt Werte ab, die ihren Schreiber überleben,
+  ersetzte Werte, die Leser halten, nebenläufige Leser und Schreiber sowie
+  freigegebene Belastungen.
 
 ## Scheduler-Buchführung
 
@@ -188,18 +226,18 @@ Signal-Eingang an (`runtime/include/mailbox.hpp`).
 
 ## Threads
 
-Scheduler-Worker (Plan-Step 56, [Worker](processes.md#workers)) führen
+Scheduler-Worker ([Worker](processes.md#workers)) führen
 Prozesse auf mehreren Threads einer Runtime aus. Dienste, die sie gemeinsam
 nutzen, sind synchronisiert; alles andere bleibt auf den Thread beschränkt, der
 seinen Prozess ausführt, oder wird durch den Mutex des Executors geschützt.
 
-- Atome (step 54): `AtomStorage` schützt beide Indizes mit einem Shared Mutex.
+- Atome: `AtomStorage` schützt beide Indizes mit einem Shared Mutex.
   Abfragen (`lookup`, `boolean`, `size`) teilen ihn; `intern` sucht unter der
   geteilten Sperre, und nur eine neue Schreibweise nimmt die exklusive Sperre,
   prüft erneut und veröffentlicht den Eintrag, sodass konkurrierende
   Internierungen einer Schreibweise ein einziges Wort erhalten. Wörter bleiben
   stabil: Ein Eintrag wird vor dem Abbau nie geändert oder entfernt.
-- Code (step 55): `CodeServer` schützt seine Module und die Definitionen
+- Code: `CodeServer` schützt seine Module und die Definitionen
   externer funs mit einem Shared Mutex. Abfragen (`find_module`, `resolve`,
   `atom_word`, `record_definition`, `fun_definition`, `export_frame`,
   `function_frame`, `owns`) teilen ihn; `load` und der Aufbau einer neuen
@@ -213,12 +251,12 @@ seinen Prozess ausführt, oder wird durch den Mutex des Executors geschützt.
   Definitionen, Frames und Atom-Slots, die er zurückgegeben hat, für jeden
   Aufruf und jede fun-Zelle gültig bleiben. Handles von `ResolvedFunction` und
   `find_module` behalten ihr Modul auch, nachdem die Runtime weg ist.
-- Pid-Nummern (step 56): `ProcessNumbers` vergibt Nummern unter einer
+- Pid-Nummern: `ProcessNumbers` vergibt Nummern unter einer
   exklusiven Sperre und akzeptiert Pid-Wörter unter einer geteilten.
-- Speicher (step 56): Das runtimeweite Konto (`RuntimeMemory`) belastet und
+- Speicher: Das runtimeweite Konto (`RuntimeMemory`) belastet und
   entlastet mit atomaren Operationen; eine Belastung bringt das Konto nie über
   eine optionale Grenze.
-- Port-I/O (Steps 57C–57F): Die Lese-, Schreib- und Überwachungs-Threads des
+- Port-I/O: Die Lese-, Schreib- und Überwachungs-Threads des
   I/O-Dienstes und der Socket-Thread ([Ports](ports.md#io-thread)) berühren
   Prozesszustand nur über den Mutex des Executors.
 - Linken: Unter Linux fügt die Runtime für ihre Threads `-pthread` hinzu; unter
@@ -256,7 +294,7 @@ Diese melden eine Zeile `[feature] notimpl` ([Features](features.md)) und
 
 | Grenze | Fehler |
 | --- | --- |
-| `TermFactory::port` (noch keine Ports, Plan-Step 53), `reference(ReferenceIdentity)` und `function(FunctionIdentity)` | `TermError::not_implemented` |
+| `TermFactory::port` (noch keine Ports), `reference(ReferenceIdentity)` und `function(FunctionIdentity)` | `TermError::not_implemented` |
 | `SchedulerService::run` / `execute` | `SchedulerError::not_implemented` |
 | `CodeServer::unload` | `CodeError::not_implemented` |
 | `dispatch_builtin` auf einem katalogisierten BIF | `Status::not_implemented` |

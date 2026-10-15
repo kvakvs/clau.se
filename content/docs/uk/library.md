@@ -1,29 +1,34 @@
 ---
 source: docs/library.md
-sourceCommit: 06042fa
-sourceSha256: 8f2e8537bf42e4f4e23eff414105ee6bb25929992d881da864e86e3eee56eb56
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 827659aa3cf1548562f97b6e8d7a37e0f230599570a6c78628cd7a72896102f9
+translatedAt: 2026-10-15
 ---
 # Модулі бібліотеки
 
-План 11, крок 39 (2026-10-07): власна підмножина проєкту з модулів OTP
-`lists` і `maps`, написана на Erlang за документованою поведінкою OTP (не
-скопійована з вихідних кодів OTP) і скомпільована разом із програмами, що її
-використовують.
+Власна підмножина проєкту з модулів OTP `lists` і
+`maps`, написана на Erlang за документованою поведінкою OTP (не скопійована з
+вихідних кодів OTP) і скомпільована разом із програмами, що її використовують.
 
 ## Вміст
 
 | Модуль | Функції |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | `append/1,2`, `filter/2`, `foldl/3`, `foldr/3`, `keyfind/3`, `map/2`, `member/2`, `nth/2`, `reverse/1,2`, `seq/2,3`, `sort/1` |
-| [`maps`](../library/stdlib/maps.erl) | `find/2`, `fold/3`, `from_list/1`, `get/2`, `keys/1`, `put/3`, `to_list/1`, `values/1` |
-| [`file`](../library/stdlib/file.erl) | `open/2`, `read/2`, `write/2`, `read_line/1`, `position/2`, `close/1`, `read_file/1`, `write_file/2`, `delete/1`, `rename/2`, `list_dir/1`, `make_dir/1`, `del_dir/1` поверх файлового драйвера ([файли](ports.md#standard-io-and-files)) |
-| [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (сервер стандартного вводу або відкритий файл); `format/1,2` і `put_chars/1` є вбудованими функціями runtime |
-| [`gen_tcp`](../library/stdlib/gen_tcp.erl) | `listen/2`, `accept/1,2`, `connect/3,4`, `send/2`, `recv/2,3`, `shutdown/2`, `controlling_process/2`, `close/1` поверх портів-сокетів ([сокети](ports.md#sockets-57f)) |
-| [`gen_udp`](../library/stdlib/gen_udp.erl) | `open/1,2`, `send/4`, `recv/2,3`, `controlling_process/2`, `close/1` |
-| [`inet`](../library/stdlib/inet.erl) | `port/1`, `sockname/1`, `peername/1`, `setopts/2`, `close/1` |
-| [`clause_socket`](../library/stdlib/clause_socket.erl) | Власний модуль Clause: протокол драйвера сокетів, спільний для трьох модулів вище |
-| [`os`](../library/stdlib/os.erl) | `cmd/1` через порт ([підпроцеси](ports.md#subprocesses)); `type/0` і `getenv/1` є вбудованими функціями runtime |
+| [`lists`](../library/stdlib/lists.erl) | `append/1,2`, `filter/2`, `foldl/3`, `foldr/3`, `keyfind/3`, `map/2`, `member/2`, `nth/2`, `reverse/1,2`, `seq/2,3`, `sort/1`, `foreach/2`, `mapfoldl/3`, `mapfoldr/3`, `partition/2`, `splitwith/2`; вбудовані функції runtime `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`, `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2`, `keymember/3`, `keysearch/3`, `keydelete/3` ([модуль lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | `find/2`, `fold/3`, `from_list/1`, `get/2`, `keys/1`, `put/3`, `to_list/1`, `values/1`, `filter/2`, `map/2`, `foreach/2`, `update_with/3,4`; вбудовані функції runtime `get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`, `take/2`, `update/3`, `with/2`, `without/2`, `from_keys/2` ([модуль maps](builtins.md#maps-module)) |
+| [`file`](../library/kernel/file.erl) | `open/2`, `read/2`, `write/2`, `read_line/1`, `position/2`, `close/1`, `read_file/1`, `write_file/2,3`, `read_file_info/1,2`, `delete/1`, `rename/2`, `list_dir/1`, `make_dir/1`, `del_dir/1` поверх файлового драйвера ([файли](ports.md#standard-io-and-files)) |
+| [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (сервер стандартного вводу або відкритий файл), `request/1,2`, `requests/1,2` (протокол вводу-виводу OTP, [файли](ports.md#standard-io-and-files)); `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` і `nl/0,1` є вбудованими функціями runtime ([io](io.md)) |
+| [`gen_tcp`](../library/kernel/gen_tcp.erl) | `listen/2`, `accept/1,2`, `connect/3,4`, `send/2`, `recv/2,3`, `shutdown/2`, `controlling_process/2`, `close/1` поверх портів-сокетів ([сокети](ports.md#sockets-57f)) |
+| [`gen_udp`](../library/kernel/gen_udp.erl) | `open/1,2`, `send/4`, `recv/2,3`, `controlling_process/2`, `close/1` |
+| [`inet`](../library/kernel/inet.erl) | `port/1`, `sockname/1`, `peername/1`, `setopts/2`, `close/1` |
+| [`clause_socket`](../library/kernel/clause_socket.erl) | Власний модуль Clause: протокол драйвера сокетів, спільний для трьох модулів вище |
+| [`erlang`](../library/erts/erlang.erl) | Згенеровані заглушки кожного експорту `erlang` з OTP 29; вбудовані функції замінюють свої, `nif_error/1,2` мають тіла, інші під час виклику породжують `{not_implemented, F, A}` ([модуль erlang](builtins.md#erlang-module)) |
+| [`binary`](../library/stdlib/binary.erl) | Кожна функція OTP 29: `replace/3,4` і `list_to_bin/1` на Erlang, інші — вбудовані функції runtime ([модуль binary](builtins.md#binary-module)) |
+| [`unicode`](../library/stdlib/unicode.erl) | Перетворення, `bin_is_7bit/1` і маркери порядку байтів як вбудовані функції runtime ([модуль unicode](builtins.md#unicode-module)); нормалізація й властивості — заглушки |
+| [`math`](../library/stdlib/math.erl) | Кожна функція OTP 29 як вбудована функція runtime ([модуль math](builtins.md#math-module)) |
+| [`persistent_term`](../library/erts/persistent_term.erl) | Кожна функція OTP 29 як вбудована функція runtime ([постійні терми](builtins.md#persistent-terms)) |
+| [`code`](../library/kernel/code.erl) | Запити про завантажені модулі як вбудовані функції runtime без сервера коду ([модуль code](builtins.md#code-module)); шляхи й завантаження — заглушки |
+| [`os`](../library/kernel/os.erl) | `cmd/1` через порт ([підпроцеси](ports.md#subprocesses)), `timestamp/0`, `system_time/0,1`, `perf_counter/0,1`, `getenv/2`; `type/0`, `getenv/0,1`, `env/0`, `putenv/2`, `unsetenv/1`, `getpid/0` і `version/0` є вбудованими функціями runtime |
 
 Результати й причини помилок збігаються з OTP 29, включно з формою помилок
 реалізацій OTP на Erlang (`lists:map(F, x)` дає `{case_clause, x}`,
@@ -36,15 +41,21 @@ translatedAt: 2026-10-09
 ## Як програми їх отримують
 
 - Коли пакет (batch; позиційні вхідні файли або одна ціль проєкту) називає
-  модуль літеральним атомом — `M:F(...)` з літеральним `M`, `fun M:F/A` або
-  `apply(M, F, Args)` з літеральним `M`, — який не визначено в жодному
-  вхідному файлі, і існує `<library>/M.erl`, компілятор розбирає й компілює
-  цей файл у пакет, а потім повторює це для модулів, які називають додані
-  файли. Виклик `M:F(...)` вбудованої функції каталогу (`io:format/2`,
-  `os:type/0`) не називає модуля.
-- `<library>` — це `library/stdlib` дерева збірки, що знаходиться відносно
-  `clau`, як і архів runtime.
-- Модуль пакета з тим самим ім'ям замінює модуль бібліотеки.
+  модуль літеральним атомом — `M:F(...)` з літеральним `M`, `fun M:F/A`,
+  `apply(M, F, Args)` з літеральним `M`, `-behaviour(M)` або
+  `-import(M, ...)`, — який не визначено в жодному вхідному файлі, компілятор
+  шукає `M.erl` у каталогах застосунків бібліотеки, потім у
+  `source_search_paths` проєкту ([проєкти](projects.md#paths-and-discovery)),
+  розбирає й компілює перший знайдений файл у пакет, а потім повторює це для
+  модулів, які називають додані файли
+  ([до якого модуля розв'язується ім'я](#which-module-a-name-resolves-to)).
+  Виклик `M:F(...)` вбудованої функції каталогу (`io:format/2`, `os:type/0`)
+  не називає модуля.
+- Бібліотека — це `library/` дерева збірки, що знаходиться відносно `clau`,
+  як і архів runtime, з окремим каталогом для кожного застосунку OTP (`erts`,
+  `kernel`, `stdlib`).
+- Модуль пакета з тим самим ім'ям замінює модуль бібліотеки з
+  попередженням.
 - Модулі бібліотеки — звичайні модулі пакета: вони компонуються у виконувані
   файли, а для виводу об'єктних файлів чи IR створюють власні артефакти.
 - Модуль, до якого звертаються лише через імена під час виконання
@@ -52,3 +63,191 @@ translatedAt: 2026-10-09
   якщо щось інше не називає цей модуль.
 - Функції бібліотеки — це код на Erlang, тож вони поступатимуться процесором
   (yield), як і інший код, щойно з'явиться планувальник.
+
+## Заміни модулів runtime
+
+Plan 11 step 41I (2026-10-12) визначає, як Clause заміщує модулі OTP, які
+ERTS реалізує на C (NIF, BIF, драйвери портів, попередньо завантажені модулі
+з `erts/preloaded/src`), і модулі, які OTP генерує під час власного збирання
+(`unicode_util`). `kernel` і `stdlib` з OTP — звичайний Erlang, але вони
+викликають ці модулі; кроки від 41J реалізують цей контракт.
+
+### Надані або відсутні
+
+Усе, що потребує runtime і не може бути написане звичайним Erlang,
+вирішується для кожного модуля окремо, а там, де модуль поєднує різні
+завдання, — для кожної групи функцій:
+
+- **Надані (provided):** Clause постачає модуль з точним списком експортів
+  OTP 29. Кожна функція має один із чотирьох статусів: `implemented`
+  (вбудована функція runtime або тіло на Erlang поверх наявних служб
+  runtime), `refused` (повертає чи породжує те, що викликачі в OTP уже
+  обробляють, коли можливість відсутня, наприклад `{error, enotsup}`), `stub`
+  (породжує `error({not_implemented, F, A})` з `M:F/A` на вершині стека, як
+  це роблять [заглушки `erlang`](builtins.md#erlang-module); ще не зроблено;
+  вказівка користувача 2026-10-12) або `declined` (заглушка, що лишається, з
+  причиною, як-от дистрибуція чи завантаження коду до plan step 71). Модуль
+  починається з того, що кожна функція — заглушка, тож його можна знайти, а
+  його викликачі компілюються; потім групи переходять до вирішеного статусу.
+- **Відсутні (missing):** Clause взагалі не постачає модуля, можливо, назавжди,
+  і записує причину та те, які модулі Clause вищого рівня займають місце його
+  викликачів. Типовий випадок — низькорівневі файлові й сокетні шари
+  `prim_*`: програми натомість використовують `file`, `gen_tcp`, `gen_udp` і
+  `inet` з Clause, а оскільки модулі Clause мають перевагу над модулями OTP
+  (нижче), викликачі відсутнього модуля з OTP ніколи не потрапляють у пакет.
+  Відсутній модуль ніколи не отримує заглушки, тож посилання на нього — це
+  помилка під час компіляції, а не несподіванка під час виконання.
+
+Функції, тривіальні для runtime, реалізуються без окремого рішення.
+
+### До якого модуля розв'язується ім'я
+
+OTP на машині користувача необов'язковий; якщо він є, то не повинен змінювати
+того, що компілює збирання. Ім'я модуля розв'язується в такому порядку:
+
+1. **Явні вхідні файли:** вихідні файли, які перелічує користувач (`sources`,
+   `source_dirs`, позиційні вхідні файли). Файл з іменем модуля Clause
+   замінює його з попередженням, що називає обидва файли.
+2. **Модулі Clause:** модулі бібліотеки, включно з наданими замінами.
+3. **`source_search_paths`**, як описано в
+   [проєктах](projects.md#paths-and-discovery).
+
+Ім'я відсутнього модуля зарезервовано: однойменний файл у шляху пошуку
+(наприклад, `erts/preloaded/src/prim_file.erl` з OTP) не використовується, а
+діагностика повідомляє, що Clause не надає цього модуля. Явний вхідний файл
+усе ж може його надати з попередженням про заміну.
+
+`ignore_modules` діє і на модулі Clause: ігнорований модуль Clause відсутній
+у пакеті, і тоді явний вхідний файл може надати його без попередження, бо
+нічого не замінюється.
+
+### Файли
+
+- Модулі бібліотеки лежать у `library/<application>/`, названому за
+  застосунком OTP, якому модуль належить в OTP: `erts` (відповідники
+  попередньо завантажених модулів і `erlang`), `kernel` (`file`, `gen_tcp`,
+  `gen_udp`, `inet`, `os` і власний `clause_socket` з Clause), `stdlib`
+  (`binary`, `lists`, `maps`, `math`, `io`, `unicode`, `unicode_util`). Пошук
+  у бібліотеці охоплює кожен каталог застосунку; ім'я модуля існує щонайбільше
+  в одному з них.
+- `library/modules.terms` перелічує кожен модуль, щодо якого Clause ухвалює
+  рішення: `{Module, Application, provided}.` або
+  `{Module, Application, missing, "reason"}.` Компілятор читає його, щоб
+  знати, які імена є модулями Clause, а які зарезервовано.
+- Кожен наданий модуль має поруч інвентар `<module>.terms`:
+  `{Name, Arity, Group, Status}.` для кожного експорту OTP 29, відсортований
+  за іменем і арністю, де `Group` називає групу рішення (наприклад, `stdlib`,
+  `distribution`, `beam`). `erlang.terms` зберігає власний формат
+  (`{Name, Arity, Flags, Status}`, [модуль erlang](builtins.md#erlang-module)).
+- Списки експортів спостерігаються з OTP 29 на хості
+  (`M:module_info(exports)`); жоден вихідний код OTP не копіюється.
+  Результати й терми помилок реалізованих функцій збігаються з OTP 29;
+  навмисні відмінності записуються у
+  [відмінності](differences.md).
+- Кожен модуль бібліотеки Clause експортує повний список OTP 29 для свого
+  імені, тож код OTP, скомпільований з ним, знаходить кожну функцію; власні
+  `lists`, `maps`, `file`, `io`, `os`, `gen_tcp`, `gen_udp` і `inet` з Clause
+  теж отримують інвентарі й заглушки для того, чого ще не реалізують.
+
+### Типи
+
+Оскільки модулі Clause мають перевагу над модулями OTP, код OTP, що називає
+`file:filename()` чи `erlang:time_unit()` у своїх специфікаціях, має знаходити
+ці типи в модулях Clause. Кожен наданий модуль, чий відповідник в OTP
+експортує типи, підключає `<module>.types.hrl` зі свого каталогу: список
+`-export_type`, потім експортовані типи й локальні типи та record, які вони
+використовують, так, як їх визначає OTP (документація показує ті самі
+визначення; встановлена документація не містить визначень типів, тож вони
+беруться з реалізації: налагоджувальної інформації beam або постачуваного
+вихідного коду попередньо завантаженого модуля, як-от `erlang`). `escript
+tests/compiler/library/observe_types.escript LIBRARY APP MODULE` записує
+заголовок з OTP хоста, а `--check` порівнює його форми зі свіжим
+спостереженням (CTest `library_freshness`); `library_modules.py check`
+вимагає, щоб кожен заголовок підключав його модуль. Типи, які заголовки
+називають з модулів поза програмою (`unicode:chardata()`,
+`calendar:datetime()`), і широкі об'єднання OTP (`file:posix()` має більше
+членів, ніж зберігає граф типів) розв'язуються в `term()` без попередження:
+ця діагностика стосується бібліотеки Clause, а не програми користувача.
+
+### Служби kernel під час запуску
+
+`file`, `io`, `code` і `logger` з OTP викликають зареєстровані сервери
+(`file_server_2`, `code_server`, сервер io лідера групи, `logger`), які
+застосунок `kernel` запускає під час завантаження системи. Виконуваний файл
+Clause не запускає жодного з них, і за рішенням 2026-10-12 поки що й надалі
+не запускає: власним `file` і `io` з Clause сервер не потрібен, а модуль OTP,
+якому він таки потрібен, завершується збоєм так само, як в OTP без цього
+сервера (`noproc`). Ціна: код OTP, що веде журнал через `logger` або викликає
+`code` під час виконання, не працює, доки пізніший запис реєстру не вибере
+мінімальний набір служб для об'єкта запуску. Завантаження всього застосунку
+`kernel` не планується.
+
+### Реєстр
+
+Цю роботу спрямовує проєкт luerl. Після кожного кроку запустіть
+
+```text
+clau.bat --project test-luerl --entry luerl:init
+```
+
+класифікуйте кожну помилку (`unknown module`, `undefined function M:F/A`,
+непідтримуваний синтаксис чи можливість, інше) і призначте кожну кроку
+phase H3 плану 11, іншому пункту backlog або записаній відмові. Якщо stderr
+запуску збережено у файл, `python tests/compiler/library/library_modules.py report
+FILE` друкує класифікацію як таблиці: кожен невідомий модуль із кількістю
+помилок, модулями, що викликають, і викликаними функціями з арностями;
+невизначені функції за модулями; інші повідомлення з їхньою кількістю.
+
+### Інструменти
+
+Усі лежать у `tests/compiler/library/`:
+
+- `escript observe_module.escript LIBRARY APP MODULE` записує
+  `LIBRARY/APP/MODULE.terms` з `MODULE:module_info(exports)` OTP хоста,
+  зберігаючи групу й статус кожного наявного запису; новий експорт
+  починається як `{Name, Arity, default, stub}`.
+- `python library_modules.py generate LIBRARY APP MODULE` один раз записує
+  файл модуля, де кожен експорт — заглушка; далі файл редагується вручну.
+- `python library_modules.py check ROOT` (CTest `library_inventory`, без OTP)
+  повідомляє про кожну розбіжність: наданий модуль без своїх файлів,
+  відсутній модуль із файлом, інвентар, не позначений як наданий, експорт,
+  якого немає в інвентарі, або навпаки, запис `stub`/`declined`, що не є
+  заглушкою з `undef`, запис `implemented`/`refused` без тіла чи вбудованої
+  функції каталогу. `library_rejects` доводить це на навмисно неузгодженій
+  бібліотеці-фікстурі.
+- CTest `library_freshness` (мітка `host_otp`) повторно спостерігає кожен
+  інвентар і вимагає, щоб він не змінився, потім спостерігає, генерує,
+  перевіряє й компілює новий модуль від початку до кінця. `library_report`
+  запускає `clau` на програмі-фікстурі й перевіряє рядки звіту.
+
+| Модуль | Рішення (2026-10-12) | Причина або крок плану |
+| --- | --- | --- |
+| `init` | наданий; реалізований, крім `boot/1`, `restart/0,1` і `make_permanent/2`, які відхилено (refused) | відповіді про аргументи й стан запущеної системи (41L, [модуль init](builtins.md#init-module)) |
+| `persistent_term` | наданий, усе заглушки | таблиця термів на весь runtime (41M) |
+| `erts_internal` | наданий; групи `stdlib` і `counters` реалізовано, `get_creation/0` і `map_hashmap_children/1` відхилено (refused), групи `distribution`, `beam` і `emulator` — declined | 41N ([erts_internal](builtins.md#erts-internal)); без дистрибуції, без файлів `.beam` |
+| `atomics`, `counters`, `erts_code_purger` | надані; `atomics`, `counters` реалізовано; `purge/1`, `soft_purge/1` реалізовано, процес purger — declined | 41N ([atomics і counters](builtins.md#atomics-and-counters)); завантаження коду чекає на step 71 |
+| `unicode_util` | наданий, реалізований (41O1, 41O2) | таблиці згенеровано з відповідей OTP і даних Unicode ([unicode_util](builtins.md#unicode-util)) |
+| `erl_prim_loader` | наданий; файлові запити реалізовано поверх `file`, завантаження й архіви — declined | 41P ([файли](ports.md#standard-io-and-files)); завантаження коду чекає на step 71 |
+| `zlib` | наданий, реалізований поверх зафіксованого zlib (41Q) | потоки — це посилання-дескриптори ([модуль zlib](builtins.md#zlib-module)) |
+| `prim_eval` | наданий, реалізований (41S) | `'receive'/2` поверх кроків скомпільованого receive ([prim eval](builtins.md#prim-eval)) |
+| `application_controller` | наданий, усе заглушки | затіняє модуль OTP, який викликає `prim_file` (luerl називає його через `application` з OTP) |
+| `lists`, `maps`, `io`, `file`, `os`, `gen_tcp`, `gen_udp`, `inet` | надані, повні списки експортів OTP 29; те, що Clause мав, лишається реалізованим, решта — заглушки | ростуть у міру вимог реєстру |
+| `re` | наданий; реалізований (41ZA, 41ZB), крім `import/1` — declined | поверх зафіксованого PCRE2 ([модуль re](builtins.md#re-module)); Clause не експортує шаблонів |
+| `prim_file`, `prim_buffer` | відсутні, рішення 41P | `file` з Clause — це файловий шар; `filelib`/`filename` з OTP працюють поверх нього |
+| `prim_socket`, `prim_net`, `prim_inet`, `socket_registry`, `socket`, `net` | відсутні, рішення 41R | `gen_tcp`, `gen_udp`, `inet` з Clause — це мережевий шар; до `gen_tcp_socket`, `gen_udp_socket`, `inet_tcp`, `inet_udp` з OTP доходять лише із затінених модулів OTP ([сокети](ports.md#sockets-57f)) |
+
+Останній шар luerl (2026-10-12, після кроків 41K1 і 41K2, з
+`NEW_STACKTRACE`, визначеним так, як це робить `rebar.config.script` luerl на
+OTP 21 і новіших, і без `inet` в `ignore_modules`): ціль компілюється й
+компонується без помилок. Лишається 83 попередження: 74 типи ігнорованих
+`erl_parse` і `compile`, 8 типів модулів OTP поза програмою, названих кодом
+OTP, який компілює ціль, одне розширення бюджету графа типів у цьому коді.
+Виконуваний файл запускає `luerl:init/0` і завершується з кодом 0. Наступний
+шар — поведінка під час виконання: до яких заглушок доходить luerl, коли
+виконує код Lua.
+
+Шар виконання (2026-10-14, після phases H3–H5): драйвер, що запускає 35
+фрагментів Lua через `luerl:do`, збирається з 17 попередженнями й друкує
+вивід OTP 29 для 34 з них, включно з `os.date`. Ще один, `goto`, завершується
+збоєм з `function_clause` як в OTP; відрізняються лише його фрейми стека, без
+аргументів і розташувань ([відмінності](differences.md)).

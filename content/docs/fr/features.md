@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 06042fa
-sourceSha256: a01c524098c785a3c361908d8a6a5221ef5182bf96ee3780a02e2e2a1efd0e2b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
+translatedAt: 2026-10-15
 ---
 # Signalement des fonctionnalités différées
 
@@ -36,6 +36,12 @@ fonctionnalité arrive ; garder son identifiant réservé.
   guillemets et les barres obliques inverses afin que le contexte ne puisse pas
   injecter de lignes. UTF-8 est conservé.
 - Exactement un message par opération en échec, indépendamment de `--verbose`.
+- Une fonctionnalité différée que le compilateur pourrait ignorer sans changer
+  ce qu'il accepte serait signalée par un avertissement et la compilation
+  continuerait ; aucune ne l'est aujourd'hui (`parse transforms` l'était
+  jusqu'à ce que le plan step 73F les applique, voir
+  [transforms](transforms.md)). `codegen_placeholders` vérifie un message par
+  fonctionnalité différée du compilateur.
 - Compilateur : [reject_feature](../compiler/src/codegen/features.hpp) signale le
   premier échec d'un lot, mémorise l'échec, abandonne la sortie préparée et marque
   le diagnostic comme `reported` afin que les pilotes ne l'affichent pas de

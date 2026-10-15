@@ -116,8 +116,7 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
 
 - A `ModuleRegistry` maps exact name/arity (≤ 255) to one all-`Term` callable.
   `load` freezes and publishes it; duplicates or failures publish nothing.
-- Registration also indexes generated modules' bindings in hash maps (plan
-  step 62A): module, record and fun descriptors to their bindings and
+- Registration also indexes generated modules' bindings in hash maps: module, record and fun descriptors to their bindings and
   definitions, and `Module:Function/Arity` atom words to export frames. Dynamic
   calls, `apply/3`, runtime `fun M:F/A` and descriptor lookups therefore take
   constant expected time in the number of modules and exports (about 80 ns per
@@ -144,6 +143,31 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
   time.
 - `CodeServer::unload` is deferred; dynamic loading is not supported.
 
+## Persistent terms
+
+Source: `memory/persistent_terms`. One table per runtime, owned by
+`Runtime::Impl` and reached through `ProcessContext::persistent_terms()`, keeps
+the terms of `persistent_term` (builtins: step 41M2).
+
+- A key and its value are each copied into a `MessageBuffer`
+  ([message buffers](runtime-heap.md#message-buffers)) outside every process,
+  so they outlive the process that stored them and no collection moves them.
+- Entries are found by a hash of the key (the builtins use the term hash of
+  `phash2`) and exact equality, compared in place in the buffer
+  (`MessageBuffer::value`).
+- A read copies the value into the reader's heap (decided 2026-10-14). OTP
+  instead hands out a reference into a literal area and copies only on
+  replace or erase through a global collection; Clause's admission accepts
+  only words of the process's own areas, so in-place literals would need a new
+  shared term region. Copying keeps every process heap self-contained: a
+  replaced or erased value is freed when the last reader still copying it
+  drops its buffer reference, and no global collection is needed. Reads cost
+  the size of the value ([differences](differences.md)).
+- A shared lock serves readers on any number of workers; put and erase take it
+  alone and never copy while holding it. CTest `runtime_persistent_terms`
+  covers values outliving their writer, replaced values held by readers,
+  concurrent readers and writers, and released charges.
+
 ## Scheduler bookkeeping
 
 `SchedulerService` ([scheduler.hpp](../runtime/include/clause/runtime/scheduler.hpp))
@@ -166,17 +190,17 @@ the message into the receiver's heap and appends it to its signal inbox
 
 ## Threads
 
-Scheduler workers (plan step 56, [workers](processes.md#workers)) run
+Scheduler workers ([workers](processes.md#workers)) run
 processes on several threads of one runtime. Services they share are
 synchronized; everything else stays confined to the thread running its
 process or guarded by the executor's mutex.
 
-- Atoms (step 54): `AtomStorage` guards both indexes with a shared mutex.
+- Atoms: `AtomStorage` guards both indexes with a shared mutex.
   Lookups (`lookup`, `boolean`, `size`) share it; `intern` looks up under the
   shared lock and only a new spelling takes the exclusive lock, checks again
   and publishes the entry, so racing interns of one spelling get one word.
   Words stay stable: an entry is never changed or removed before teardown.
-- Code (step 55): `CodeServer` guards its modules and external fun
+- Code: `CodeServer` guards its modules and external fun
   definitions with a shared mutex. Lookups (`find_module`, `resolve`,
   `atom_word`, `record_definition`, `fun_definition`, `export_frame`,
   `function_frame`, `owns`) share it; `load` and building a new external fun
@@ -189,12 +213,12 @@ process or guarded by the executor's mutex.
   frames and atom slots it returned stay valid for every invocation and every
   fun cell. `ResolvedFunction` and `find_module` handles also keep their
   module after the runtime is gone.
-- Pid numbers (step 56): `ProcessNumbers` issues numbers under an exclusive
+- Pid numbers: `ProcessNumbers` issues numbers under an exclusive
   lock and admits pid words under a shared one.
-- Memory (step 56): the runtime-wide account (`RuntimeMemory`) charges and
+- Memory: the runtime-wide account (`RuntimeMemory`) charges and
   releases with atomic operations; a charge never takes the account past an
   optional limit.
-- Port I/O (steps 57C–57F): the I/O service's reader, writer and watcher
+- Port I/O: the I/O service's reader, writer and watcher
   threads and the socket thread ([ports](ports.md#io-thread)) touch process
   state only through the executor's mutex.
 - Linking: on Linux the runtime adds `-pthread` for its threads; on Windows
@@ -230,7 +254,7 @@ state:
 
 | Boundary | Error |
 | --- | --- |
-| `TermFactory::port` (no ports yet, plan step 53), `reference(ReferenceIdentity)` and `function(FunctionIdentity)` | `TermError::not_implemented` |
+| `TermFactory::port` (no ports yet), `reference(ReferenceIdentity)` and `function(FunctionIdentity)` | `TermError::not_implemented` |
 | `SchedulerService::run` / `execute` | `SchedulerError::not_implemented` |
 | `CodeServer::unload` | `CodeError::not_implemented` |
 | `dispatch_builtin` on a catalogued BIF | `Status::not_implemented` |

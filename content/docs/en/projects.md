@@ -26,6 +26,7 @@ disable_features = ["compr_assign"]
 ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
+cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
 my_dependency = "vendor/my_dependency"
@@ -49,6 +50,9 @@ my_dependency = "vendor/my_dependency"
 - `keep_exports = true` in `options` keeps every export of the target's
   executable callable, as `--keep-exports` does for every selected target
   ([export liveness](executables.md#export-liveness)). It must be a boolean.
+- `cache_inference_in_dirs` (directory wildcards) in `options` adds directories
+  whose modules keep their inference results in the build cache
+  ([inference cache](#inference-cache)).
 - `options` fields are optional typed frontend options. `defines` use
   `NAME` (= `true`) or `NAME=ERLANG_LITERAL_TERM`; duplicates are errors. A
   feature cannot appear in both feature lists.
@@ -182,8 +186,7 @@ Positional inputs get none unless `--build-dir` is given.
 
 ### Build caches
 
-Results worth keeping between runs live below `<build_dir>/cache` (plan 11
-steps 62D2, 62D4 and 62D5); `--no-cache` neither reads nor writes them. They are the
+Results worth keeping between runs live below `<build_dir>/cache` (62D4 and 62D5); `--no-cache` neither reads nor writes them. They are the
 parse transform loader's replies and the host OTP's sticky module list, so a
 warm build starts no host `erl` for modules whose transform inputs did not
 change, and each batch's [compile outcome](compile.md#compile-cache).
@@ -196,7 +199,7 @@ change, and each batch's [compile outcome](compile.md#compile-cache).
   `triple`, `extension` and one part per module object), so no caller needs a
   codec of its own. A `get` with another format version is a miss. Every
   operation is safe from several threads at once.
-- **Layout (SQLite backend, step 62D5).** `cache/v2/cache.db` is a SQLite 3.54
+- **Layout (SQLite backend).** `cache/v2/cache.db` is a SQLite 3.54
   database: table `entries` (input directory, file, kind, key, format, last
   use; unique on the address) and table `parts` (entry, order, name, size,
   xxh3-64 checksum, and either the bytes or the name of a blob file). Parts
@@ -246,7 +249,7 @@ change, and each batch's [compile outcome](compile.md#compile-cache).
   `[cache] hit|miss <kind> <file>` with the reason of a miss (`no entry`,
   `inputs changed`, `damaged entry`). Diagnostics and transform output are the
   same with and without a hit: they are stored with the entry.
-- **Backend measurements** (step 62D5, 2026-10-12, Release, Windows 11,
+- **Backend measurements** (2026-10-12, Release, Windows 11,
   NTFS; `cache_store bench` in `tests/compiler/cache`). The 62D2 file backend
   (one index rewritten per put, append-only packs) against SQLite:
 
@@ -265,7 +268,7 @@ change, and each batch's [compile outcome](compile.md#compile-cache).
   from there on, which sets the inline limit at 256 KB. luerl builds (Release,
   three runs) did not change: cold 3.75–3.78 s before and 3.78–3.80 s after,
   warm 1.65–1.68 s before and 1.69–1.70 s after; they keep few entries.
-- **No directory scan cache** (step 62D3, 2026-10-11, Release `clau`, Windows,
+- **No directory scan cache** (2026-10-11, Release `clau`, Windows,
   OS file cache warm). luerl plans in 78 ms of a 2.77 s warm build (2.8%).
   A manifest over all of `references/otp/lib` (1,319 directories, 9,711
   files) plans in about 150 ms: `sources = ["…/lib/**/src/*.erl"]` 74 ms,
@@ -277,11 +280,63 @@ change, and each batch's [compile outcome](compile.md#compile-cache).
   sources), which such a cache cannot skip. The first run after the tree left
   the OS cache took 10-20 s, also dominated by opening files. Include probing
   costs nothing measurable since the [directory index](#directory-index).
+- **Inference results** of modules in configured directories
+  ([inference cache](#inference-cache)).
 - **Not cached:** preprocessing and parsing. A cached result would load
   through the abstract forms (`transforms/import`), and on luerl (169
   modules, Release, 2026-10-11) importing them alone took 1,063 ms against
   819 ms to preprocess (409 ms) and parse (410 ms) the sources; exporting the
   forms for a key took another 727 ms.
+
+### Inference cache
+
+Library modules (OTP's `stdlib`, `kernel`, `compiler` and `syntax_tools`
+sources found through `source_search_paths`, Clause's own
+[library](library.md)) rarely change, so modules in configured directories
+keep their type inference results in the build cache, per module, and later compiles reuse them instead of inferring them again.
+
+- Directories: the implicit OTP application patterns `*/stdlib`,
+  `*/stdlib-*`, `*/kernel`, `*/kernel-*`, `*/compiler`, `*/compiler-*`,
+  `*/syntax_tools` and `*/syntax_tools-*`, then the target's
+  `cache_inference_in_dirs`, then every `--cache-inference-in-dirs PATTERN`
+  (repeatable; positional inputs too). Patterns use the
+  [wildcards](#paths-and-discovery) of `sources`; Windows separators are
+  accepted.
+- A module is covered when a directory containing its source matches a
+  pattern. A relative pattern matches the trailing directories of any path,
+  not paths below the manifest directory: `*/stdlib` covers
+  `/usr/lib/erlang/lib/stdlib/src/lists.erl` and
+  `references/otp/lib/stdlib/src/lists.erl`, while an installed
+  `.../lib/stdlib-7.0/src/lists.erl` needs `*/stdlib-*`. An absolute pattern
+  matches the whole directory path (`C:/Program Files/Erlang OTP/lib/*`).
+  Matching is lexical and case-sensitive. The implicit patterns also cover a
+  project's own directory of such a name (`apps/compiler`), which only stores
+  more entries: reuse is sound for every module.
+- `--print-env` prints the effective list as `cache_inference_in_dirs`,
+  implicit patterns first. An unsupported construct (`[`, `{`, `!`) is a
+  manifest error, or a usage error (exit 2) on the command line.
+- Reuse needs a build directory (every project target; positional inputs
+  with `--build-dir`) and is off with `--no-cache`. It works for every action
+  that analyses (compiling, executables, `--print-types`, IR inspections),
+  also when the batch's [compile cache](compile.md#compile-cache) misses.
+- Key: `clau`'s identity, the module's fingerprint and those of every batch
+  module its atoms name, transitively (remote calls, `fun M:F/A`, `apply`,
+  any atom that is a module name); see
+  [semantic: inference cache](semantic.md#inference-cache) for why that is
+  all its facts depend on. Editing a user module therefore keeps the library
+  hits unless a library module names it; editing a library module misses it
+  and every covered module that reaches it.
+- Entries are kept per source directory, file and project target (kind
+  `inference@<target>`, `inference@positional`); a value is one part
+  `results` (`semantic/types/inference_store`: graph nodes, summaries and
+  local inputs by function, expression facts by syntax position). Results
+  kept by a compile with more live functions (for example `--print-types`)
+  serve an executable that keeps fewer.
+- `--verbose` prints `[cache] hit|miss inference <file>` per covered module
+  (miss reasons: `no entry`, `inputs changed`, `damaged entry`, `results do not
+  fit` for kept results lacking a function that is live now);
+  `--print-stage-times` prints the phases `inference-cache` (with `N of M
+  covered modules reused`) and `inference-store`.
 
 ## Paths and discovery
 
@@ -316,7 +371,7 @@ change, and each batch's [compile outcome](compile.md#compile-cache).
 
 ### Directory index
 
-Lookups by name do not probe every candidate directory (plan 11 step 62E).
+Lookups by name do not probe every candidate directory.
 One index per `clau` invocation, shared by all targets, keeps the entry names
 of each searched directory: listed once, non-recursively, when a lookup first
 needs it, or recorded by the recursive walks that expand `**` in `sources`,
@@ -364,7 +419,7 @@ parsed, compiled or linked, so it may even hold syntax errors.
 - A source that `sources` lists literally (no wildcard) is never ignored: the
   rules have no effect on it, and the build warns `listed in sources but
   matched by ignore_modules or ignore_dirs; ignoring it has no effect`
-  (plan 11 step 41K2, user direction 2026-10-12). Wildcard matches and
+  (user direction 2026-10-12). Wildcard matches and
   `source_dirs` are ignored as described.
 - Both apply to `sources`, `source_dirs`, literal sources found through
   `source_search_paths`, the [module search](#paths-and-discovery) of
@@ -382,7 +437,7 @@ parsed, compiled or linked, so it may even hold syntax errors.
   literally stays `undef` for dynamic calls. A type of an ignored module
   named in a spec or type (`helper:result()`) warns `attempt to import a type
   from a module ignored in project settings: helper:result` and is treated as
-  `term()` (plan 11 step 41K2). `-behaviour(M)` with an ignored
+  `term()`. `-behaviour(M)` with an ignored
   `M` warns `behaviour M undefined`.
 - `--print-inputs` lists each ignored referenced module after the added sources
   as `ignored module <name> (referenced at <file>:<line>)`; `--print-env`
@@ -406,6 +461,7 @@ ignore_modules = ["telemetry", "*_SUITE"]
 | Feature lists | Manifest settings, then ordered CLI changes; CLI wins |
 | `output` | Per target, executable targets only; CLI `-o` overrides for a single selected target |
 | `entry` | Per target; CLI `--entry` overrides for a single selected target |
+| `cache_inference_in_dirs` | Implicit OTP patterns, then the manifest's, then CLI `--cache-inference-in-dirs` ([inference cache](#inference-cache)) |
 
 ## Build dependency
 

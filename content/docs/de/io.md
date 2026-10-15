@@ -1,12 +1,12 @@
 ---
 source: docs/io.md
-sourceCommit: 06042fa
-sourceSha256: d2fab91a793f6b40763a4bd16c2c85b45ce198ce2d3b6110aa9cfe117278f20d
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
+translatedAt: 2026-10-15
 ---
 # Konsolenausgabe (`io`)
 
-Plan 11, step 40 (2026-10-07): `io:format/1,2` und `io:put_chars/1` schreiben
+`io:format/1,2` und `io:put_chars/1` schreiben
 auf die Standardausgabe. Sie sind Runtime-Builtins des Moduls `io` im
 Brückenkatalog ([Builtins](builtins.md)); die Runtime implementiert die Regeln
 von `io_lib_format` und `io_lib_pretty` aus OTP in C++
@@ -16,6 +16,17 @@ von `io_lib_format` und `io_lib_pretty` aus OTP in C++
 ## Aufrufe
 
 - `io:format(Format)` ist `io:format(Format, [])`. Beide geben `ok` zurück.
+  `io:fwrite/1,2,3` sind dasselbe wie `io:format/1,2,3`; `io:nl/0,1` schreiben
+  einen Zeilenumbruch.
+- Geräte von `io:format/3`, `io:fwrite/3`, `io:put_chars/2` und `io:nl/1`:
+  `standard_io` und `user` sind die Standardausgabe, `standard_error` ist die
+  Standardfehlerausgabe (die Standardausgabe wird zuerst geleert, sodass beide
+  ihre Reihenfolge behalten). Eine pid oder ein darauf registriertes Atom ist
+  ein I/O-Server: Der Text geht als UTF-8 über `file:write/2` an ihn (eine
+  geöffnete Datei des Clause-Moduls `file`), und der Aufruf gibt zurück, was
+  dieser zurückgibt. Ein nicht registriertes Atom ist `badarg`, eine tote pid
+  `error:terminated`, der Aufrufer selbst `error:calling_self`, jeder andere
+  Term `function_clause`, wie in OTP.
 - `io:put_chars(Chardata)` schreibt Chardata: Unicode-Zeichen, UTF-8-binaries
   und verschachtelte Listen, die auf `[]` oder ein binary enden. Alles andere
   (ein Atom, ein Surrogat, ungültiges UTF-8, ein bitstring) löst `badarg` aus.

@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: 06042fa
-sourceSha256: 4a59e74a8f74a79a05ce095a1fed17c4ee5fc1249c50e25b2b78fe555376445b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: e64ac7a96a11727f6f9c0e83247c36a9b3b2b047fd551a417344938602e864b3
+translatedAt: 2026-10-15
 ---
 # Semantische Analyse
 
@@ -14,8 +14,9 @@ werden weiterhin diagnostiziert.
 ## Modul- und Aufrufprüfungen
 
 - Eine Moduldeklaration ist erforderlich und eindeutig; Funktionsstelligkeiten
-  0..255; keine doppelten Definitionen; jeder Export existiert und ist genau
-  einmal aufgeführt. Quotierte/Unicode-Namen behalten ihre exakte Identität.
+  0..255; keine doppelten Definitionen; jeder Export existiert (ein
+  wiederholter Export warnt, wie in OTP). Quotierte/Unicode-Namen behalten ihre
+  exakte Identität.
 - Jede Funktion wird geprüft, auch ungenutzter und unerreichbarer Code.
 - Aufrufe werden innerhalb des Batches über Modul/Name/Stelligkeit aufgelöst.
   Remote-Aufrufe (auch selbstqualifizierte) erfordern Exporte. Fehlende/private
@@ -29,6 +30,110 @@ werden weiterhin diagnostiziert.
   der Reihenfolge Aufgerufener vor Aufrufer zerlegt; eine Komponente ist
   rekursiv, wenn sie mehrere Mitglieder hat oder ein Mitglied sich selbst
   aufruft.
+
+## Behaviours
+
+Folgt OTPs
+[Behaviours](https://www.erlang.org/doc/system/design_principles.html#behaviours),
+`erl_internal:add_predefined_functions` und `check_behaviour` von `erl_lint`.
+
+- Ein Modul, das `-callback` deklariert, erhält OTPs vordefinierte, exportierte
+  `behaviour_info/1`: `callbacks` liefert die deklarierten Callbacks in
+  Quelltextreihenfolge, `optional_callbacks` die der wohlgeformten
+  `-optional_callbacks`-Listen (mit einem Modul qualifizierte Callbacks werden
+  weggelassen). Das Frontend hängt sie als Funktion an der `-module`-Zeile an
+  (`driver/predefined`). Wie in OTP kann der eigene Quelltext des Moduls sie
+  nicht benennen: ein `-export`, ein lokaler Aufruf, `fun
+  behaviour_info/1` oder eine `-spec` davon ist eine undefinierte Funktion;
+  Remote-Aufrufe (auch selbstqualifizierte) erreichen sie. `-callback` neben
+  einer handgeschriebenen `behaviour_info/1` ist ein Fehler
+  (`cannot define callback attibute for F/A when behaviour_info is defined`,
+  OTPs Schreibweise).
+- `-behaviour(M)` und `-behavior(M)` dürfen sich wiederholen. `M` wird im Batch
+  aufgelöst; ein Name mit einem Bibliotheksmodul (`library.md`) fügt dieses
+  Modul hinzu, wie es ein literaler Aufruf tut. Diagnosen verwenden OTPs Text am
+  Attributnamen:
+  - `undefined callback function F/A (behaviour 'M')` für jeden erforderlichen,
+    nicht optionalen Callback, den das Modul nicht exportiert (sortiert);
+  - `conflicting behaviours -- callback F/A required by both 'M2' and 'M1'
+    (line L, column C)`, wenn ein früheres Behaviour ihn ebenfalls verlangt
+    (ein optionaler Callback zählt, wenn er exportiert ist);
+  - `behaviour M undefined`, wenn `M` nicht im Batch ist oder keine
+    `behaviour_info/1` hat (OTP-Behaviours wie `gen_server` sind noch nicht Teil
+    von Clause), dazu OTPs Modulnamenfehler für Namen, die keine Module sein
+    können (`the module name must not be empty`, `... must be an atom`, ...).
+- Warnungen lassen die Kompilierung nicht fehlschlagen. Die `-compile`-Optionen
+  `nowarn_behaviours` (die ganze Prüfung, Modulnamenfehler eingeschlossen),
+  `nowarn_undefined_behaviour_func`, `nowarn_undefined_behaviour` und
+  `nowarn_conflicting_behaviours` schalten sie ab.
+- Nicht ausgewertet: eine handgeschriebene exportierte `behaviour_info/1` eines
+  Behaviour-Moduls, daher werden die Callbacks seiner Nutzer nicht geprüft, und
+  OTPs Warnungen zu falsch definierten und veralteten Callbacks treten nie auf
+  ([Unterschiede](differences.md#errors-stack-traces-and-reports)).
+- Belege: `tests/fixtures/lint` (von OTP erzeugte Diagnosen, CTest
+  `lint_diagnostics`), `executables_behaviours`, `semantic`-CLI-Fälle.
+
+## Importe
+
+Folgt den Importregeln von `erl_lint`.
+
+- `-import(Module, [F/A, ...])` macht einen lokalen Aufruf `F(...)` zum
+  Remote-Aufruf `Module:F(...)`: Das Modul muss im Batch sein (ein
+  Bibliotheksmodul kommt hinzu wie bei einem literalen Aufruf) und die Funktion
+  exportieren, oder ein Builtin-Modul sein (`-import(io, [format/2])`,
+  `-import(erlang, [display/1])`). Ein Import hat Vorrang vor einem automatisch
+  importierten BIF desselben Namens.
+- Fehler mit OTPs Text: `function F/A already imported from M` (das ganze
+  Attribut wird dann ignoriert), `defining imported function F/A`,
+  `creating a fun from imported name F/A is not allowed`. Eine importierte
+  Funktion in einem guard ist ein unzulässiger Guard-Aufruf (außer
+  erlang-Guard-BIFs).
+- Warnung `import directive overrides auto-imported BIF F/A -- ...`, außer
+  `no_auto_import` benennt es oder `nowarn_bif_clash` ist angegeben; Clause
+  kennt die automatisch importierten BIFs, die es implementiert.
+- Belege: `executables_imports`, Lint-Fälle `imports_conflicts`,
+  `imports_fun`, `imports_bif`, semantische CLI-Fälle.
+
+## Vordefinierte Funktionen
+
+Folgt OTPs [Modulen](https://www.erlang.org/doc/system/modules.html) und
+`erl_internal:add_predefined_functions`. Das Frontend hängt `module_info/0,1`
+an jedes kompilierte Modul an (nach einer erzeugten `behaviour_info/1`), als
+Erlang-Funktionen, die literale Daten liefern (`driver/predefined`,
+`semantic/module_info`); `Module::predefined_` zählt diese abschließenden
+Formen, die immer exportiert sind und in `--print-types` weggelassen werden.
+
+- `module_info()` liefert `[{module,_},{exports,_},{attributes,_},{compile,_},{md5,_}]`;
+  `module_info(Key)` beantwortet zusätzlich `functions`, `nifs` (`[]`) und
+  `native` (`false`) und löst für jeden anderen Schlüssel `badarg` aus.
+- `exports`: die exportierten Funktionen in Definitionsreihenfolge (escripts
+  fügen `main/1` hinzu), dann `behaviour_info/1`, wenn erzeugt,
+  `module_info/0`, `module_info/1`. `functions`: jede Funktion in
+  Definitionsreihenfolge, dann dieselben vordefinierten.
+- `attributes`: jedes Attribut außer `module`, Exporten und Importen,
+  Type-/Spec-/Callback-Formen, records, `export_type`, `optional_callbacks`,
+  `export_record`, `compile`, `file`, Dokumentation und `feature`, in
+  Quelltextreihenfolge; ein Wert, der keine Liste ist, wird in eine gepackt
+  (`-tags(a)` ist `{tags,[a]}`). Ohne `-vsn` kommt `{vsn,[N]}` zuerst, wobei
+  `N` das als vorzeichenlose Big-Endian-Ganzzahl gelesene `md5` ist, wie OTP es
+  ableitet.
+- `md5`: MD5 des ausgegebenen Quelltexts des Moduls (`print_source`: Makros
+  expandiert, Includes eingefügt, Kommentare und Layout entfernt). `compile`:
+  `[{version,ClauseVersion},{options,[]},{source,AbsolutePath}]`.
+- Anders als `behaviour_info/1` sieht der eigene Quelltext des Moduls sie:
+  lokale Aufrufe und `fun module_info/1` funktionieren. Eine davon zu
+  definieren ist ein Fehler (`function module_info/0 already defined`); eine zu
+  exportieren warnt nur, wie jeder wiederholte Export
+  (`function module_info/0 already exported`).
+- Attribute sind Daten; nur `on_load`, `nifs` und nicht wirkungslose
+  `-compile`-Optionen werden als verhaltensändernd abgewiesen.
+- Die erzeugten Funktionen haben keine Quelltextzeile (OTP gibt ihnen keine):
+  keine Debug-Orte, IR-Quelltextkommentare oder `--print-types`-Einträge.
+  `module_info/0` hält dieselben Literale wie `module_info/1` und macht daher
+  keine Aufrufe.
+- Belege: `executables_module_info` (stdout von OTP; abgeleitete Werte nach
+  Form), `tests/fixtures/lint`-Fälle `module_info_defined`,
+  `exports_repeated`.
 
 ## Bindungen
 
@@ -92,8 +197,13 @@ markiert mit Kopf-/Guard-/Rumpfkontext. Die Analyse ist deterministisch.
   erfasst. Die Variablen von `fun M:F/A` sind Lesezugriffe des fun-Ausdrucks
   (`Function::fun_operands`).
 
-Durchläufe sind iterativ mit einem Modulbudget von 1.000.000 Arbeitseinheiten.
-Erschöpfung oder ein beliebiger semantischer Fehler leert die Bindungs- und
+Durchläufe sind iterativ mit einem Modulbudget von 1.000.000 Arbeitseinheiten
+oder 32 pro Ausdruck, wenn das mehr ist: erzeugte Parser brauchen etwa 10 pro
+Ausdruck (OTPs `erl_parse`, 139.093 Ausdrücke, braucht 1.290.198). Die
+Service-Auflösung hat ein Budget derselben Größe; sie durchsucht die
+`-compile`- und `-import`-Formen des Moduls einmal pro Name nach dessen
+Auto-Import-Zustand, nicht einmal pro Aufruf (jede der tausenden Klauseln von
+`erl_parse` ruft `hd/1` auf). Erschöpfung oder ein beliebiger semantischer Fehler leert die Bindungs- und
 Normalisierungstabellen des Moduls.
 
 ## Typen und Spezifikationen
@@ -102,9 +212,12 @@ Ein privater Typgraph stellt alle geparsten Typformen unabhängig vom
 Runtime-Layout dar: Singletons, Bereiche, Container, Rollen von Map-Feldern,
 Funktionsprodukte und unaufgelöste Anwendungen. Unions werden abgeflacht und
 dedupliziert; `term()` ist das obere und `none()` das untere Element.
-Standardwerte: 16.384 Knoten, 16 Union-Mitglieder, 100.000 Arbeitsschritte pro
-Übersetzung. Erschöpfung weitet auf `term()` mit sichtbarem Flag auf und engt
-nie eine Repräsentation ein.
+Standardwerte: 1.048.576 Knoten, 256 Union-Mitglieder, 200.000 Arbeitsschritte
+pro Durchlauf über einen deklarierten Typ (Auflösung, Übersetzung, Expansion)
+und 8.000.000 pro Inferenzdurchlauf über das ganze Programm; ein Debug-Build von
+`clau` (ohne `NDEBUG`) erlaubt 16.000 und 1.000.000, damit große Programme
+weiterhin schnell kompilieren, und kann stärker aufweiten. Erschöpfung weitet
+auf `term()` mit sichtbarem Flag auf und engt nie eine Repräsentation ein.
 
 Deklarierte Metadaten (`-type`, `-opaque`, `-nominal`, `-export_type`, `-spec`,
 `-callback`, `-optional_callbacks`) folgen der OTP-Typespec-Referenz und dem
@@ -133,13 +246,13 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   beliebige Terme. Eine Funktion, die nur über direkte Aufrufe des Batches
   betreten wird (weder exportiert noch von einem fun benannt), nimmt die
   Vereinigung (join) der Argumentfakten ihrer Aufrufstellen als Eingaben
-  (step 58F, `semantic/types/inference_inputs`), gematcht durch die Kopfmuster
+  (`semantic/types/inference_inputs`), gematcht durch die Kopfmuster
   jeder Klausel; rekursive Aufrufe zählen mit. Eingaben beginnen bei `none()`
   (eine Funktion, die nichts aufruft, läuft nie und inferiert `none()`) und
   wachsen über Durchläufe des Batches: 8 Durchläufe vereinigen, spätere weiten
   auf wie rekursive Ergebnisse; Eingaben, die sich nach 16 Durchläufen nicht
   stabilisiert haben, werden zu `term()` (als aufgeweitet gemeldet).
-- Literale haben exakte Fakten (step 58B):
+- Literale haben exakte Fakten:
   Ganzzahlen jeder Größe und Zeichen sind Singletons, Atome Singleton-Atome,
   Gleitkommazahlen `float()`, Strings nichtleere Listen ihrer Zeichen (`[]` für
   `""`), und `-`/`+` einer literalen Zahl behält deren Fakt. Tupel behalten die
@@ -154,7 +267,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   beliebigen Vielfachen seiner Einheit (`<<1, Rest/binary>>` ist
   `nonempty_binary()`). Ein Operand, der nie einen Wert erzeugt (`none()`),
   macht die Konstruktion zu `none()`.
-- Operatoren und Builtins (step 58C, `semantic/types/inference_operators`)
+- Operatoren und Builtins (`semantic/types/inference_operators`)
   berechnen ihr Ergebnis aus den Fakten ihrer Operanden. Ganzzahl-Singletons
   werden exakt gefaltet bis zu 4.096 Bits pro Operand und Ergebnis (Bignums
   eingeschlossen; ein größeres ist `integer()`); andere Ganzzahlen verwenden
@@ -185,10 +298,12 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
 - Identitäts-/Projektionsfunktionen behalten exakte Argumentrelationen,
   weitergegeben durch verschachtelte lokale und Remote-Aufrufe mit frischen
   Variablen pro Aufruf.
-- Container (step 58D, `semantic/types/inference_containers`): eine Liste
+- Container (`semantic/types/inference_containers`): eine Liste
   `[E1, ..., En | T]` vereinigt ihre Elemente vor dem Fakt des Tails (eine
   echte Liste, wenn der Tail eine ist, `nonempty_improper_list(H, T)`, wenn er
-  keine Liste ist, `term()`, wenn er unbekannt ist); `++`, `--`, `hd/1`,
+  keine Liste ist, `nonempty_maybe_improper_list()`, wenn er unbekannt ist oder
+  unecht sein kann: eine Zelle ist nie leer, auch in einem Muster wie
+  `[H | _]`); `++`, `--`, `hd/1`,
   `tl/1`, `element/2`, `setelement/3`, `tuple_to_list/1` und `map_get/2` lesen
   und bauen Elementfakten Mitglied für Mitglied einer Union neu auf, wobei ein
   Mitglied, das eine Ausnahme auslösen würde, nichts beiträgt. Ein Map-Update
@@ -199,23 +314,32 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   Index des Feldes. Eine List-comprehension ist eine möglicherweise leere Liste
   der Fakten ihrer Templates, eine Binary-comprehension eine beliebige Anzahl
   von Kopien der Größe ihres Templates, eine Map-comprehension `map()`.
-- Funs (step 58E, `semantic/types/inference_funs`): `fun F/A` ist ein fun
+- Funs (`semantic/types/inference_funs`): `fun F/A` ist ein fun
   seiner Stelligkeit, der das inferierte Ergebnis der Funktion liefert (das
   eines Builtins, oder bei variabler Stelligkeit `fun()`), `fun M:F/A` einer,
   der `term()` liefert, und ein anonymer fun einer, der die vereinigten
   Ergebnisse seiner Klauseln liefert, erfasste Werte eingeschlossen. Ein Aufruf
   eines Werts vereinigt die Ergebnisse seiner funs dieser Stelligkeit, die
-  seine Argumente auswählen (step 58L; `term()` für einen unbekannten fun,
+  seine Argumente auswählen (`term()` für einen unbekannten fun,
   `none()`, wenn kein Mitglied so aufgerufen werden kann).
   Ein anonymer fun, der als Ganzes an eine Variable gebunden und über sie
   aufgerufen wird, wird für diesen Aufruf erneut ausgewertet, wobei seine
   Muster die Fakten der Argumente matchen, höchstens 4 solche Aufrufe tief, und
   die Fakten seiner ersten Auswertung werden danach wiederhergestellt
-  (`Double = fun(Y) -> Y * 2 end, Double(3)` ist 6). `apply/2,3` und
-  dynamische Aufrufe bleiben `term()`. Da `fun F/A` eine später inferierte
-  Funktion benennen kann, wiederholen sich die Durchläufe über den Batch
-  außerdem, bis jeder solche fun das endgültige Ergebnis seiner Funktion
-  gelesen hat; andernfalls gibt ein letzter Durchlauf ihnen `term()`-Ergebnisse.
+  (`Double = fun(Y) -> Y * 2 end, Double(3)` ist 6). `apply(F, Args)` (auch
+  `erlang:apply/2`) ist ein Aufruf von `F` mit den Argumenten, die `Args` hält:
+  den Elementen einer literalen echten Liste, sonst denen ihres Fakts (`[]`,
+  einer Liste bekannter Positionen oder so vielen Kopien des Elements einer
+  echten Liste, wie die einzige Stelligkeit von `F` verlangt); ein gebundener
+  anonymer fun wird wie oben erneut ausgewertet (`apply(fun kind/1, [1])` wählt
+  `kind(1)`). `apply(M, F, Args)`, dessen `M` und `F` bekannte Atome sind, die
+  eine exportierte Batch-Funktion benennen, liest die Funktionstypen dieser
+  Funktion wie `fun F/A`. Argumente unbekannter Länge, andere Ziele und
+  `M:F(Args)` mit variablen Namen bleiben `term()`. Da `fun F/A` und `apply/3`
+  eine später inferierte Funktion benennen können, wiederholen sich die
+  Durchläufe über den Batch außerdem, bis jeder solche Lesezugriff das
+  endgültige Ergebnis seiner Funktion gesehen hat; andernfalls gibt ein letzter
+  Durchlauf ihnen `term()`-Ergebnisse.
 - Zuweisungen ganzer Werte im Rumpf und Aliase kopieren den Fakt der rechten
   Seite (`Y = 42, Z = Y, id(Z)` inferiert 42); Tupel-, Listen-, Map- und
   Tupel-record-Muster geben ihren Variablen die Fakten der Teile, die sie
@@ -223,7 +347,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   `of`-Klauseln eines `try` (vom Wert seines Rumpfes) und Generatoren (von den
   Elementen ihrer Eingabe bzw. Map-Schlüsseln und -Werten). Nicht bewiesene
   Werte bleiben `term()` ohne Relationen.
-- Einengung (narrowing) (step 58G, `semantic/types/inference_narrowing`,
+- Einengung (narrowing) (`semantic/types/inference_narrowing`,
   `inference_scopes`, `meet`): innerhalb einer Funktions-, `case`-, `receive`-
   oder fun-Klausel bildet jedes Muster den Schnitt (meet) mit dem Wert, den es
   matcht (ein Literal, eine Tupel-, Listen-, Tupel-record-, Map- oder
@@ -241,8 +365,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   Schranken eines Tests ansammeln (`10 >= X, X >= 0` ist `0..10`); zwei
   verglichene bewiesene Ganzzahlen engen einander über ihre Schranken ein
   (`X > Y` mit `Y` in `0..5` macht `X` mindestens 1), und `/=`, `=/=` mit einer
-  Konstante verschieben eine ihr gleiche Bereichsschranke nach innen (step
-  58H1). Ein Wert, der eine Gleitkommazahl oder ein anderer Term sein kann,
+  Konstante verschieben eine ihr gleiche Bereichsschranke nach innen. Ein Wert, der eine Gleitkommazahl oder ein anderer Term sein kann,
   wird nicht eingeengt. Eine Konjunktion wendet jeden Test der Reihe nach an,
   eine Disjunktion vereinigt, was jede Alternative beweist, `not` und falsche
   Tests beweisen nichts. Eine Klausel nach einer, deren Muster alle einfache
@@ -258,10 +381,10 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   ihres Operanden; `catch`, der rechte Operand von `orelse` und jede Klausel
   stellen die Fakten von davor wieder her. Nach einem `case`, `if`, `receive`,
   `try` oder `maybe` ist der Fakt einer Variable die Vereinigung ihrer Fakten
-  am Ende jeder Klausel, die abschließt (step 58H), daher hinterlässt `case X
+  am Ende jeder Klausel, die abschließt, daher hinterlässt `case X
   of forever -> ...; N when is_integer(N), N >= 0 -> ... end` `X` als
   `non_neg_integer() | forever`.
-- `try` und `maybe` (step 58J1): ein `try` ist die Vereinigung der Werte
+- `try` und `maybe`: ein `try` ist die Vereinigung der Werte
   seiner `of`-Klauseln (ohne `of` der seines Rumpfes) und der Werte seiner
   catch-Klauseln; der `after`-Rumpf trägt nichts bei. `of`-Klauseln beginnen
   mit den Fakten am Ende des Rumpfes und matchen dessen Wert wie
@@ -280,7 +403,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   `try` vereinigen die am Ende seines Rumpfes (ohne `of`) und jeder
   abschließenden Klausel; nach einem `maybe` die am Ende seines Rumpfes, jeder
   abschließenden `else`-Klausel und, ohne `else`, die davor.
-- Verwendungen (step 58H, `semantic/types/inference_uses`): eine Operation, die
+- Verwendungen (`semantic/types/inference_uses`): eine Operation, die
   eine Ausnahme auslöst, sofern ein Operand keinen bestimmten Typ hat, beweist
   diesen Typ für die gelesene Variable, nachdem die Operation zurückkehrt:
   Arithmetik und unäres `-`/`+` ein `number()`, `div`, `rem`, Bitoperatoren und
@@ -299,7 +422,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
 - Eintritts- und Erfolgsdomänen: die Eintrittsdomäne jedes Arguments ist die
   Vereinigung über die möglichen Funktionsklauseln seines Fakts nach Kopf und
   Guard (der eingeengte Fakt einer einfachen Variable, sonst der des Musters);
-  seine Erfolgsdomäne (step 58H) die Vereinigung über die abschließenden
+  seine Erfolgsdomäne die Vereinigung über die abschließenden
   Klauseln seines Fakts bei ihrer normalen Rückkehr. `--print-types` zeigt die
   Erfolgsdomäne als Eingaben (`bounded(1..10) -> 1..10`, `inc(X) -> X + 1` als
   `inc(number()) -> number()`), bzw. die Eintrittsdomäne einer Funktion, die
@@ -310,18 +433,18 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   erhalten, wenn jede Klausel dasselbe Argument liefert. Ein `case` oder `if`
   vereinigt seine Klauselergebnisse auf dieselbe Weise; eine Bindung, die von
   mehreren seiner Klauseln definiert wird, bleibt `term()`.
-- Funktionstypen (step 58K, `semantic/types/function_types`): neben der obigen
+- Funktionstypen (`semantic/types/function_types`): neben der obigen
   Union-Zusammenfassung behält eine Funktion einen Funktionstyp pro möglicher
   Klausel, wie die Überladungen einer `-spec`: die Fakten der Argumente nach
   Kopf und Guard (der eingeengte Fakt einer einfachen Variable, sonst der des
   Musters) und das Ergebnis der Klausel (`none()` für eine Klausel, die immer
   eine Ausnahme auslöst; unmögliche Klauseln tragen keinen bei). Eine Klausel,
-  deren Rumpf mit einem `case` oder `if` endet, teilt sich in einen
-  Funktionstyp pro möglichem Zweig auf, mit den Fakten der Argumente nach
-  Muster und Guard dieses Zweigs und dem Ergebnis des Zweigs (eine Ebene: ein
-  verschachteltes `case` teilt sich nicht weiter auf). Funktionstypen mit
-  gleichen Eingaben werden zusammengeführt (ihre Ergebnisse vereinigt); über 8
-  hinaus werden die letzten zu einem zusammengeführt, Eingaben und Ergebnisse
+  deren Ergebnis ein [abhängiger Fakt](#dependent-facts) über ihre Argumente ist
+  (ein `case` oder `if` an ihrem Ende oder eine daran gebundene Variable, in
+  beliebiger Tiefe verschachtelt), teilt sich in einen Funktionstyp pro Klausel
+  dieses Fakts auf, wobei die Fakten seiner Parameter mit den Argumenten, die
+  sie benennen, geschnitten werden. Funktionstypen mit gleichen Eingaben werden
+  zusammengeführt (ihre Ergebnisse vereinigt); über 32 hinaus werden die letzten zu einem zusammengeführt, Eingaben und Ergebnisse
   vereinigt. Rekursive Komponenten iterieren sie mit den Ergebnissen, wobei
   jede Runde das Ergebnis jedes Typs vereinigt (dann aufweitet); eine
   Komponente, die nicht konvergiert, behält nur ihre Union-Zusammenfassungen.
@@ -333,7 +456,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   einem fun beliebiger Eingaben, wie ihn die Verwendung `F(A)` bildet, behält
   sie). Spezialisierung, Domänen und Spezifikationsprüfungen lesen die
   Union-Zusammenfassung.
-- Aufrufe wählen Funktionstypen aus (step 58L): ein Aufruf einer Funktion mit
+- Aufrufe wählen Funktionstypen aus: ein Aufruf einer Funktion mit
   Funktionstypen liest der Reihe nach jeden Typ, dessen Eingaben jeder
   Argumentfakt schneidet, und hört nach einem exakten auf (Muster aus neuen,
   einmal verwendeten Variablen, literalen Atomen und Ganzzahlen, `[]` und
@@ -355,7 +478,7 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   Argumente nicht matchen können, nichts beiträgt (`F = fun(1) -> one; (_) ->
   other end, F(2)` ist `other`). Rekursive Komponenten konvergieren über
   Ergebnisse und Funktionstypen.
-- Aufrufe werten ihren Aufgerufenen erneut aus (step 58M): wenn die
+- Aufrufe werten ihren Aufgerufenen erneut aus: wenn die
   Argumentfakten eines Aufrufs innerhalb der Eingaben des Aufgerufenen liegen
   und in einer davon enger sind, wird der Rumpf des Aufgerufenen mit ihnen als
   Eingaben erneut ausgewertet, wie ein gebundener anonymer fun, und das
@@ -378,16 +501,42 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   ersten 8 Runden auf, [Inferenzdomäne](#inference-domain)), und ein
   ausstehender rekursiver Aufruf trägt nichts zu einer Vereinigung bei. Eine
   Funktion, die nie zurückkehren kann, bleibt `none()`. Eine Komponente, die
-  nach 8 Runden plus 4 pro Mitglied nicht konvergiert ist, weitet jedes
-  Mitglied auf `term()` auf (als aufgeweitet gemeldet, wie bei
-  Budgeterschöpfung), und eine letzte Runde berechnet die Ausdrucksfakten neu;
-  die Ausdrucksfakten früherer Runden werden verworfen, sodass nur Fakten aus
-  den endgültigen Annahmen übrig bleiben.
+  nach 8 Runden plus 4 pro Mitglied nicht konvergiert ist oder deren Runden mehr
+  als ein Achtel des Durchlaufbudgets verbraucht haben, weitet jedes Mitglied
+  auf `term()` auf (als aufgeweitet gemeldet, wie bei Budgeterschöpfung), und
+  eine letzte Runde berechnet die Ausdrucksfakten neu; die Ausdrucksfakten
+  früherer Runden werden verworfen, sodass nur Fakten aus den endgültigen
+  Annahmen übrig bleiben. Eine solche Komponente wird gemerkt: spätere
+  Durchläufe geben ihren Mitgliedern sofort `term()` und führen nur diese letzte
+  Runde aus, statt erneut bis zur Obergrenze zu iterieren. Der Durchlauf, der
+  jede Eingabe auf `term()` aufweitet, vergisst die gemerkten Komponenten,
+  sodass jede mit diesen Eingaben noch eine Lösung bekommt.
+- Runden verkleinern die Zusammenfassung eines Mitglieds nie: seine
+  Funktionstypen werden Typ für Typ mit dem Typ der vorherigen Runde vereinigt
+  (Ergebnisse vereinigt, geänderte Eingaben vereinigt, und der Typ ist nicht
+  mehr exakt), oder, wenn sich die Anzahl der Typen geändert hat, werden die
+  Typen beider Runden zusammengeführt. Als Sicherheitsnetz behält jedes
+  Mitglied seine letzten 4 Zusammenfassungen, und eines, das zu einer davon
+  zurückkehrt, ist für den Rest der Lösung `term()` ohne Funktionstypen, was
+  die anderen Mitglieder konvergieren lässt.
+- Eine Runde durchläuft nur Mitglieder, die eine seit ihrem letzten Durchlauf
+  geänderte Zusammenfassung lesen: Jeder Durchlauf vermerkt die
+  Zusammenfassungen, die er liest (Aufrufe, Aufrufergebnisse, `fun F/A`), eine
+  geänderte Zusammenfassung markiert ihre Leser, und ein nicht markiertes
+  Mitglied behält seine Ausdrucksfakten. Die erste Runde durchläuft jedes
+  Mitglied, sodass eine Runde mit allen Mitgliedern markiert die volle Runde
+  früherer Schritte ist.
 - Ein gemeinsames Arbeitsbudget begrenzt die Inferenz; Erschöpfung kostet
   Präzision und fällt auf generischen Code zurück, weist aber nie ein Programm
   zurück.
-- Spezifikationen, die der Inferenz widersprechen, sind Fehler (step 58I,
-  `semantic/types/contracts`). Ein deklarierter Typ wird zu den Fakten, die er
+- Spezifikationen, die der Inferenz widersprechen, werden diagnostiziert
+  (`semantic/types/contracts`): eine widersprochene Eintrittsdomäne eines
+  Arguments ist ein Fehler; ein widersprochenes Ergebnis und ein Aufruf, dessen
+  Argumentfakten jede Überladung ablehnt, sind Warnungen (der Aufruf kann auf
+  einem Pfad liegen, der nie läuft). Spezifikationen werden nie zu Fakten:
+  Inferenz, Spezialisierung und Codeerzeugung verwenden die inferierten Typen,
+  sodass sich das Programm in jedem Fall so verhält, wie sein Code sagt. Ein
+  deklarierter Typ wird zu den Fakten, die er
   enthält (oder mehr): eingebaute Typen nach Namen (`byte()` ist `0..255`,
   `timeout()` ist `non_neg_integer() | infinity`, `iodata()` und `iolist()`
   Listen beliebiger Form), Aliase nach ihrer Definition, opake und nominale
@@ -399,17 +548,99 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   inferierten Ergebnis (außer unbekannt, oder `none()`: eine Funktion, die nie
   zurückkehrt, passt zu jedem Ergebnis), der Eintrittsdomäne eines Arguments
   oder den Argumentfakten eines Aufrufs gegenüber jeder Überladung.
-  `none()`/`no_return()` lässt nur eine Funktion zu, die nie zurückkehrt. Der
-  Fehler nennt die Funktion, den deklarierten Typ wie geschrieben und den
+  `none()`/`no_return()` lässt nur eine Funktion zu, die nie zurückkehrt. Die
+  Diagnose nennt die Funktion, den deklarierten Typ wie geschrieben und den
   inferierten. Da inferierte Fakten mehr Werte enthalten können, als der Code
   erzeugt, ist nur ein disjunktes Paar ein Widerspruch: ein deklarierter Typ,
   der enger als der inferierte ist, wird akzeptiert. `-callback`-Spezifikationen
   werden nicht geprüft. OTPs Compiler prüft Spezifikationen nicht
   ([Unterschiede](differences.md#language-edge-cases)).
 
+### Abhängige Fakten
+
+Quelle: `semantic/types/dependent`. Ein `case`, `if` oder `try ... of` verhält
+sich wie ein fun der Variablen, die seine Klauseln einengen, angewendet auf
+diese: Sein Wert ist ein abhängiger Fakt, ein Funktionstyp pro möglicher
+Klausel.
+
+- Parameter: die vor dem Konstrukt gebundenen Variablen, die sein Prüfausdruck
+  (der letzte Ausdruck des Rumpfes eines `try`) und seine Guards lesen, in
+  Quelltextreihenfolge (Variablen, die seine Klauselmuster binden, sind in jeder
+  Klausel neu, keine Parameter); höchstens 4, die Einengung eines späteren wird
+  vergessen. Jede mögliche Klausel behält die Fakten der Parameter nach ihrem
+  Muster und Guard sowie ihren Wert (`none()` für eine Klausel, die nie
+  abschließt); sie ist exakt, wie ein Funktionstyp (58L), wenn ein `case` oder
+  `try` einen Parameter oder ein Tupel von Parametern mit exaktem Muster und
+  Guard matcht oder ein `if` einen exakten Guard hat.
+- Ein Prüfausdruck, der ein Tupel von Variablen ist, engt jede Variable auf ihr
+  Element des gematchten Werts ein, und die Variable eines Tupelmusters wird an
+  denselben Wert gebunden wie das Element des Prüfausdrucks an ihrer Position
+  (`case {X, Y} of {A, b} when is_integer(A) -> ...` engt `X` und `Y` ein).
+- Ein `try ... of` hängt von seinen `of`-Klauseln ab; seine catch-Klauseln
+  können auf jeden Wert seines Rumpfes folgen, daher wird ihr vereinigter Wert
+  in den Wert jeder Klausel vereinigt (`try X of 1 -> one; _ -> other catch _:_
+  -> error end` ist
+  `$try_of_operator(X :: 1) -> error | one; (X :: _) -> error | other`).
+- `receive` und `maybe ... else` bleiben die Vereinigung ihrer Klauseln: Ihre
+  Klauseln matchen eine Nachricht oder einen gescheiterten `?=`-Wert, den nichts
+  außerhalb benennen kann, daher könnte kein Lesezugriff unter ihnen auswählen.
+- Eine Klausel, deren Wert selbst abhängig ist (ein verschachteltes `case` oder
+  `if` oder ein Lesezugriff auf eine abhängige Variable), trägt einen
+  Funktionstyp pro Klausel davon bei, über der Vereinigung beider
+  Parameterlisten, die Eingaben geschnitten. Typen, die nie betreten werden
+  können (eine Eingabe `none()` oder innerhalb der Eingaben eines früheren
+  exakten Typs), werden verworfen, ebenso Parameter, deren Fakten in jedem Typ
+  gleich sind; gleiche Eingaben werden zusammengeführt, und über 32 Typen hinaus
+  werden die letzten zusammengeführt (58K). Ein Konstrukt, dessen verbleibende
+  Typen alle denselben Wert liefern oder das keinen Parameter einengt, ist seine
+  einfache Vereinigung.
+- Jeder andere Verbraucher liest den gelöschten Fakt, die Vereinigung der Werte
+  der Klauseln. Fakten, die die durchlaufene Funktion verlassen (Ergebnisse,
+  Funktionstypen, fun-Fakten), werden gelöscht; Vereinigungen behalten eine
+  Abhängigkeit nur, wenn beide Seiten dieselbe haben.
+- Eine an einen abhängigen Wert gebundene Variable behält ihn. Das Lesen der
+  Variable wählt die Klauseln, die die aktuellen Fakten ihrer Parameter
+  betreten (Reihenfolge wie in 58L, eine exakte Klausel, deren Eingaben sie
+  enthalten, beendet die Auswahl) und deren Werte den eigenen eingeengten Fakt
+  der Variable schneiden, und der Fakt des Lesezugriffs ist die Vereinigung
+  ihrer Werte (`Y = case X of 1 -> one; _ -> other end, case X of 1 -> Y end`
+  liest `one`).
+- Eine Variable, die jede Klausel eines `case` oder `if` bindet, ist die
+  Vereinigung ihrer Fakten am Ende der abschließenden Klauseln, abhängig von den
+  Parametern des Konstrukts wie dessen Wert:
+  `case X of 1 -> Y = 5; _ -> Y = 6 end, Y` inferiert `(1) -> 5; (_) -> 6`.
+  Dieselbe Vereinigung gilt nach `receive`, `try` und `maybe`, ohne
+  Abhängigkeit.
+- Operatoren, Builtins, Tupel-, Listen-, Map- und record-Konstruktionen sowie
+  Aufrufe von Batch-Funktionen (deren Funktionstypen wie in 58L ausgewählt, die
+  Argumente nicht erneut eingeengt) mit abhängigen Operanden werden einmal pro
+  Kombination der Klauseln der Operanden ausgewertet, mit den Werten dieser
+  Klauseln anstelle der Fakten der Operanden und ihren Eingaben geschnitten:
+  Lesezugriffe auf eine Variable nehmen dieselbe Klausel, andere Operanden
+  werden kombiniert, höchstens 16 Kombinationen (darüber hinaus ist die
+  Verwendung die einfache Vereinigung). `R + 1` mit
+  `R = case X of a -> 1; b -> 2 end` inferiert `(a) -> 2; (b) -> 3`.
+- Das Einengen einer abhängigen Variable (ein Muster, ein Guard, eine
+  Verwendung) engt auch ihre Parameter auf die Vereinigung der Eingaben der
+  betretenen Klauseln ein, deren Werte den eingeengten Fakt schneiden, und
+  deren Parameter wiederum, 4 Ebenen tief: nach
+  `R = case X of a -> 1; b -> 2 end` liest `case R of 1 -> X end` `X` als `a`.
+- Das abhängige Ergebnis einer Funktionsklausel teilt sie auf (siehe
+  Funktionstypen): Parameter, die ein Argument oder einen an seinen Wert
+  gebundenen Namen benennen, schneiden dessen Eingabe; andere werden verworfen
+  (ein solcher Typ ist nur exakt, wenn ihre Eingabe ein beliebiger Term ist).
+  `nested_case(X, L)` mit `case X of 1 -> case L of spanish -> uno;
+  _ -> one end; _ -> other end` inferiert `(1, spanish) -> uno; (1, _) -> one;
+  (_, _) -> other`.
+- `--print-types` vermerkt einen abhängigen Wert als Funktionstyp, benannt nach
+  seinem Konstrukt, jede Eingabe nach dem Namen ihres Parameters:
+  `case X of 1 -> one; _ -> other end` endet auf
+  `end. % $case_of_operator(X :: 1) -> one; (X :: _) -> other`; ein `if` gibt
+  `$if_operator` aus, ein `try ... of` `$try_of_operator`.
+
 ### Inferenzdomäne
 
-Entscheidung von Plan 11 step 58A (`semantic/types/lattice`). Ein Fakt ist eine
+Quelle: `semantic/types/lattice`. Ein Fakt ist eine
 Menge von Werten, die eine Variable oder ein Ergebnis haben kann. Fakten werden
 dort vereinigt, wo der Kontrollfluss zusammenläuft (Klauseln, Zweige), und
 zwischen den Runden einer rekursiven Komponente aufgeweitet; jedes der
@@ -428,9 +659,9 @@ ihren eingebauten Namen.
 | Zahlen | `number()` | Ein Bereich oder eine Kategorie von Ganzzahlen, vereinigt mit `float()` | Singleton-Ganzzahlen mit `float()` bleiben `1 \| float()` |
 | Atome | `ok`, `error \| ok`, `boolean()` | Union der Singletons; genau `false` und `true` werden als `boolean()` ausgegeben | Mehr als 8 Singletons werden zu `atom()` |
 | Bezeichner | `pid()`, `port()`, `reference()` | — | — |
-| Tupel | `{ok, 1}`, `tuple()`, `#point{x :: 0, y :: _}` | Tupel gleicher Größe, deren erste Elemente nicht zwei verschiedene Atome sind (ihr Tag), werden elementweise vereinigt; andere bleiben getrennte Mitglieder | Mehr als 16 Elemente werden zu `tuple()`, sofern nicht jedes Element bekannt ist; mehr als 8 getrennte Formen werden zu `tuple()`. Ein Tupel mit Name und Größe eines sichtbaren Tupel-records wird als record ausgegeben (step 58J) |
-| Listen | `[]`, `[T]`, `[T, ...]`, `nonempty_improper_list(H, T)`, `[1, a]`, `[a, b \| T]` | Elemente werden vereinigt; `[]` mit einer nichtleeren Liste ergibt eine möglicherweise leere; unechte Listen vereinigen Köpfe und Tails. Listen aus zwei oder mehr bekannten Elementen behalten ihre Positionen (step 58J; eine Clause-Notation, die Typsprache hat keine, Elemente mit `\|` in Klammern ausgegeben): positionelle Listen einer Länge werden Position für Position vereinigt, sonst als einfache Listen | Eine Liste von `0..1114111` (`char()`) wird als `string()` oder `nonempty_string()` ausgegeben; eine möglicherweise leere Liste von `_` als `list()` |
-| Maps | `#{}`, `#{a := 1}`, `#{1..17 => a}`, `map()` | Maps mit denselben Schlüsseln werden Wert für Wert vereinigt; Maps anderer Schlüssel werden zu einer Assoziation ihrer vereinigten Schlüssel und Werte vereinigt (`=>`: jeder Schlüssel darf fehlen, step 58J) | Mehr als 16 Schlüssel werden zu einer Assoziation vereinigt |
+| Tupel | `{ok, 1}`, `tuple()`, `#point{x :: 0, y :: _}` | Tupel gleicher Größe, deren erste Elemente nicht zwei verschiedene Atome sind (ihr Tag), werden elementweise vereinigt; andere bleiben getrennte Mitglieder | Mehr als 16 Elemente werden zu `tuple()`, sofern nicht jedes Element bekannt ist; mehr als 8 getrennte Formen werden zu `tuple()`. Ein Tupel mit Name und Größe eines sichtbaren Tupel-records wird als record ausgegeben |
+| Listen | `[]`, `[T]`, `[T, ...]`, `nonempty_improper_list(H, T)`, `[1, a]`, `[a, b \| T]` | Elemente werden vereinigt; `[]` mit einer nichtleeren Liste ergibt eine möglicherweise leere; unechte Listen vereinigen Köpfe und Tails. Listen aus zwei oder mehr bekannten Elementen behalten ihre Positionen (eine Clause-Notation, die Typsprache hat keine, Elemente mit `\|` in Klammern ausgegeben): positionelle Listen einer Länge werden Position für Position vereinigt, sonst als einfache Listen | Eine Liste von `0..1114111` (`char()`) wird als `string()` oder `nonempty_string()` ausgegeben; eine möglicherweise leere Liste von `_` als `list()` |
+| Maps | `#{}`, `#{a := 1}`, `#{1..17 => a}`, `map()` | Maps mit denselben Schlüsseln werden Wert für Wert vereinigt; Maps anderer Schlüssel werden zu einer Assoziation ihrer vereinigten Schlüssel und Werte vereinigt (`=>`: jeder Schlüssel darf fehlen) | Mehr als 16 Schlüssel werden zu einer Assoziation vereinigt |
 | Funs | `fun((term()) -> 1)`, `fun()` | Funs einer Stelligkeit vereinigen ihre Ergebnisse; andere Stelligkeiten ergeben `fun()` | — |
 | Bitstrings | `<<_:16>>`, `<<_:3, _:_*2>>`, `binary()` | Die kürzere Größe plus jede Größendifferenz als Einheit | Basis und Einheit 0/8, 8/8, 0/1, 1/1 werden als `binary()`, `nonempty_binary()`, `bitstring()`, `nonempty_bitstring()` ausgegeben |
 
@@ -440,12 +671,17 @@ ihren eingebauten Namen.
   Typen; mehr als 8 Mitglieder werden zu `term()`.
 - Container sind höchstens 4 Ebenen tief verschachtelt; ein tiefer liegender
   Fakt wird zu `term()`.
+- Eine Union verwirft ein exaktes Tupelmitglied, das ein anderes exaktes Tupel
+  seiner Größe enthält (von zweien, die einander enthalten, bleibt das
+  frühere), sodass eine Wertmenge eine einzige Union hat; ohne das erreichten
+  Rekursionen über Bäume dieselben Werte in wechselnden Formen, und ihre Runden
+  stabilisierten sich nie.
 - Eine rekursive Komponente vereinigt Ergebnisse 8 Runden lang (Zyklen von bis
   zu 8 Funktionen konvergieren exakt) und weitet sie dann auf. Eine Komponente,
   die nach 4 weiteren Runden pro Mitglied nicht konvergiert ist, weitet jedes
   Mitglied auf `term()` auf und wird als aufgeweitet gemeldet, wie ein
   erschöpftes Budget.
-- Einengung (plan steps 58G, 58H, `Lattice::meet`) ist der Schnitt von Fakten,
+- Einengung (58H, `Lattice::meet`) ist der Schnitt von Fakten,
   die Werte, die beide enthalten (oder mehr, aber `none()` nur, wenn sie keine
   teilen): Muster und Guards (Typtests wie `is_integer/1` engen ihr Argument
   auf die Kategorie ein) engen innerhalb ihrer Klausel ein und legen die
@@ -457,10 +693,58 @@ ihren eingebauten Namen.
   aus Code und entscheiden nie auf das Wort einer Spec hin über eine
   Repräsentation.
 
-Das Lowering verarbeitet diese Fakten. Erzeugte IR wandelt nie eine Ganzzahl in
-einen Heap-Zeiger um; jedes fehlbare Serviceergebnis wird nur auf seinem
-Erfolgspfad geladen, und Formprüfungen dominieren die Extraktion.
-Spezialisierungsstrategie: [specialization.md](specialization.md).
+Das Lowering verarbeitet diese Fakten. Bei `-O2` mit Typspezialisierung
+entfernen Fakten von Argumenten, die von Aufrufern vereinigt werden, und von
+Ausdrücken Tag-, Form- und Service-Prüfungen
+([Nachweise](specialization.md#proofs)); die einzigen Umwandlungen in
+Heap-Zeiger sind diese nachgewiesenen Lesezugriffe. Jedes fehlbare
+Serviceergebnis wird nur auf seinem Erfolgspfad geladen, und Formprüfungen
+dominieren die Extraktion. Spezialisierungsstrategie:
+[specialization.md](specialization.md).
+
+### Inferenz-Cache
+
+Module in den Verzeichnissen des [Inferenz-Caches](projects.md#inference-cache)
+können eine Kompilierung mit den Ergebnissen beginnen, die eine frühere
+Kompilierung behalten hat: Zusammenfassungen, lokale Eingaben und
+Ausdrucksfakten ihrer Funktionen. `infer` hält sie in jedem Durchlauf fest,
+durchläuft nie eine Komponente, deren Mitglieder sie alle wiederverwenden, und
+durchläuft jede andere Funktion wie üblich, wobei es die behaltenen
+Zusammenfassungen wie jede andere liest.
+
+- **Wovon die Fakten eines Moduls abhängen.** Exportierte Funktionen und
+  Funktionen, die ein `fun F/A` benennt, beginnen bei `term()`; die Eingaben
+  jeder anderen Funktion kommen von ihren Aufrufern, die im selben Modul sind;
+  ein Fakt benennt eine Funktion eines anderen Moduls nur über ein Atom: einen
+  Remote-Aufruf, `fun M:F/A` oder `apply/2,3` auf einem Atomfakt (und liest das
+  record-Layout eines anderen Moduls nur über einen nativen record, den es
+  qualifiziert oder importiert), und jeder Atomfakt stammt von einem Atom, das
+  das Modul schreibt, oder aus einem Fakt eines Moduls, das es erreicht. Die
+  Fakten eines Moduls hängen also nur von seinem eigenen Code und vom Code der
+  Batch-Module ab, die seine Atome benennen, transitiv. Der Schlüssel seiner
+  behaltenen Ergebnisse deckt genau das ab: die Identität von `clau`, den
+  Fingerabdruck des Moduls (sein Quelltext, jede Datei, die es einbindet,
+  Präprozessoroptionen und eine Antwort einer Parse-Transformation),
+  vordefinierte Formen, escript- und Bibliotheksstatus sowie dasselbe von jedem
+  Batch-Modul, das seine Atome erreichen. Ein so erreichtes Modul ohne
+  Fingerabdruck macht das Modul nicht cachebar.
+- **Lebendigkeit.** Die Export-Lebendigkeit entfernt nur Funktionen, und ein
+  entfernter Aufrufer engt nur die Eingaben der Funktionen ein, die er aufrief:
+  mit mehr lebenden Funktionen berechnete Fakten gelten weiterhin. Behaltene
+  Ergebnisse werden wiederverwendet, wenn sie jede jetzt lebende Funktion
+  enthalten (sonst `results do not fit`); weggelassene Funktionen bekommen
+  nichts.
+- **Mischen.** Behaltene und frische Ergebnisse können sich in einem Batch
+  treffen: Die Fakten jedes Moduls gelten für jeden Lauf des Programms,
+  unabhängig davon, was die Fakten eines anderen Moduls sagen, daher bleibt ein
+  frisches Modul, das eine behaltene Zusammenfassung liest (oder umgekehrt),
+  korrekt. Eine rekursive Komponente mit Mitgliedern beider Arten wird als
+  Ganzes durchlaufen.
+- **Präzision.** Wiederverwendete Ergebnisse sind die der Kompilierung, die sie
+  behalten hat. Die Ergebnisse eines frischen Moduls können dennoch von einer
+  Kompilierung ohne Cache abweichen: Das Durchlaufbudget bezahlt nicht mehr für
+  wiederverwendete Module, und Graphidentitäten, nach denen einige
+  Union-Mitglieder geordnet werden, sind anders nummeriert.
 
 ## `--print-types`
 
@@ -475,14 +759,14 @@ bleiben auf stderr.
 -module(branches).
 -export([mixed/1]).
 
-%% inferred: mixed(_) -> 1..2
+%% inferred: mixed(1) -> 1; (_) -> 2
 mixed(X) ->
     case X of
         1 ->
             1;
         _ ->
             2
-    end :: 1..2.
+    end. % $case_of_operator(X :: 1) -> 1; (X :: _) -> 2
 ```
 
 - Eine `%% module`-Zeile nennt das Modul, seinen Quelltext, das Projektziel und
@@ -501,13 +785,18 @@ mixed(X) ->
   `f(integer()) -> integer(); (atom()) -> string()`
   (`semantic::types::function_source`). Eine `-spec` bleibt direkt vor der
   Funktion, durch eine Leerzeile von anderen Formen abgesetzt.
-- Ausdrücke, deren Fakt mehr als `term()` aussagt, werden als
-  `Expression :: Type` annotiert (ein bekannter Typ verdeckt eine
-  Argumentrelation, die nur bei einem Wert erscheint, über den sonst nichts
-  bekannt ist): in Klammern innerhalb anderer Ausdrücke, ohne sie bei einem
-  ganzen Rumpfausdruck. Literale Terme (Literale sowie Tupel, Listen,
-  konstruierte Maps und bitstrings aus Literalen) und Matches werden nicht
-  annotiert (die rechte Seite eines Matches schon).
+- Der äußerste Ausdruck jeder Zeile (ein Rumpfausdruck oder der Prüfausdruck
+  eines `case`), dessen Fakt mehr als `term()` aussagt, wird mit einem
+  abschließenden Kommentar `% Type` nach der Interpunktion der Zeile vermerkt
+  (ein bekannter Typ verdeckt eine Argumentrelation, die nur bei einem Wert
+  erscheint, über den sonst nichts bekannt ist): höchstens ein Vermerk pro
+  Zeile, keiner für die darin verschachtelten Ausdrücke, sodass die Ausgabe
+  gültiges Erlang bleibt. Ein Rumpfausdruck über mehrere Zeilen trägt seinen
+  Vermerk in seiner letzten Zeile (`end, % ...`). Literale Terme (Literale sowie
+  Tupel, Listen, konstruierte Maps und bitstrings aus Literalen) werden nicht
+  vermerkt; ein Match zeigt seinen Wert. Ein abhängiger Wert wird wie ein
+  Funktionstyp seines Konstrukts ausgegeben
+  ([abhängige Fakten](#dependent-facts)).
 - Ein Wert, den die Inferenz als gleich einem der Argumente der Funktion
   bewiesen hat und über den nichts weiter bekannt ist, wird als Name dieses
   Arguments ausgegeben, eine Typvariable: die Variable, die ihm die erste
@@ -564,20 +853,20 @@ sum() -> 1 + 2.
   erzeugt einen solchen Wert. Kategorien werden unter ihren eingebauten Namen
   erwartet, beschränkte Ganzzahlmengen als Bereiche. Jede Funktion erreicht
   ihren erwarteten Typ.
-- `clauses.erl` deckt Funktionstypen ab (step 58K): Typtests und literale
+- `clauses.erl` deckt Funktionstypen ab: Typtests und literale
   Muster pro Klausel, zusammengeführte gleiche Eingaben, eine Klausel, die
   Aufrufer nie betreten, mehr Klauseln als das Budget, eine rekursive
   Funktion, eine einzelne Klausel, ein `case` und ein `if` am Ende des
   Rumpfes, ein verschachteltes `case` und ein `case`, das nicht am Ende steht,
   anonyme funs mit mehreren Klauseln, `fun F/A`, Vereinigungen gleicher und
   verschiedener funs und eine Klausel, die immer eine Ausnahme auslöst; ferner
-  die Aufrufauswahl (step 58L): einen Typtest, einen ersten exakten Zweig,
+  die Aufrufauswahl: einen Typtest, einen ersten exakten Zweig,
   unbekannte Argumente, keinen zugelassenen Typ, Einengung nach dem Aufruf, ein
   literales Argument, einen Bereich über zwei Klauseln, verschachtelte
   Aufrufe, eine lokale Funktion mit mehreren Aufrufern, einen rekursiven
   Aufgerufenen und funs mit mehreren Klauseln, gebunden, in einem Tupel, an
   eine lokale Funktion übergeben und mit einem unbekannten Argument
-  aufgerufen; und die Auswertung pro Aufruf (step 58M): Ergebnisse pro Aufruf,
+  aufgerufen; und die Auswertung pro Aufruf: Ergebnisse pro Aufruf,
   Verschachtelung bis zum und über das Tiefenbudget hinaus, einen Aufgerufenen
   über dem Größenbudget, einen rekursiven Aufgerufenen und unbekannte
   Argumente.

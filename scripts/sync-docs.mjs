@@ -2,7 +2,8 @@
 //
 // Usage: pnpm sync-docs [path-to-clau]   (default: ../clau)
 //
-// docs/*.md are copied as they are. The project README.md is split into the
+// docs/*.md are copied without their internal plan step references (see
+// stripPlanReferences). The project README.md is split into the
 // "Getting started", "Building the compiler" and "Using the compiler" pages;
 // its links are rewritten to be relative to docs/ like the other files.
 // Translations in content/docs/<locale>/ are left alone; run
@@ -22,6 +23,39 @@ const metaFile = path.join(root, "content", "docs-meta.json");
 // lists prerequisites, everything from it on describes the build itself.
 const BUILD_MARKER = "From the repository root:";
 
+// The notes name the internal plan steps (and their dates) that delivered each
+// part: "Plan 11 step 41T (`path`). Text", "(plan step 37)", "(OPT0.2A)".
+// Visitors cannot follow those, so paragraph lead-ins and parenthetical
+// references are removed; source paths of a lead-in are kept as "Source:".
+// Headings and code blocks are left alone, so anchors and structure stay.
+const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|OPT\d+\.\d+[A-Z]?)`;
+// References wrap across lines, so words are separated by any whitespace.
+const STEP_IDS = String.raw`${STEP_ID}(?:(?:\s+(?:and|or)\s+|–)${STEP_ID})*`;
+const STEP_REF = String.raw`(?:[Pp]lan(?:\s+\d+)?\s+)?(?:[Ss]teps?\s+)?${STEP_IDS}(?:\s+\(part\)|\s+follow-up)?`;
+const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+\s+step\s+)?OPT\d+\.\d+[A-Z]?(?:\s+\(part\)|\s+follow-up)?)`;
+const LEAD_IN = new RegExp(
+  String.raw`^(?:Decision of )?(?:[Pp]lan(?: \d+)? )?[Ss]teps? ${STEP_IDS}(?: \(([^()]*)\))?(?:[.:]\s*|, (?=[a-z]))`,
+);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const INLINE_RULES = [
+  // "(plan step 41T, [lists module](#lists-module))", "(step 57G3; ..."
+  [new RegExp(String.raw`\(${PLAIN_REF}[,;]\s`, "g"), "("],
+  // "(revision 10, OPT0.1A)", "(..., step 41V)", "(... of step 41T)"
+  [new RegExp(String.raw`(?:,|\s+of)\s+${PLAIN_REF}\)`, "g"), ")"],
+  // "(plan step 37)", "(OPT0.2A)", "(step 41N)"
+  [new RegExp(String.raw`\s*\(${PLAIN_REF}\)`, "g"), ""],
+  // "([OPT0.5A](../.agents/20-opt.md))"
+  [
+    new RegExp(
+      String.raw`\s*\(\[${STEP_REF}\]\(\.\.\/\.agents\/[^)]*\)\)`,
+      "g",
+    ),
+    "",
+  ],
+  // "...; step 44: exit reasons; step 45: ..."
+  [new RegExp(String.raw`(;\s)${PLAIN_REF}:\s`, "g"), "$1"],
+];
+
 if (!fs.existsSync(sourceDocs)) {
   console.error(`No docs directory at ${sourceDocs}`);
   process.exit(1);
@@ -32,7 +66,8 @@ fs.mkdirSync(target, { recursive: true });
 
 const docFiles = fs.readdirSync(sourceDocs).filter((f) => f.endsWith(".md"));
 for (const file of docFiles) {
-  fs.copyFileSync(path.join(sourceDocs, file), path.join(target, file));
+  const text = fs.readFileSync(path.join(sourceDocs, file), "utf8");
+  fs.writeFileSync(path.join(target, file), stripPlanReferences(text));
 }
 
 const sections = splitSections(
@@ -66,7 +101,9 @@ for (const [file, [title, body]] of Object.entries(derived)) {
   if (docFiles.includes(file)) {
     console.warn(`docs/${file} exists; README-derived page overrides it`);
   }
-  const text = `# ${title}\n\n${rewriteReadmeLinks(body.trim())}\n`;
+  const text = stripPlanReferences(
+    `# ${title}\n\n${rewriteReadmeLinks(body.trim())}\n`,
+  );
   fs.writeFileSync(path.join(target, file), text);
 }
 
@@ -116,6 +153,58 @@ function rewriteReadmeLinks(markdown) {
       : `../${href}`;
     return `](${relative})`;
   });
+}
+
+function stripPlanReferences(markdown) {
+  const blocks = [];
+  let fence = false;
+  let paragraph = [];
+  const flush = () => {
+    if (paragraph.length) blocks.push(...stripParagraph(paragraph.join("\n")));
+    paragraph = [];
+  };
+  for (const line of markdown.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      flush();
+      fence = !fence;
+      blocks.push(line);
+    } else if (fence || /^#{1,6} /.test(line)) {
+      flush();
+      blocks.push(line);
+    } else if (!line.trim()) {
+      flush();
+      blocks.push(line);
+    } else {
+      paragraph.push(line);
+    }
+  }
+  flush();
+  // A dropped lead-in paragraph leaves two blank lines in a row.
+  return blocks.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+// Returns the paragraph as lines, or none when nothing but a reference is left.
+function stripParagraph(text) {
+  let result = text;
+  const lead = LEAD_IN.exec(result);
+  if (lead) {
+    const paths = (lead[1] ?? "")
+      .split(/,\s*/)
+      .filter((part) => part && !DATE.test(part.trim()));
+    let rest = result.slice(lead[0].length);
+    rest = rest.charAt(0).toUpperCase() + rest.slice(1);
+    const source = paths.length ? `Source: ${paths.join(", ")}.` : "";
+    result = [source, rest].filter(Boolean).join(rest ? " " : "");
+    if (!result.trim()) return [];
+  }
+  // "(OPT0.13, OPT0.14)" needs one pass per reference.
+  for (let previous = ""; previous !== result;) {
+    previous = result;
+    for (const [pattern, replacement] of INLINE_RULES) {
+      result = result.replace(pattern, replacement);
+    }
+  }
+  return result.split("\n");
 }
 
 function git(dir, ...args) {

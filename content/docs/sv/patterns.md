@@ -1,8 +1,8 @@
 ---
 source: docs/patterns.md
-sourceCommit: 06042fa
-sourceSha256: 5d4fa604cd009ece1e93b35b9f94ebc0ecf7f468356ccdc6e96a4d84c9280a97
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: ef7903895b7901a6980a3cd181783486ae8672876229d35fae120e802392e989
+translatedAt: 2026-10-15
 ---
 # Mönster, klausuler och matchningar i kroppar
 
@@ -143,7 +143,8 @@ strängar och binary-segment utan storlek som inte står sist.
 
 ## Gränser
 
-Mönsternormalisering delar modulens semantiska budget på 1 000 000 enheter
+Mönsternormalisering delar modulens semantiska budget (1 000 000 enheter,
+eller 32 per uttryck för större moduler)
 (ett heltal kostar ungefär sitt antal decimala siffror); en konstant bortom
 heltalsgränsen på 4 194 240 bitar är ett `illegal pattern`, som i OTP
 ([termer](terms.md#integers)).

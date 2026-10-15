@@ -2,7 +2,7 @@
 
 `--profile FILE` (a [runtime option](executables.md#runtime-options), also
 through `CLAUSE_FLAGS`) makes a program write a cost report to `FILE` when it
-ends (plan 11 step 61, backlog F31). Nothing is recompiled: every executable
+ends (backlog F31). Nothing is recompiled: every executable
 can profile, and without the option it runs, prints and writes files exactly
 as before. A report that cannot be written is reported on stderr
 (`clau: cannot write profile FILE`); the exit status stays the program's.

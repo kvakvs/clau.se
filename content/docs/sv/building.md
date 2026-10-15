@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: 06042fa
-sourceSha256: de3570e747becc95b3596b8c17bf4d8bab1fa83db2aae32da918222afd413e6c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 588e40c653165e5d39e7f284cf3173a4f04d81079cba804e17b7444a1f40662d
+translatedAt: 2026-10-15
 ---
 # Bygga kompilatorn
 
@@ -77,14 +77,33 @@ inte är ett utvecklarskal och lägger till `%ProgramFiles%\LLVM\bin` i `PATH` n
 `clang-cl` saknas. En byggkatalog som konfigurerats med en annan generator eller
 kompilator konfigureras om från grunden; sätt `CLAUSE_TOOLCHAIN=default` för att
 behålla CMakes eget val (till exempel MSVC `cl` i en separat katalog).
-Standardvärden för bygget är `BUILD_DIR=build/debug`, `BUILD_TYPE=Debug` och det
-inbyggda byggverktygets parallellism (åsidosätt med `JOBS=N`); miljövariablerna
+Standardvärden för bygget är `BUILD_DIR=build/debug` (test),
+`TOOL_BUILD_DIR=build/tool` (`make build`, `make-build.bat`, `clau.bat`,
+`run-macos.sh`: test avstängda, så att de aldrig konfigurerar om testbygget),
+`BUILD_TYPE=Debug` och det inbyggda byggverktygets parallellism
+(åsidosätt med `JOBS=N`); miljövariablerna
 `CMAKE`, `CTEST`, `CMAKE_ARGS` och `CLANG_FORMAT` åsidosätter också motsvarande
 verktyg/alternativ.
 `make-test.bat` konfigurerar med test aktiverade, bygger alla mål och kör sedan
 CTest, vilket motsvarar `make test` och vidarebefordrar fel i konfiguration,
 bygge eller test.
 Clean tar bort de förrådslokala katalogerna `build/` och `cmake-build*/`.
+
+`make benchmark` och `make-benchmark.bat` kör den manuella
+prestandajämförelsen med värdens Erlang/OTP (Release-bygge i `build/bench`,
+aldrig en del av testerna); se [prestandamätningar](validation.md#benchmarks).
+
+`decompile-debug.bat <module>` och `decompile-release.bat <module>` kompilerar
+om en C++-källfil (namn utan sökväg eller filändelse; lägg till överordnade
+kataloger när det är tvetydigt, t.ex. `ast/attributes`) med dess registrerade
+Debug- eller Release-flaggor och skriver `<module>.debug.asm` /
+`<module>.release.asm` i den aktuella katalogen. De omsluter `tools/asm.py`
+(endast clang-cl-byggen), som tar kompileringskommandot från `build/tool` och
+sedan `build/debug` (`--build-dir` åsidosätter). Utdata behåller kod och data
+med kommentarer om källrader och avmanglade namn, utan direktiv för
+felsökningsinformation, stackupprullning och symboltabell. `--function TEXT`
+behåller endast funktioner vars avmanglade namn innehåller `TEXT`, och `--raw`
+skriver den ofiltrerade listningen.
 
 Kvalitetskontroller och formatering gäller som standard ändrade filer: allt som
 skiljer sig från `HEAD` i arbetsträdet, plus ospårade filer.
@@ -146,7 +165,8 @@ Windows-förinställningen placerar den körbara filen i
 `build/windows/lib/<Config>/clause_runtime.lib`.
 
 Alternativt kan `make build` användas för att bygga endast `clau` och dess
-beroenden, eller `make test` för att bygga och köra hela testsviten. För en
+beroenden i `build/tool`, eller `make test` för att bygga och köra hela
+testsviten. För en
 annan konfiguration:
 
 ```sh
@@ -160,6 +180,7 @@ Skicka dessa alternativ vid konfigurering för att åsidosätta standardvärden:
 |---------------------------------------------|---------------------------------------------------------------|
 | `-DCLAUSE_BOOST_ROOT=/path/to/boost`    | Välj en Boost-installation eller ett fullständigt källträd    |
 | `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Välj det fastlåsta TOML-beroendet |
+| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Välj den fastlåsta SQLite-amalgamationen (byggcache) |
 | `-DCLAUSE_OTP_AUDITS=ON` | Aktivera valfria live-granskningar mot OTP/referens; standard är OFF |
 | `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | Välj OTP 29+ för valfria granskningar; används inte av vanliga tester |
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Välj en installerad körbar Clang-fil för Windows |

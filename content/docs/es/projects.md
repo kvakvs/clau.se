@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: 06042fa
-sourceSha256: fede4b3ed0440e1032fd9d7e0bad11ee107bc68c2c08dfa3b1add7b9fbc880c1
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 8a996bd18e6d699944fde901a3d45fece06aa55859935b3fe26c1518edc03e7d
+translatedAt: 2026-10-15
 ---
 # Proyectos TOML
 
@@ -22,6 +22,7 @@ sources = ["main.erl", "src/workers/*.erl", "shared/**/*.erl"]
 source_dirs = ["src/support"]
 output = "build/app"
 entry = "main:main"
+build_dir = "build"
 
 [targets.options]
 source_search_paths = ["src", "generated"]
@@ -29,6 +30,10 @@ include_dirs = ["include", "vendor/include"]
 defines = ["DEBUG", "LIMIT=100", 'LABEL="demo"']
 enable_features = ["maybe_expr"]
 disable_features = ["compr_assign"]
+ignore_dirs = ["src/legacy", "deps/*/test"]
+ignore_modules = ["telemetry", "*_SUITE"]
+keep_exports = false
+cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
 my_dependency = "vendor/my_dependency"
@@ -42,9 +47,24 @@ my_dependency = "vendor/my_dependency"
   mayúsculas y minúsculas, únicos. Un nombre es un destino de compilación, no una
   tripleta de LLVM.
 - `sources` (archivos y patrones comodín) y `source_dirs` (búsqueda recursiva
-  de `.erl`) son opcionales, pero un destino necesita al menos una entrada. Los
-  archivos explícitos deben terminar en `.erl`; las cabeceras son dependencias,
-  no entradas.
+  de `.erl` y `.abstr`) son opcionales, pero un destino necesita al menos una
+  entrada. Los archivos explícitos deben terminar en `.erl`, o en `.abstr` para
+  formas en formato abstracto ([transformaciones](transforms.md#interchange));
+  las cabeceras son dependencias, no entradas.
+- `parse_transforms` (nombres de módulo) y `transform_paths` (directorios o
+  patrones de archivos `.beam` precompilados) en `options` aplican parse
+  transforms a los módulos del destino
+  ([transformaciones](transforms.md#options)).
+- `ignore_dirs` (rutas) e `ignore_modules` (nombres de módulo), ambos con
+  comodines, en `options` dejan fuentes fuera de la compilación
+  ([fuentes ignorados](#ignored-sources)).
+- `keep_exports = true` en `options` mantiene invocables todas las
+  exportaciones del ejecutable del destino, como hace `--keep-exports` para
+  cada destino seleccionado ([vida de las exportaciones](executables.md#export-liveness)).
+  Debe ser un booleano.
+- `cache_inference_in_dirs` (comodines de directorio) en `options` añade
+  directorios cuyos módulos conservan sus resultados de inferencia en la caché
+  de compilación ([caché de inferencia](#inference-cache)).
 - Los campos de `options` son opciones tipadas opcionales del frontend.
   `defines` usa `NAME` (= `true`) o `NAME=ERLANG_LITERAL_TERM`; los duplicados
   son errores. Una funcionalidad no puede aparecer en ambas listas de
@@ -52,14 +72,18 @@ my_dependency = "vendor/my_dependency"
 - `entry` (opcional) selecciona la entrada del ejecutable `MODULE[:FUNCTION]`;
   véase [ejecutables](executables.md#entry-selection). El `--entry` de la CLI la
   sustituye para un único destino seleccionado.
+- `build_dir` (opcional) es el
+  [directorio de compilación](#build-directory) del destino, por defecto
+  `<manifest-dir>/build`.
 - `output` es el destino del ejecutable, por defecto
   `<manifest-dir>/build/<target>` (`.exe` en Windows). Un destino con `output` o
   `entry` es un destino ejecutable ([ejecutables](#executables)); `--emit` y los
   modos de comprobación/impresión ignoran las salidas de ambas claves.
 - Aún no soportado: valores por defecto en la raíz, herencia, dependencias entre
-  destinos, importaciones, perfiles, exclusiones, paquetes, vigilancia de
-  cambios, caché, compilaciones en paralelo. Los campos solo se añaden junto con
-  su comportamiento.
+  destinos, importaciones, perfiles, paquetes, vigilancia de cambios,
+  compilaciones en paralelo. Los campos solo se añaden junto con su
+  comportamiento. Las cachés de compilación se describen en
+  [cachés de compilación](#build-caches).
 
 ## CLI y selección de destinos
 
@@ -87,6 +111,23 @@ clau --new-project <filename>
   seleccionado.
 - `--verbose` traza en stderr los archivos/includes `[pp]` y los fuentes
   `[parse]`.
+- `--print-inputs` ejecuta cada destino seleccionado hasta la compilación:
+  preprocesa y analiza los fuentes tras la [búsqueda](#paths-and-discovery) y
+  después añade los módulos que estos nombran desde la biblioteca y
+  `source_search_paths`, como hace una compilación. Imprime los fuentes del
+  destino (rutas absolutas), uno por línea, y después cada fuente añadido como
+  `<path> (referenced at <file>:<line>)`, el primer lugar del módulo que lo
+  referencia donde se nombra; los fuentes añadidos se exploran a su vez. No se
+  compila nada. Con varios destinos, cada lista sigue a una línea
+  `[target <name>]`. Las entradas posicionales se imprimen tal como se dan. Los
+  diagnósticos van a stderr; un error de análisis detiene la adición de
+  módulos referenciados y termina con código 1. Sustituye a las demás acciones
+  de comprobación/impresión y, como ellas, es incompatible con `-o`,
+  `--entry` y los conmutadores de compilación.
+- `--print-env` imprime la invocación completa como TOML: una tabla
+  `[[targets]]` por destino seleccionado con sus fuentes resueltos, sus
+  directorios de búsqueda/inclusión y sus opciones efectivas
+  ([informe del entorno](compile.md#environment-report)).
 - Código de salida 2: errores de uso y destinos desconocidos. Código 1: fallos
   de manifiesto, de búsqueda, del frontend o de creación. Código 0: éxito (se
   permiten advertencias).
@@ -96,7 +137,11 @@ propias sesiones de preprocesado. La planificación (decodificar, seleccionar,
 buscar, comprobar colisiones de salida) termina antes de procesar ningún fuente;
 después la ejecución procesa los destinos/archivos en orden y retiene los
 fallos. La salida de contenido va a stdout en orden de destino/archivo sin
-encabezados; el contexto y los diagnósticos van a stderr.
+encabezados (salvo las líneas de destino de `--print-inputs`); el contexto y
+los diagnósticos van a stderr. Un destino con diagnósticos se nombra una sola
+vez, en una línea `<manifest> [target <name>]:` antes del primero; los propios
+diagnósticos (`error: file:line:col: message`) no llevan prefijo de
+herramienta ni de destino.
 
 ```sh
 ./build/debug/bin/clau --parse-check --project examples/project/project.toml
@@ -153,6 +198,215 @@ ejecutable por destino:
   por defecto de la plataforma. Se decodifica de inmediato; el usuario añade los
   fuentes bajo `src`.
 
+## Directorio de compilación
+
+Cada destino de proyecto tiene un directorio de compilación donde Clause guarda
+sus propios archivos temporales (y, desde el plan 11 step 62D2, sus cachés): el
+`build_dir` del destino, relativo al manifiesto, por defecto
+`<manifest-dir>/build`. `--build-dir DIR` (relativo a la invocación) lo
+sustituye para todos los destinos seleccionados. Las entradas posicionales no
+tienen ninguno salvo que se indique `--build-dir`.
+
+- Los archivos temporales van bajo `<build_dir>/tmp`: actualmente, los espacios
+  de trabajo del cargador de parse transforms
+  ([transformaciones](transforms.md#loader)). Cada ejecución elimina los suyos;
+  puede quedar un `tmp` vacío. Sin directorio de compilación van al directorio
+  temporal del sistema.
+- La preparación del enlazado (`.clause-link-*`) permanece junto a la salida
+  del ejecutable, porque el renombrado final debe quedarse en el volumen de la
+  salida ([enlazado](executables.md#linking)).
+- Los modos de comprobación e impresión (`--parse-check`, `--print-ast`, ...)
+  no escriben nada fuera del directorio de compilación; las comprobaciones
+  posicionales sin `--build-dir` no escriben ningún archivo.
+- `--print-env` imprime el `build_dir` de cada destino (`""` cuando no hay
+  ninguno).
+
+### Cachés de compilación
+
+Los resultados que merece la pena conservar entre ejecuciones viven bajo
+`<build_dir>/cache` (62D4 y 62D5); `--no-cache` ni los lee ni los escribe. Son
+las respuestas del cargador de parse transforms y la lista de módulos sticky
+del OTP anfitrión, de modo que una compilación en caliente no arranca ningún
+`erl` anfitrión para los módulos cuyas entradas de transformación no han
+cambiado, y el [resultado de compilación](compile.md#compile-cache) de cada
+lote.
+
+- **Interfaz.** Los llamadores usan un único almacén interno del proyecto
+  (`compiler/src/cache/
+  store.hpp`): `get`/`put` por directorio de entrada, nombre de archivo, tipo
+  de resultado y clave, además de `invalidate` y `prune`; nunca ven rutas. Un
+  valor es la versión de formato del llamador y una lista de partes con nombre
+  (una ejecución de transformación: `reply` y `output`; un resultado de
+  compilación: `failed`, cada `diagnostic` y, con salidas, `triple`,
+  `extension` y una parte por objeto de módulo), de modo que ningún llamador
+  necesita un códec propio. Un `get` con otra versión de formato es un fallo
+  de caché. Toda operación es segura desde varios hilos a la vez.
+- **Disposición (backend SQLite).** `cache/v2/cache.db` es una base de datos
+  SQLite 3.54: tabla `entries` (directorio de entrada, archivo, tipo, clave,
+  formato, último uso; única por dirección) y tabla `parts` (entrada, orden,
+  nombre, tamaño, suma de comprobación xxh3-64, y los bytes o el nombre de un
+  archivo blob). Las partes mayores de 256 KB viven en
+  `cache/v2/blobs/<xxh3-128 of the bytes>`, de modo que las partes iguales (los
+  objetos idénticos de un lote compilado con dos conjuntos de opciones) se
+  almacenan una sola vez. Un archivo blob se escribe como archivo temporal y se
+  renombra antes de que se confirme la fila que lo nombra, de modo que una fila
+  nunca nombra un archivo incompleto; un fallo en medio solo deja un archivo
+  huérfano.
+- **Claves.** Una clave es el hash de contenido de 128 bits de todo aquello de
+  lo que depende el resultado, nunca una marca de tiempo: la versión y el
+  ejecutable de `clau` (ruta, tamaño, fecha de modificación, de modo que un
+  `clau` recompilado falla en la caché), el tipo de resultado y, para una
+  ejecución de transformación, la solicitud enviada a `erl` (las formas
+  preprocesadas del módulo y sus opciones de compilación: directorios de
+  inclusión, defines, funcionalidades), la versión del OTP anfitrión (`erl` y
+  los archivos `releases/*/OTP_VERSION` junto a él), cada fuente de
+  transformación del proyecto compilado para la ejecución con los archivos que
+  incluye, y cada `.beam` de las rutas de código de las transformaciones. La
+  versión de formato del almacén es el directorio `v<format>`; la versión de
+  formato propia de un valor se guarda en su fila. Como la clave cubre las
+  formas preprocesadas, un cambio en una cabecera, un define o una
+  funcionalidad, o una cabecera nueva que oculta una incluida, provoca fallos
+  de caché exactamente en los módulos cuyas formas u opciones cambian; los
+  defines y las funcionalidades son opciones de compilación que ve toda
+  transformación, así que provocan fallos en todos los módulos transformados;
+  un `.beam` modificado provoca fallos en todos los módulos cuyas
+  transformaciones se ejecutan con esa ruta de código.
+- **Concurrencia.** La base de datos funciona en modo de registro de escritura
+  anticipada (write-ahead log) con `synchronous=NORMAL`: los lectores se
+  ejecutan junto a un escritor, y los escritores (una transacción por `put`)
+  se esperan entre sí hasta 30 s. Varios procesos `clau` que comparten un
+  directorio de compilación conservan todas las entradas. Dentro de un
+  proceso, un mutex serializa los hilos que comparten un almacén.
+- **Daños.** Las partes llevan tamaños y sumas de comprobación, y los archivos
+  blob se comprueban frente a sus nombres: una parte dañada o un archivo blob
+  ausente es un fallo de caché (`damaged entry`) y su entrada se descarta. Un
+  `cache.db` basura, truncado o ajeno (SQLite lo notifica como corrupto o como
+  no base de datos, o su application id o versión de esquema difieren) se
+  renombra a `cache.db.damaged` y se crea de nuevo; cuando eso no es posible,
+  la ejecución continúa sin caché. Nada de esto es un error, y `--verbose` lo
+  anota como `[cache] ...`.
+- **Sistemas de archivos de red.** El registro de escritura anticipada
+  necesita memoria compartida entre procesos, que los sistemas de archivos de
+  red no proporcionan. Cuando SQLite no puede entrar en modo WAL, el almacén
+  usa su diario de reversión (rollback journal; los lectores esperan entonces
+  a un escritor) y `--verbose` lo indica una vez; cuando ningún modo de diario
+  funciona, la ejecución continúa sin caché.
+- **Poda.** Al final de una ejecución que escribió en un almacén, se eliminan
+  las entradas no usadas en 30 días, después los archivos blob que ninguna
+  entrada nombra (una vez que tienen más de 10 minutos, para que sobreviva el
+  archivo nuevo de un escritor concurrente), y las páginas liberadas se
+  devuelven al sistema de archivos (vacuum incremental). Cada ejecución elimina
+  un árbol `cache/v1` sobrante del backend de archivos del step 62D2.
+- **Observabilidad.** `--print-stage-times` marca las etapas reutilizadas
+  (`[time] transform src/a.erl: 7.254 ms (cached)`); `--verbose` imprime
+  `[cache] hit|miss <kind> <file>` con el motivo de un fallo de caché
+  (`no entry`, `inputs changed`, `damaged entry`). Los diagnósticos y la salida
+  de las transformaciones son los mismos con y sin acierto: se almacenan con la
+  entrada.
+- **Mediciones del backend** (2026-10-12, Release, Windows 11,
+  NTFS; `cache_store bench` en `tests/compiler/cache`). El backend de archivos
+  de 62D2 (un índice reescrito por cada put, paquetes de solo anexado) frente a
+  SQLite:
+
+  | Caso | Backend de archivos | SQLite |
+  | --- | --- | --- |
+  | 200 puts × 8 KB, después apertura y 200 gets | 788–902 ms, 9–16 ms | 37–41 ms, 8–9 ms |
+  | 2.000 puts × 8 KB, después apertura y gets | 11,1–12,5 s (1–3 entradas perdidas), 118–128 ms | 249–258 ms, 32–33 ms |
+  | 3 puts × 24 MB, después apertura y gets | 106–127 ms, 144–157 ms | 85–90 ms, 73 ms (archivos blob) |
+
+  Guardados dentro de la base de datos, los valores de 24 MB tardaron
+  379–392 ms en el put (el registro los escribe dos veces). Veinte valores
+  distintos por tamaño, escritos y después leídos de vuelta: 64 KB en la base
+  de datos 21 ms / 7 ms frente a 30 ms / 12–17 ms como archivos blob; 256 KB
+  41–43 ms / 9 ms frente a 30–31 ms / 10–19 ms; 1 MB 105–110 ms / 18 ms frente
+  a 37 ms / 18–22 ms; 4 MB 458–466 ms / 82 ms frente a 92 ms / 71 ms. Las
+  lecturas favorecen a la base de datos hasta unos 256 KB y las escrituras
+  favorecen a los archivos a partir de ahí, lo que fija el límite en línea en
+  256 KB. Las compilaciones de luerl (Release, tres ejecuciones) no cambiaron:
+  en frío 3,75–3,78 s antes y 3,78–3,80 s después, en caliente 1,65–1,68 s
+  antes y 1,69–1,70 s después; conservan pocas entradas.
+- **Sin caché de exploración de directorios** (2026-10-11, `clau` Release,
+  Windows, caché de archivos del sistema operativo en caliente). luerl planifica
+  en 78 ms de una compilación en caliente de 2,77 s (2,8%). Un manifiesto sobre
+  todo `references/otp/lib` (1.319 directorios, 9.711 archivos) planifica en
+  unos 150 ms: `sources = ["…/lib/**/src/*.erl"]` 74 ms,
+  `source_dirs = ["…/lib"]` 140 ms, `source_search_paths` e `include_dirs` con
+  `**` 35 ms cada uno, `ignore_dirs` 0,4 ms. Enumerar todos los directorios del
+  árbol cuesta unos 28 ms, mientras que comprobar la fecha de modificación de
+  cada directorio (lo que haría en su lugar una caché de exploración) cuesta
+  unos 13 ms; el resto es la validación por fuente (abrir e identificar cada
+  uno de los 2.000-3.600 fuentes), que una caché así no puede evitar. La
+  primera ejecución después de que el árbol saliera de la caché del sistema
+  operativo tardó 10-20 s, también dominada por la apertura de archivos. La
+  exploración de includes no cuesta nada medible desde el
+  [índice de directorios](#directory-index).
+- **Resultados de inferencia** de los módulos de los directorios configurados
+  ([caché de inferencia](#inference-cache)).
+- **Sin caché:** el preprocesado y el análisis sintáctico. Un resultado en
+  caché se cargaría a través de las formas abstractas (`transforms/import`), y
+  en luerl (169 módulos, Release, 2026-10-11) solo importarlas tardó 1.063 ms
+  frente a 819 ms para preprocesar (409 ms) y analizar (410 ms) los fuentes;
+  exportar las formas para una clave tardó otros 727 ms.
+
+### Caché de inferencia
+
+Los módulos de biblioteca (los fuentes de `stdlib`, `kernel`, `compiler` y
+`syntax_tools` de OTP encontrados a través de `source_search_paths`, y la
+[biblioteca](library.md) propia de Clause) rara vez cambian, por lo que los
+módulos de los directorios configurados conservan sus resultados de inferencia
+de tipos en la caché de compilación, por módulo, y las compilaciones
+posteriores los reutilizan en lugar de volver a inferirlos.
+
+- Directorios: los patrones implícitos de aplicaciones de OTP `*/stdlib`,
+  `*/stdlib-*`, `*/kernel`, `*/kernel-*`, `*/compiler`, `*/compiler-*`,
+  `*/syntax_tools` y `*/syntax_tools-*`, después el `cache_inference_in_dirs`
+  del destino y después cada `--cache-inference-in-dirs PATTERN` (repetible;
+  también para entradas posicionales). Los patrones usan los
+  [comodines](#paths-and-discovery) de `sources`; se aceptan los separadores
+  de Windows.
+- Un módulo queda cubierto cuando un directorio que contiene su fuente encaja
+  con un patrón. Un patrón relativo encaja con los directorios finales de
+  cualquier ruta, no con rutas bajo el directorio del manifiesto: `*/stdlib`
+  cubre `/usr/lib/erlang/lib/stdlib/src/lists.erl` y
+  `references/otp/lib/stdlib/src/lists.erl`, mientras que un
+  `.../lib/stdlib-7.0/src/lists.erl` instalado necesita `*/stdlib-*`. Un patrón
+  absoluto encaja con la ruta completa del directorio
+  (`C:/Program Files/Erlang OTP/lib/*`). El encaje es léxico y distingue
+  mayúsculas y minúsculas. Los patrones implícitos cubren también un
+  directorio propio del proyecto con uno de esos nombres (`apps/compiler`), lo
+  que solo almacena más entradas: la reutilización es correcta para cualquier
+  módulo.
+- `--print-env` imprime la lista efectiva como `cache_inference_in_dirs`, con
+  los patrones implícitos primero. Una construcción no soportada (`[`, `{`,
+  `!`) es un error de manifiesto, o un error de uso (código 2) en la línea de
+  órdenes.
+- La reutilización necesita un directorio de compilación (todo destino de
+  proyecto; entradas posicionales con `--build-dir`) y se desactiva con
+  `--no-cache`. Funciona para toda acción que analiza (compilación,
+  ejecutables, `--print-types`, inspecciones del IR), también cuando la
+  [caché de compilación](compile.md#compile-cache) del lote falla.
+- Clave: la identidad de `clau`, la huella del módulo y las de todos los
+  módulos del lote que nombran sus átomos, de forma transitiva (llamadas
+  remotas, `fun M:F/A`, `apply`, cualquier átomo que sea un nombre de módulo);
+  véase [semántica: caché de inferencia](semantic.md#inference-cache) para
+  saber por qué solo de eso dependen sus hechos. Editar un módulo de usuario
+  conserva por tanto los aciertos de la biblioteca salvo que un módulo de
+  biblioteca lo nombre; editar un módulo de biblioteca provoca un fallo en él y
+  en todo módulo cubierto que lo alcanza.
+- Las entradas se guardan por directorio de fuentes, archivo y destino de
+  proyecto (tipo `inference@<target>`, `inference@positional`); un valor es una
+  parte `results` (`semantic/types/inference_store`: nodos del grafo,
+  resúmenes y entradas locales por función, hechos de expresiones por posición
+  sintáctica). Los resultados guardados por una compilación con más funciones
+  vivas (por ejemplo `--print-types`) sirven a un ejecutable que conserva
+  menos.
+- `--verbose` imprime `[cache] hit|miss inference <file>` por módulo cubierto
+  (motivos de fallo: `no entry`, `inputs changed`, `damaged entry`,
+  `results do not fit` para resultados guardados a los que les falta una
+  función que ahora está viva); `--print-stage-times` imprime las fases
+  `inference-cache` (con `N of M covered modules reused`) e
+  `inference-store`.
+
 ## Rutas y búsqueda
 
 - La ruta del proyecto se resuelve respecto al directorio de invocación; el
@@ -162,8 +416,17 @@ ejecutable por destino:
   tilde. Para rutas de Windows se usa `/` o cadenas literales de TOML.
 - Los fuentes relativos literales prueban primero la base y después
   `source_search_paths` en orden. Un candidato existente pero ilegible es un
-  error. Las rutas de búsqueda solo localizan archivos enumerados; no enumeran
-  módulos ni afectan a los includes.
+  error. Las rutas de búsqueda no enumeran módulos ni afectan a los includes.
+- Cuando los fuentes del destino nombran un módulo que ninguno de ellos define
+  (una llamada remota, `fun M:F/A`, `apply` con un módulo literal,
+  `-behaviour` o `-import`), se busca `Module.erl` primero en la
+  [biblioteca](library.md#how-programs-get-them) de Clause y después en las
+  rutas de búsqueda en orden (plan step 41K: un OTP instalado nunca sustituye
+  a un módulo de Clause, y un módulo que Clause registra como ausente nunca se
+  toma de una ruta de búsqueda); un archivo encontrado se une al destino como
+  un fuente enumerado, y sus propias referencias se resuelven de la misma
+  manera. Un fuente enumerado con el nombre de un módulo de Clause lo
+  sustituye, con una advertencia.
 - Comodines: `*` y `?` dentro de un componente, `**` como componente completo.
   Se rechazan corchetes, llaves, negación y escapes. El encaje distingue
   mayúsculas y minúsculas; `?` es un escalar Unicode de un nombre UTF-8 válido.
@@ -180,17 +443,111 @@ ejecutable por destino:
   las opciones pueden diferir.
 - Solo los destinos seleccionados acceden al sistema de archivos.
 
+### Índice de directorios
+
+Las búsquedas por nombre no prueban cada directorio candidato. Un único índice
+por invocación de `clau`, compartido por todos los destinos, guarda los nombres
+de las entradas de cada directorio explorado: se enumera una vez, de forma no
+recursiva, cuando una búsqueda lo necesita por primera vez, o lo registran los
+recorridos recursivos que expanden `**` en `sources`, `source_dirs`,
+`source_search_paths`, `include_dirs` y `transform_paths`, de modo que ningún
+directorio se enumera dos veces. Responde a los fallos de la búsqueda de
+módulos (la biblioteca y después `source_search_paths`), a los fuentes de
+transformaciones, a los `sources` literales encontrados a través de
+`source_search_paths` y a la resolución de includes (el directorio del archivo
+que incluye, el directorio de trabajo, los directorios de inclusión en orden y
+después las aplicaciones de `include_lib`); un candidato que contiene el índice
+se sigue abriendo o comprobando como antes, por lo que la precedencia,
+`ignore_dirs` y los informes de error no cambian. Los nombres de include con
+partes de directorio (`sub/x.hrl`) se buscan en el directorio que nombran; los
+nombres con pasos `..`, los nombres absolutos, los directorios relativos y las
+enumeraciones que fallan se prueban como antes.
+
+- Las claves de nombre de archivo pliegan las mayúsculas ASCII en Windows y
+  macOS, cuyos volúmenes ignoran por defecto la diferencia entre mayúsculas y
+  minúsculas, de modo que `Foo.hrl` sigue encontrando `foo.hrl`; en los demás
+  sistemas las claves son exactas. Los nombres que el plegado no puede
+  emparejar con exactitud (allí los nombres no ASCII y, en Windows, los nombres
+  que terminan en `.` o en un espacio o que contienen `~`, que pueden ser
+  nombres cortos 8.3) se prueban.
+- El índice es una instantánea de una invocación: los archivos que aparecen
+  mientras `clau` se ejecuta (preparación del enlazado, salidas) nunca son
+  entradas de búsqueda.
+- `--verbose` termina con
+  `[index] listed=N walked=N lookups=N misses=N probes=N` (directorios
+  enumerados bajo demanda, enumeraciones registradas por recorridos, búsquedas
+  que respondió el índice y los fallos entre ellas, búsquedas que quedaron para
+  una prueba). En luerl (2026-10-11) responde a las 15.215 búsquedas (14.909
+  fallos) a partir de 66 enumeraciones y 1.380 directorios recorridos.
+
+## Fuentes ignorados
+
+`ignore_dirs` e `ignore_modules` mantienen fuentes fuera de un destino sin
+quitarlos del árbol, por ejemplo pruebas incluidas de terceros, código heredado
+o módulos que solo importan con OTP. Un fuente ignorado se omite en silencio:
+nunca se lee, analiza, compila ni enlaza, por lo que puede incluso contener
+errores de sintaxis.
+
+- `ignore_dirs`: rutas relativas al manifiesto (o absolutas) con los
+  [comodines](#paths-and-discovery) de `sources`. Un fuente se ignora cuando su
+  ruta, o un directorio que lo contiene, encaja: `src/legacy`, `deps/*/test`,
+  `**/test` (cualquier directorio `test`), `src/*_SUITE.erl`. El encaje es
+  léxico; un patrón no tiene por qué encajar con nada.
+- `ignore_modules`: nombres de módulo, o patrones de nombre con `*` y `?` que
+  se comparan con el nombre completo (`*_SUITE`, `legacy_*`, `prim_???`). Un
+  fuente llamado `<Module>.erl` (o `.abstr`) se ignora cuando una entrada
+  encaja con `<Module>`, y un módulo referenciado que encaja nunca se busca.
+  Esto incluye los [módulos de biblioteca](library.md#which-module-a-name-resolves-to)
+  de Clause.
+- Un fuente que `sources` enumera literalmente (sin comodín) nunca se ignora:
+  las reglas no tienen efecto sobre él, y la compilación advierte
+  `listed in sources but matched by ignore_modules or ignore_dirs; ignoring it has no effect`
+  (user direction 2026-10-12). Las coincidencias de comodines y
+  `source_dirs` se ignoran como se ha descrito.
+- Ambos se aplican a `sources`, `source_dirs`, los fuentes literales
+  encontrados a través de `source_search_paths`, la
+  [búsqueda de módulos](#paths-and-discovery) en `source_search_paths` y en la
+  biblioteca, y la búsqueda de
+  [fuentes de parse transforms](transforms.md#transform-modules). Una búsqueda
+  pasa por alto un `Module.erl` ignorado y sigue buscando en los directorios
+  posteriores.
+- Un módulo se ignora cuando `ignore_modules` lo nombra, o cuando ningún fuente
+  del lote lo define y los únicos fuentes encontrados para él se ignoraron (por
+  búsqueda, u omitidos de los fuentes del destino, por nombre de archivo). Un
+  módulo definido por un fuente compilado nunca se ignora.
+- Las referencias a un módulo ignorado (`M:F(...)`, `-import`, `fun M:F/A`,
+  `apply(M, F, [...])` con nombres literales) llegan a un módulo de reemplazo
+  generado `M` que exporta cada función nombrada de esta forma; cada una
+  devuelve `{module_ignored, M}` en lugar de ejecutarse. Una función que el
+  lote nunca nombra literalmente sigue siendo `undef` para las llamadas
+  dinámicas. Un tipo de un módulo ignorado nombrado en un spec o un tipo
+  (`helper:result()`) advierte
+  `attempt to import a type from a module ignored in project settings: helper:result`
+  y se trata como `term()`. `-behaviour(M)` con un `M` ignorado advierte
+  `behaviour M undefined`.
+- `--print-inputs` enumera cada módulo referenciado ignorado después de los
+  fuentes añadidos como `ignored module <name> (referenced at <file>:<line>)`;
+  `--print-env` imprime ambas claves.
+
+```toml
+[targets.options]
+source_search_paths = ["deps/**"]
+ignore_dirs = ["deps/*/test", "src/legacy"]
+ignore_modules = ["telemetry", "*_SUITE"]
+```
+
 ## Opciones efectivas
 
 | Ajuste | Combinación de manifiesto y CLI |
 | --- | --- |
-| `include_dirs` | Orden del manifiesto, después de `-I` de la CLI (el último `-I` de la CLI se busca primero) |
-| `source_search_paths` | Solo búsqueda de fuentes del proyecto |
+| `include_dirs` | Orden del manifiesto, después de `-I` de la CLI (el último `-I` de la CLI se busca primero); una entrada con comodines (`deps/*/include`, `apps/**/include`) se expande en su sitio a los directorios existentes con los que encaja, ordenados por los bytes UTF-8 de la ruta (`**` también encaja con ninguno, los enlaces simbólicos a directorios se omiten); un patrón sin coincidencias es un error |
+| `source_search_paths` | Raíces de reserva para los fuentes literales y para los módulos que el destino nombra pero no enumera; los patrones se expanden como en `include_dirs` (sin coincidencias: `unmatched source search path pattern`) |
 | `defines` | Primero el manifiesto, después la CLI; los duplicados entre ambos son errores |
 | `applications` | Map del manifiesto; las entradas de la CLI reemplazan los nombres coincidentes |
 | Listas de funcionalidades | Ajustes del manifiesto, después los cambios ordenados de la CLI; prevalece la CLI |
 | `output` | Por destino, solo destinos ejecutables; `-o` de la CLI lo sustituye para un único destino seleccionado |
 | `entry` | Por destino; `--entry` de la CLI lo sustituye para un único destino seleccionado |
+| `cache_inference_in_dirs` | Patrones implícitos de OTP, después los del manifiesto y después `--cache-inference-in-dirs` de la CLI ([caché de inferencia](#inference-cache)) |
 
 ## Dependencia de compilación
 
@@ -203,6 +560,15 @@ con la sintaxis no publicada desactivada. SHA-256 del archivo
 - En otros sistemas: instalarlo, extraerlo en `thirdparty/tomlplusplus-3.4.0` o
   pasar `-DCLAUSE_TOML_ROOT=<path>` (tiene prioridad y desactiva la descarga).
 - Las compilaciones solo del runtime no lo buscan.
+
+La [caché de compilación](#build-caches) usa la amalgamación de SQLite 3.54.0
+(dominio público), compilada solo en la biblioteca de caché del compilador
+(`clause_sqlite`, sin los flags de advertencias del proyecto). CMake descarga
+`https://www.sqlite.org/2026/sqlite-amalgamation-3540000.zip` en
+`thirdparty/` en todos los anfitriones y verifica su SHA-256
+`68e913b0fe8ec6b4e5f391c594a28872884e80d6cd042a1e50c957be46b5aa4d`;
+`-DCLAUSE_SQLITE_ROOT=<directory with sqlite3.c and sqlite3.h>` tiene
+prioridad y desactiva la descarga.
 
 ## Límites
 

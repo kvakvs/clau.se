@@ -1,8 +1,8 @@
 ---
 source: docs/compile.md
-sourceCommit: 06042fa
-sourceSha256: 6cf8b5c873d19e18501458078ca8c8ceb51da4da995693046af31ca5a78824b4
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 3702a6fe367aab0776ef6b6345f19e09f34fcd9bd96ff7e67047a19b92c95805
+translatedAt: 2026-10-15
 ---
 # Compilação
 
@@ -47,11 +47,22 @@ diagnósticos, mesmo em funções não usadas:
 processos e troca de mensagens.
 Atributos aceites: `module`, `export`, `file`, `record` em tuplo e nativo,
 `export_record`, `import_record`, formas de type/spec,
-`doc`/`moduledoc`, `author`, `vsn`, `copyright`, `deprecated`,
-`-compile` com `{no_auto_import, ...}` ou opções `nowarn_*` que só afetam
-avisos (por exemplo `nowarn_deprecated_catch`) e `-import` das guard BIFs de
-`erlang`. Os restantes atributos (`on_load`, parse transforms, outras opções
-de `compile`, módulos parametrizados) são rejeitados.
+`doc`/`moduledoc`, `behaviour`/`behavior` ([behaviours](semantic.md#behaviours)),
+qualquer atributo informativo (`vsn`, `author`, `copyright`, `deprecated`,
+`dialyzer`, `-name(Term)` definido pelo utilizador; mantidos para
+[`module_info(attributes)`](semantic.md#predefined-functions)),
+`-import(Module, [F/A, ...])` ([imports](semantic.md#imports)) e `-compile`
+com opções que não alteram nada do que o Clause emite: `{no_auto_import, ...}`,
+opções de avisos (`nowarn_*`, `warn_*`, `{nowarn_unused_function, [...]}`) e
+sugestões de otimização, depuração e relatório (`inline`, `{inline, [F/A]}`,
+`{inline_size, N}`, `{inline_effort, N}`, `inline_list_funcs`, `debug_info`,
+`deterministic`, `report*`, `verbose`, ...). `{parse_transform, Module}`
+executa o transform no Erlang/OTP do anfitrião antes da análise
+([parse transforms](transforms.md)). `on_load`, `nifs`, `export_all`, outras
+opções de `compile` e os módulos parametrizados são rejeitados; o diagnóstico
+indica-os, por exemplo
+`[behavior-changing attributes] notimpl [module="m" operation="-compile option export_all"]`.
+Todos os módulos recebem `module_info/0,1`.
 Os códigos-fonte que começam por `#!` seguem as
 [regras de escript](executables.md#escripts) (módulo implícito e exportação de
 `main/1`, `-mode` aceite).
@@ -95,6 +106,14 @@ Outras ações sobre os mesmos códigos-fonte:
 & $tool -O2 --no-type-specialization --verbose examples/compile/answer.erl examples/compile/client.erl
 ```
 
+## Impressão do formato abstrato
+
+`--print-abstr` (uma ação do frontend) imprime cada módulo analisado como as
+formas do [formato abstrato](https://www.erlang.org/doc/apps/erts/absform.html)
+do OTP que o `epp` entregaria a um parse transform, um termo `file:consult/1`
+por linha, os mesmos termos que `erlc +to_abstr` escreve
+([transforms](transforms.md)).
+
 ## Impressão do código-fonte
 
 `--print-source` (uma ação do frontend, como `--print-ast`) imprime cada
@@ -115,11 +134,13 @@ texto com anotações de tipos. O impressor (`print_source`,
 - O texto impresso volta a ser analisado para a mesma árvore sintática, e
   imprimi-lo de novo dá o mesmo texto (CTest `printing_source` sobre as
   fixtures analisáveis).
-- `SourceNotes` acrescenta uma anotação a uma expressão, impressa como
-  `Expression :: Text` (entre parênteses, a não ser que seja uma expressão de
-  corpo inteira; não é Erlang), e linhas de comentário acima de uma forma. Os
-  padrões, as guards e o lado esquerdo de uma correspondência não levam
-  nenhuma.
+- `SourceNotes` acrescenta uma nota a uma expressão, impressa como um
+  comentário final `% Text` depois da pontuação da linha onde a expressão
+  termina, e linhas de comentário acima de uma forma. Só as expressões que
+  ocupam linhas inteiras levam notas (expressões de corpo e o escrutinado de
+  um `case`; uma por linha, a mais exterior), para que as expressões
+  aninhadas longas continuem legíveis e o texto continue a ser Erlang. Os
+  padrões e as guards não levam nenhuma.
 
 ## Opções
 
@@ -129,17 +150,26 @@ texto com anotações de tipos. O impressor (`print_source`,
 | `--artifact-dir DIR` | Raiz dos artefactos (requer `--emit`) |
 | `-o PATH` / `--output PATH` | Liga um executável ([ligação](executables.md#linking)); incompatível com `--emit` |
 | `--linker PATH`, `--runtime-library PATH` | Driver do Clang e arquivo do runtime para `-o` |
-| `--entry MODULE[:FUNCTION]` | Função de entrada/1 do executável; validada em todos os modos de compilação e acrescenta o artefacto de arranque `clausev1_start` ([executáveis](executables.md#startup-object)) |
+| `--no-cache` | Não lê nem escreve as [caches de compilação](projects.md#build-caches) |
+| `--cache-inference-in-dirs PATTERN` | Repetível: os módulos em diretórios correspondentes guardam os seus resultados de inferência na cache de compilação, além dos diretórios implícitos das aplicações OTP ([cache de inferência](projects.md#inference-cache)) |
+| `--build-dir DIR` | Onde o Clause guarda ficheiros temporários (abaixo de `DIR/tmp`); substitui o `build_dir` de cada alvo de projeto selecionado; as entradas posicionais não têm nenhum sem esta opção ([diretório de compilação](projects.md#build-directory)) |
+| `--entry MODULE[:FUNCTION]` | Função de entrada/1 do executável; validada em todos os modos de compilação e acrescenta o artefacto de arranque `clausev1_start` ([executáveis](executables.md#startup-object)); as inspeções de IR e de assembly deixam então de fora o que ela não consegue alcançar ([vivacidade dos exports](executables.md#export-liveness)) |
 | `--target-triple TRIPLE` | Máquina alvo; `--target` é a seleção do alvo do projeto |
 | `-O0` / `-O2` / `-Os` | Código genérico por omissão + LLVM O0 / especialização limitada + LLVM O2 / LLVM Os, sem especialização, uma secção por símbolo e eliminação pelo linker do código e dos dados não referenciados |
 | `--no-type-specialization` | Desativa as variantes independentemente da ordem das opções |
+| `--lto` | Liga os módulos como bitcode com otimização em tempo de ligação do LLD (alvos Windows MSVC e ELF; exige `-o` ou uma compilação de projeto com ligação) ([ligação](executables.md#linking)) |
+| `--keep-exports` | Mantém todos os exports de um executável chamáveis em vez de deixar de fora os que ele não consegue alcançar; exige `-o`, uma compilação de projeto com ligação ou uma inspeção de IR/assembly ([vivacidade dos exports](executables.md#export-liveness)) |
+| `-g` | Tabelas de linhas Erlang nos objetos e nos executáveis ligados (CodeView/PDB em alvos MSVC, DWARF nos restantes) ([depuração](debugging.md)) |
 | `--print-ir` / `--print-optimized-ir` | IR verificada antes/depois das passagens do LLVM, com as linhas do código-fonte Erlang como comentários |
+| `--print-asm` | O assembly do alvo de cada módulo depois do pipeline selecionado, com cada sequência de código máquina comentada com a instrução IR e a linha Erlang de onde veio ([listagens assembly](#assembly-listings)) |
 | `--print-types` | Cada módulo como código-fonte Erlang anotado com os tipos inferidos ([análise semântica](semantic.md#--print-types)); para antes do LLVM |
-| `--verbose` | Eventos das fases `[pp]`, `[parse]` e `[comp]` em stderr |
-| `--impldebug n[,n...]` | Saída de depuração dos passos de implementação em stderr (p. ex. `23`: resumos de inferência) |
+| `--verbose` | Eventos das fases `[pp]`, `[parse]` e `[comp]` em stderr, depois o resumo do [índice de diretórios](projects.md#directory-index) `[index] ...` |
+| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` em stderr: `plan` por manifesto de projeto (carregá-lo e expandir os padrões de cada alvo selecionado), `preprocess`, `parse` e `transform` (módulos com parse transforms) por ficheiro de código-fonte, `compile` por lote (número de módulos, alvo de projeto), `link` por executável; ` (cached)` segue uma fase que reutilizou um resultado da [cache](projects.md#build-caches). Antes do total `compile` de um lote vêm as suas fases com o mesmo sujeito: `index`, `calls`, `liveness` (executáveis e inspeções com uma entrada), `declared-types`, `inference-cache` (com `N of M covered modules reused`, [cache de inferência](projects.md#inference-cache)), `inference`, `inference-store`, `contracts`, `lower`, `optimize`, `emit` (as que correram). Depois de `inference`: linhas `inference pass N` com os passos de trabalho da passagem face ao orçamento de trabalho da inferência (`N of BUDGET work steps`) e a forma como terminou (`inputs changed`, `fun results changed`, `settled`, ou a passagem final após passagens não estabilizadas), indicando a função em execução quando o orçamento se esgotou; depois `inference slowest <module>:<function>/<arity>` para as 10 funções (os grupos recursivos indicam um membro `and N more`) que mais demoraram em todas as passagens, com os seus passos de trabalho e a parte desse trabalho no orçamento das passagens que as executaram (`877450 work steps, 43.9% of 10 passes of 200000 budget`), e `widened to term()` quando um orçamento alargou um dos seus factos; depois `inference rounds <module>:<function>/<arity> and N more` para os 10 grupos recursivos mais lentos: resoluções em todas as passagens, rondas executadas face ao limite por resolução (8 + 4 por membro), resoluções que atingiram o limite ou gastaram o seu oitavo do orçamento da passagem (cada membro alargado a `term()`), resoluções que desistiram de imediato porque uma passagem anterior o fez (`remembered`) ou terminaram com o orçamento da passagem gasto, percursos de membros (e os saltados porque nada do que leem mudou) e a parte que alterou um resumo (cresceu, entradas de tipo função alteradas, ou voltou a um dos 4 últimos resumos do membro), e os membros alterados por ronda da última resolução em dez grupos de rondas. Uma compilação em cache não imprime fases |
+| `--print-env` | Imprime o ambiente de compilação resolvido como TOML no stdout e termina sem processar códigos-fonte ([relatório do ambiente](#environment-report)) |
+| `--print-inputs` | Pré-processa e analisa as entradas, acrescenta os módulos que elas nomeiam tal como a compilação faz, depois lista todos os códigos-fonte do lote no stdout e para antes da compilação ([projetos](projects.md#cli-and-target-selection)) |
 
 - Sem `--emit`, a compilação verifica os objetos em memória e não escreve
-  nada.
+  nada fora do [diretório de compilação](projects.md#build-directory).
 - As entradas posicionais formam um lote; cada alvo de projeto é um lote
   próprio.
 - Raízes dos artefactos: `build/aot` (posicionais) ou `build/aot/<hex-target>`
@@ -159,6 +189,134 @@ texto com anotações de tipos. O impressor (`print_source`,
   Use-se `--emit llvm-ir` como entrada para ferramentas. Os comentários com
   linhas do código-fonte mostram o texto original (macros não expandidas) e
   sobrevivem à otimização através das localizações de depuração.
+
+## Listagens assembly
+
+`--print-asm` executa o pipeline selecionado (como faz `--print-optimized-ir`)
+e depois imprime o assembly de cada módulo de entrada a partir da mesma
+máquina alvo que escreve os objetos, um módulo de cada vez. Os comentários
+usam o marcador do alvo (`#` em x86, `//` em AArch64 ELF, `;` na Apple, `@` em
+ARM):
+
+```
+# erlang answer.erl:3: value() -> 42.
+#     ir store i64 687, ptr %frame.slots, align 8
+	movq	$687, 32(%r15,%r12,8)
+#     ir br i1 %4, label %return.inline, label %return.service
+```
+
+- Um comentário `ir` abre cada sequência de instruções selecionadas a partir
+  de uma instrução IR, escrita tal como `--print-optimized-ir` a imprime (a
+  mesma numeração de valores, `switch` dobrado numa só linha, sem `!dbg`). O
+  código movido ou fundido entre instruções repete ou salta comentários
+  conforme a tabela de linhas indica.
+- Um comentário `erlang` indica o ficheiro físico, a linha e o texto, como os
+  comentários de código-fonte da IR, quando a linha muda dentro de uma função.
+  As instruções que o rebaixamento não localizou em lado nenhum (wrappers,
+  preparação do frame) não têm nenhum.
+- A listagem compila uma cópia cuja tabela de linhas numera as instruções IR
+  em vez das linhas Erlang; as diretivas dessa tabela de linhas, as secções de
+  depuração e as etiquetas são deixadas de fora. Reassemblada, dá o objeto
+  que `--emit obj` escreve.
+- Com outras inspeções, cada módulo imprime `before`, `after` e `assembly` à
+  vez, cada um depois de um cabeçalho (`stage=assembly`). Tal como a inspeção
+  da IR, rejeita `--emit`, `--artifact-dir`, `--output` e `--print-types`. As
+  listagens x86 usam a sintaxe AT&T.
+- Com `--entry`, as inspeções de IR e de assembly deixam de fora as funções
+  que a entrada não consegue alcançar, como faz o executável
+  (`--keep-exports` mantém-nas).
+
+## Relatório do ambiente
+
+`--print-env` valida toda a linha de comandos (conflitos, entradas
+posicionais legíveis, planeamento do projeto) e depois imprime o que esse
+comando usaria como um único documento TOML no stdout, termina com 0 e não lê
+nenhum código-fonte. Os caminhos são absolutos, com `/`.
+
+```toml
+# clau compile environment (--print-env)
+command = ["clau", "--print-env", "-O2", "-o", "app", "main.erl"]  # as given
+actions = ["link"]          # see below
+working_directory = "/work"
+
+[[targets]]                 # one per selected project target; one for positional inputs
+name = "app"                # project targets only
+project = "/work/project.toml"
+sources = ["/work/src/main.erl"]           # globs and search paths resolved
+library_directory = "/clau/library"     # application dirs, searched before source_search_paths
+build_dir = "/work/build"   # "" for positional inputs without --build-dir
+entry = "main:main"         # or "auto" when linking without --entry
+output = "/work/app"        # linking only: final name (".exe" on Windows)
+linker = "/usr/bin/clang++" # linking only; "" when none is found
+runtime_library = "/clau/lib/libclause_runtime.a"
+
+[targets.options]           # manifest option names
+source_search_paths = []    # directories, patterns expanded
+include_dirs = []           # search order, patterns expanded
+defines = []
+applications = { "stdlib" = "/otp/lib/stdlib" }  # last mapping wins
+enabled_features = ["maybe_expr"]                # OTP defaults plus changes
+
+[targets.backend]
+target_triple = "x86_64-unknown-linux-gnu"  # host when not given
+optimization = "O2"
+type_specialization = true  # O2 without --no-type-specialization
+debug_info = false
+lto = false
+keep_exports = false        # --keep-exports or the project option
+emit = "none"               # or obj, llvm-ir, llvm-bc
+artifact_dir = "/work/build/aot"
+```
+
+(Os arrays imprimem um item por linha.) `actions` lista as ações do frontend
+(`print-pp`, `parse-check`, `print-ast`, `print-source`, `print-abstr`, caso
+contrário `preprocess-check`; `print-inputs` sozinha substitui-as), caso
+contrário as inspeções (`print-types`, `print-ir`, `print-optimized-ir`,
+`print-asm`), caso contrário `emit`, `link` (`-o`) ou `compile`. Numa
+compilação de projeto, os alvos com um `output` também ligam. Os módulos
+encontrados mais tarde pelo nome (através de `source_search_paths` ou da
+biblioteca) não são listados: encontrá-los exige a análise sintática (é isso
+que `--print-inputs` faz). `--print-env` não pode ser combinado com
+`--new-project`.
+
+## Cache de compilação
+
+Um lote com um diretório de compilação (cada alvo de projeto, as entradas
+posicionais com `--build-dir`) guarda o resultado da sua compilação na
+[cache de compilação](projects.md#build-caches): os diagnósticos por ordem, a
+falha e, quando um executável ou `--emit` precisa deles, os objetos (ou o
+bitcode) de cada módulo e do módulo de arranque. Uma compilação posterior do
+mesmo lote com as mesmas opções reproduz os diagnósticos e liga ou publica os
+objetos guardados exatamente como se fossem novos; `--print-stage-times`
+mostra então `[time] compile ... (cached)`. `--print-ir`,
+`--print-optimized-ir`, `--print-asm` e `--print-types` recalculam sempre, e
+`--no-cache` não lê nem escreve.
+
+- **Unidade de reutilização: o lote inteiro.** A análise, a inferência de
+  tipos, os orçamentos de especialização (por alvo), a vivacidade dos exports
+  e o módulo de arranque abrangem todos os módulos, pelo que o objeto de um
+  módulo depende de factos de outros (tipos das funções chamadas, records,
+  behaviours, quais as funções que ficam vivas). Esses factos não têm hoje uma
+  forma canónica para calcular um hash por módulo, pelo que uma chave por
+  módulo não poderia ser provada correta; qualquer alteração a qualquer
+  módulo do lote recompila o lote. Só os resultados da inferência são
+  guardados por módulo para os diretórios de biblioteca abrangidos
+  ([cache de inferência](projects.md#inference-cache)), pelo que uma
+  recompilação dessas os reutiliza.
+- **Chave.** A versão do `clau` e a identidade do executável; o caminho e a
+  impressão digital de cada entrada (cada ficheiro que o frontend leu para
+  ela, caminho e bytes, por ordem: o código-fonte, os seus includes e
+  ficheiros `include_lib`, e a resposta dos seus parse transforms; as opções
+  de pré-processamento; o texto gerado dos placeholders), as formas
+  predefinidas e o estado de escript; a triple resolvida, o nível de
+  otimização, `--emit`, `--no-type-specialization`, `-g`, `--lto`,
+  `--keep-exports`, se é ligado um executável, a seleção da entrada e o alvo
+  de projeto. As entradas de um alvo com outras opções são guardadas lado a
+  lado.
+- **Armazenamento.** Cada saída é uma parte própria, pelo que um objeto maior
+  do que o limite inline do armazenamento se torna um ficheiro blob
+  endereçado pelo conteúdo, partilhado quando dois conjuntos de opções
+  produzem objetos idênticos.
 
 ## Backend
 
@@ -204,6 +362,63 @@ nesse caso.
 
 Referência histórica para macOS: `llvm` 23.1.1_1 do Homebrew (arm64,
 `libLLVM.23.1.dylib` partilhada, asserções desativadas) com AppleClang 21.
+
+## PCRE2
+
+Os builtins `re` do runtime usam o PCRE2 **10.47**, a release que o OTP 29
+inclui (`erts/emulator/pcre/vendor.info`), pelo que a sintaxe dos padrões, as
+opções e as capturas se comportam como no OTP: unidades de código de 8 bits,
+suporte Unicode, sem JIT, `pcre2_match` de origem (o patch de cedência do OTP
+não é transposto). O PCRE2 é licenciado sob BSD-3-Clause com a exceção PCRE2
+para binários compilados; nenhum ficheiro do PCRE2 é submetido no
+repositório. O CMake (`cmake/Pcre2Dependencies.cmake`) resolve-o por esta
+ordem:
+
+1. `-DCLAUSE_PCRE2_ROOT=<source directory>` tem precedência (sem
+   transferência); a versão no seu `configure.ac` tem de ser 10.47.
+2. Um PCRE2 instalado de versão 10.47 ou superior (`CLAUSE_PCRE2_SYSTEM=ON`, o
+   valor por omissão): o pacote CMake
+   (`find_package(pcre2 CONFIG COMPONENTS 8BIT)`, com preferência pelas
+   bibliotecas estáticas), caso contrário o pkg-config `libpcre2-8`, com
+   preferência por um `libpcre2-8.a` estático em vez da biblioteca
+   partilhada.
+3. A release fixada, descarregada para `thirdparty/pcre2-10.47` e verificada
+   (`pcre2-10.47.tar.bz2`, SHA-256
+   `47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7`);
+   `-DCLAUSE_DOWNLOAD_PCRE2=OFF` desativa a transferência.
+
+Um diretório de código-fonte (1 ou 3) compila a biblioteca de objetos
+`clause_pcre2` a partir dos ficheiros `.c` listados, com os ficheiros
+distribuídos `config.h.generic`, `pcre2.h.generic` e
+`pcre2_chartables.c.dist` copiados para a árvore de compilação (sem passo de
+geração, sem as flags de aviso do projeto, fora do clang-tidy e do Lizard), e
+os seus objetos são acrescentados ao próprio `clause_runtime`: o arquivo é
+autossuficiente e cada consumidor (ligações do `clau`, programas de teste
+aninhados, `runtime_link`, `examples/compile`) obtém o PCRE2 com ele. Uma
+biblioteca instalada torna-se, em vez disso, uma entrada adicional do ligador
+registada em `clause_runtime.link` ao lado do arquivo (uma entrada por linha),
+que o `clau` acrescenta a cada ligação; uma biblioteca partilhada torna os
+executáveis dependentes dela em tempo de execução. Por plataforma: o Windows
+usa a transferência (na prática, não se procura nenhum PCRE2 do sistema); o
+Linux e o macOS usam um PCRE2 10.47 ou mais recente instalado, quando
+existe, caso contrário a transferência. Por agora é sempre ligado ao runtime
+(decidido em 2026-10-14); ligá-lo apenas aos programas que chamam `re`, ou
+numa biblioteca carregada dinamicamente, fica adiado.
+
+## zlib
+
+O módulo zlib do runtime e os termos externos comprimidos usam o zlib
+**1.3.2**, a release que o OTP 29 inclui (`erts/emulator/zlib/vendor.info`),
+pelo que os bytes comprimidos são iguais aos do OTP. O CMake compila os
+fontes da sua biblioteca (`cmake/ZlibDependencies.cmake`,
+`clause_add_runtime_zlib`) na biblioteca de objetos `clause_runtime_zlib`,
+cujos objetos se juntam a `clause_runtime` como os do PCRE2;
+`-DCLAUSE_RUNTIME_ZLIB_ROOT=<source directory>` tem precedência, caso
+contrário a release é descarregada para `thirdparty/zlib-1.3.2` e verificada
+(SHA-256 `bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16`)
+em todos os anfitriões. A licença do zlib é a licença zlib. O LLVM do
+compilador mantém o seu próprio zlib; os dois nunca se encontram num mesmo
+binário.
 
 Outros pré-requisitos: CMake ≥ 3.28, um compilador C++23, Boost ≥ 1.90,
 toml++ 3.4.0 e as ferramentas de qualidade. O OTP só é necessário para

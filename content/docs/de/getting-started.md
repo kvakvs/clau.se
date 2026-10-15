@@ -1,8 +1,8 @@
 ---
 source: docs/getting-started.md
-sourceCommit: 06042fa
+sourceCommit: 6ed3851c
 sourceSha256: 95b73af25f3b08912c8b7f38fe46edf93a90187b3df3c13291d19a90411c29b1
-translatedAt: 2026-10-09
+translatedAt: 2026-10-15
 ---
 # Erste Schritte
 

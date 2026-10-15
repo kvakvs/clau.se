@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: 06042fa
-sourceSha256: f48733b2827bbf09b77162c249d6b913411b1f3a60e76cf52b281ba68666f65b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 42d519fef371b8ba151942ea3a92a7ab67b3f1f6aaae2cf1f40c9cc18b5df542
+translatedAt: 2026-10-15
 ---
 # Документація Clause
 
@@ -17,6 +17,9 @@ translatedAt: 2026-10-09
 | Проєкти TOML і вибір цілей | [projects.md](projects.md) |
 | CLI компілятора, артефакти, LLVM SDK, приклад | [compile.md](compile.md) |
 | Точка входу виконуваного файлу, аргументи, код завершення, потоки виведення, компонування | [executables.md](executables.md) |
+| Налагоджувальна інформація (`-g`), налагоджувачі й стек викликів Erlang | [debugging.md](debugging.md) |
+| Профілювання за запитом (`--profile FILE`): входи й власний час для кожної функції та процесу | [profiling.md](profiling.md) |
+| Parse transforms: завантажувач на OTP хоста, обмін abstract format, пошук перетворень | [transforms.md](transforms.md) |
 | Семантичний аналіз, типи, виведення типів, зв'язування | [semantic.md](semantic.md) |
 | Політика спеціалізації типів | [specialization.md](specialization.md) |
 | ABI згенерованого коду: терми, символи, реєстрація, збої, корені | [abi.md](abi.md) |

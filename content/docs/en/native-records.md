@@ -1,6 +1,6 @@
 # Native records
 
-Decision of plan 11 step 31A (2026-10-07). It scopes the OTP 29 record forms
+It scopes the OTP 29 record forms
 beyond ordinary tuple records and fixes their representation, operations and
 errors. Step 31B implemented the runtime cells and `CLAUSE_record_v1`;
 31C compiles local native records, 31D qualified and imported forms with

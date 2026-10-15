@@ -25,6 +25,7 @@ export function SiteHeader({ locale, t }: Props) {
             links={[
               { href: `/${locale}/`, text: t.nav.home },
               { href: `/${locale}/docs/`, text: t.nav.docs },
+              { href: `/${locale}/benchmarks/`, text: t.nav.benchmarks },
               { href: `/${locale}/resources/`, text: t.nav.resources },
             ]}
           />

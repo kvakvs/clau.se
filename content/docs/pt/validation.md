@@ -1,8 +1,8 @@
 ---
 source: docs/validation.md
-sourceCommit: 06042fa
-sourceSha256: ed256a9f28346170cd141eff3a0d84d3dcaad4d06bbf853414738bd11cb36bd5
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 908ac8c879d3df66cb4e8e52800e07da92013325c177e1556378cadd0597b50f
+translatedAt: 2026-10-15
 ---
 # Validação
 
@@ -41,6 +41,9 @@ cmake --build build/debug --target check-quality-all  # whole tree
   projeto O2 com a especialização desativada, executa as mutações uma vez e
   salta os testes `full_only`. O modo completo (predefinido) executa todas as
   combinações de driver/política.
+- `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplica os limites por execução do
+  executor de goldens (60 s) e do executor de casos semânticos (15 s) para
+  compilações instrumentadas.
 - `check-quality`, `make format` e `make-format.bat` abrangem os ficheiros
   alterados desde `HEAD` mais os ficheiros não seguidos; `cmake/quality_scope.py`
   acrescenta as unidades de tradução que incluem um cabeçalho alterado. As
@@ -51,7 +54,55 @@ cmake --build build/debug --target check-quality-all  # whole tree
   depurador. Os consumidores nativos aninhados ligam o runtime da compilação
   principal através de `ClauseRuntimeTargets.cmake` em vez de o compilar
   novamente; só `runtime_link` compila o runtime de forma autónoma.
-- Os limiares e as supressões nunca são aumentados para passar o gate.
+- Os limiares e as supressões nunca são aumentados para passar o gate. Estão
+  configuradas duas exceções de terceiros (plano 11, steps 63-64, decisão do
+  utilizador): `cmake/tidy_filter.py` descarta os relatórios do analisador
+  estático localizados em cabeçalhos do Boost (falsos positivos do
+  armazenamento de limbs do Boost.Multiprecision em Linux que reescrever o
+  código chamador apenas desloca) e conta-os na saída, e
+  `bugprone-exception-escape` ignora `bad_array_new_length` (os construtores
+  de movimento de map/set do MSVC alocam; uma falha de alocação é, de
+  qualquer modo, fatal).
+- O clang-tidy verifica os cabeçalhos do projeto em todos os anfitriões: o
+  filtro de cabeçalhos aceita os separadores `/` e `\` (os caminhos Windows
+  nunca correspondiam antes do step 63).
+
+### Linux
+
+O mesmo gate corre em Linux com o SDK Linux do LLVM 23.1.2 fixado como
+compilador do anfitrião (`CC`/`CXX` a partir do seu `bin/`), a libstdc++ do
+sistema, Ninja e CMake 3.28 ou mais recente. O Boost 1.90 e o toml++ 3.4.0
+vêm de pacotes instalados ou são extraídos para `thirdparty/`
+(`boost_1_90_0/`, `tomlplusplus-3.4.0/`); só o Windows os descarrega. O
+`ld.lld` do arquivo da release liga a ICU 70 (Ubuntu 22.04) e o seu `lldb`
+liga o Python 3.14; em anfitriões sem eles, `linking_lto` precisa da ICU 70
+em `LD_LIBRARY_PATH`, e `linking_debugger` usa o GDB.
+
+```sh
+cmake --preset debug --fresh -G Ninja -DBUILD_TESTING=ON
+cmake --build build/debug
+ctest --preset debug -j 16
+```
+
+`check-quality` (Lizard, clang-tidy) corre apenas no anfitrião de
+desenvolvimento Windows; os outros anfitriões compilam e executam os testes. O
+step 63 executou-o uma vez em Linux, o que encontrou o que a execução em
+Windows não conseguia ver (fontes só POSIX, `std::optional` da libstdc++), e
+deixou-o limpo.
+
+### Outros alvos
+
+Os alvos de 32 bits e ARM são verificados sem um compilador compilado para
+eles (não existe SDK do LLVM para esses anfitriões):
+
+- Uma compilação só do runtime (`-DCLAUSE_BUILD_COMPILER=OFF -DBUILD_TESTING=ON`)
+  para o alvo executa aí os testes do runtime e da ABI: nativamente, num
+  userland do alvo (chroot) ou através do emulador do anfitrião (qemu
+  binfmt).
+- `tests/compiler/executables/cross.py` executa todos os goldens de
+  executáveis e fixtures de programas com o `clau` deste anfitrião,
+  `--target-triple`, o arquivo do runtime dessa compilação e um `--linker` que
+  alcança as bibliotecas do alvo (`run.py --target-option` passa-os adiante).
 
 ## Fixtures e proveniência
 
@@ -70,18 +121,18 @@ cmake --build build/debug --target check-quality-all  # whole tree
   Erlang e 1 190 ficheiros C/C++ do OTP não encontrou nenhuma sobreposição
   restante além de um tuplo de inteiros gerado. `fixture_sources` impõe o
   isolamento.
-- Seis fixtures de programas finais (`tests/fixtures/programs/`, plan 11
-  step 2) contêm goldens de stdout/estado de saída do OTP e os diagnósticos
+- Seis fixtures de programas finais (`tests/fixtures/programs/`)
+  contêm goldens de stdout/estado de saída do OTP e os diagnósticos
   de compilação atuais; `programs_compile` verifica-os sem OTP e
   `tests/compiler/programs/regenerate.py --check` reprodu-los com o OTP
   ([mapa das fixtures](../tests/fixtures/programs/README.md)).
-- Os goldens de impressão de termos (`tests/fixtures/printing/`, plan 11
-  step 4) contêm o texto de `~w` e de `erlang:display/1` do OTP para 9 542
+- Os goldens de impressão de termos (`tests/fixtures/printing/`)
+  contêm o texto de `~w` e de `erlang:display/1` do OTP para 9 542
   valores, mais o stdout do OTP de chamadas display compiladas;
   `tests/compiler/printing/regenerate.py --check` reprodu-los
   ([notas das fixtures](../tests/fixtures/printing/README.md)).
-- Os casos golden de executáveis (`tests/fixtures/executables/`, plan 11
-  step 8) são diretórios de código-fonte mais um `golden.json` com o
+- Os casos golden de executáveis (`tests/fixtures/executables/`)
+  são diretórios de código-fonte mais um `golden.json` com o
   stdout/estado de saída do OTP e um padrão de stderr escrito à mão;
   `tests/compiler/executables/run.py` liga e executa cada um sob a matriz de
   política/driver (CTest `executables_<case>`), e `regenerate.py --check`
@@ -116,13 +167,28 @@ aprovação de um teste completo.
 
 ## Estado por plataforma e sanitizers
 
-- Execução de código gerado nativo: apenas Windows x64.
-- Execução em Linux, Apple Silicon e nativa de 32 bits: pendente (os objetos
-  são apenas inspecionados).
-- ASan, UBSan e LeakSanitizer no compilador/frontend: pendente. O SDK do LLVM
-  pré-compilado para Windows entra em conflito com o código instrumentado
-  (`annotate_string` 0 vs 1; antes também símbolos duplicados dos alocadores
-  rpmalloc/ASan). Nenhuma verificação foi desativada para contornar o problema.
+- Execução de código gerado nativo: Windows x64; Linux x86-64. Os resultados
+  de 32 bits e ARM estão no histórico.
+- Apple Silicon: pendente.
+- ASan, UBSan e LeakSanitizer no compilador e no runtime: Linux x86-64, uma
+  única configuração Debug combinada
+  (`-fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=undefined`),
+  CTest completo com `CLAUSE_TEST_TIMEOUT_SCALE=10` (o código instrumentado
+  corre várias vezes mais devagar): nenhum relatório dos sanitizers. O
+  compilador, o runtime e os programas de teste são instrumentados; os
+  programas que o `clau` liga obtêm o runtime do sanitizer a partir de um
+  wrapper `clang++` no `PATH`, e o seu código gerado não é instrumentado. Os
+  quatro testes de recusa injetada do anfitrião (`codegen_failure_*`,
+  `runtime_lifecycle_failure`, `runtime_memory`) estão fora do âmbito do
+  ASan: o seu `operator new` aborta perante um tamanho impossível em vez de
+  lançar uma exceção.
+- ThreadSanitizer: Linux x86-64, o mesmo âmbito de instrumentação com
+  `-fsanitize=thread`; o CTest completo e os testes de concorrência, cinco
+  vezes cada, não comunicam nenhuma corrida após a correção da ordem de
+  bloqueios em `Executor::clear`. Também fora do âmbito: os dois testes que
+  substituem `operator new`.
+- Em Windows, o SDK do LLVM pré-compilado continua a entrar em conflito com o
+  código instrumentado (`annotate_string` 0 vs 1).
 - O ASan apenas do runtime passa em Windows com sondas Release,
   `/EHsc /fsanitize=address`, `/MT`, a biblioteca de importação do ASan e o
   thunk de runtime estático do Clang, e a DLL do ASan no `PATH`.
@@ -130,6 +196,65 @@ aprovação de um teste completo.
   Debug completas, C++26, ASan+UBSan, apenas do compilador e apenas do runtime
   para as fases do analisador sintático e dos projetos; são anteriores ao
   backend.
+
+## Benchmarks
+
+Comparação manual de desempenho com o Erlang/OTP. Nunca faz parte do CTest,
+do gate de commit nem de `check-quality`, e só ela precisa de um Erlang/OTP
+no anfitrião; os resultados são evidência específica do anfitrião, não
+resultados do gate.
+
+```powershell
+make-benchmark.bat                         # Windows; set JOBS=N to cap parallel builds
+make-benchmark.bat --repeat 9 --only bench_gc,bench_msg
+make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
+```
+
+- Ambos configuram e compilam um `clau` e um runtime Release em
+  `build/bench` e depois executam `benchmarks/run.py` (`--help` lista as suas
+  opções).
+- Programas: `benchmarks/bench_*.erl` com `bench_util.erl`, compilados sem
+  alterações pelo `erlc` e por `clau -O2`. Cada um cronometra os seus kernels
+  com `erlang:monotonic_time/1` após uma chamada de aquecimento e imprime
+  `BENCH <name> <nanoseconds>`: geração de dados, processamento de dados,
+  recolha de lixo, passagem de mensagens, E/S de ficheiros (num diretório de
+  trabalho temporário vazio) e sockets de loopback.
+- Sistemas, no mesmo anfitrião numa só execução, intercalados: o OTP com a
+  sua variante por omissão (JIT), o OTP `-emu_flavor emu` quando instalado (o
+  instalador Windows só inclui o JIT, pelo que essas colunas mostram `n/a`),
+  o Clause HEAD em O2 e com `--lto`, e um commit anterior do Clause (por
+  omissão: o commit mais recente com pelo menos um dia a mais do que HEAD;
+  `--baseline REV`, `--no-baseline`) compilado num worktree em cache em
+  `build/bench-base/<hash>` que partilha `thirdparty/`.
+- Relatório: por kernel, a mediana de `--repeat` execuções (por omissão 5) em
+  milissegundos com seis casas decimais e a sua dispersão, a variação do
+  Clause O2 em relação a cada sistema (`+N%`: o Clause é mais rápido, o outro
+  demora mais N%; `-N%`: o Clause demora mais N%; `(Fx)` a razão dos tempos)
+  com uma média geométrica, `--lto` em relação ao OTP e ao O2, os tempos
+  totais dos programas incluindo o arranque, as falhas e os tempos esgotados
+  (`--timeout`, 600 s por execução). As contagens de iterações mantêm uma
+  execução por omissão abaixo de 10 minutos; o Clause, o sistema mais lento,
+  define os tamanhos, pelo que alguns kernels do OTP duram apenas alguns
+  milissegundos.
+- Histórico: `benchmarks/history/<host>.json` guarda um registo por dia de
+  execução (data da execução, hash e data do commit de HEAD, medianas do
+  Clause, do OTP e da referência),
+  `benchmarks/history/reports/<host>/<day>-<hash>.txt` os relatórios de
+  texto; uma nova execução no mesmo dia substitui ambos. Os registos e os
+  relatórios executados mais de 183 dias antes do mais recente são
+  eliminados; uma execução com alterações de código-fonte não submetidas é
+  comunicada mas não registada. O diretório do histórico é ignorado pelo git:
+  fica no anfitrião que o executou.
+- Listagens: com `--listings`, antes de medir, uma execução escreve as
+  listagens [`--print-asm`](compile.md#assembly-listings) e `--print-ir` de
+  cada programa (com `bench_util`, `--entry <program>`, para que o código de
+  biblioteca inalcançável fique de fora como no executável) ao lado dos
+  relatórios como `<program>.debug.asm` / `<program>.debug.ll` (`-O0`) e
+  `<program>.release.asm` / `<program>.release.ll` (`-O2`, o código que a
+  coluna `clause-o2` executa), substituindo as listagens da execução anterior,
+  incluindo com `--no-history` e alterações não submetidas. `--print-ir` é a
+  IR antes do pipeline do LLVM; os comentários do assembly citam a IR depois
+  dele. Um programa que não compila perde as suas listagens obsoletas.
 
 ## Histórico
 
@@ -201,6 +326,14 @@ testes são execuções completas do CTest aprovadas, com zero testes saltados.
 | 2026-10-07 | Plan 11 step 33, closures com variáveis capturadas | 175 (171 rápido) | 134 alteradas | Rápido 171/171; completo `-j 12` 175/175 em 126 s; Lizard e tidy passaram após correções de complexidade |
 | 2026-10-07 | Plan 11 step 34, funs com nome | 176 (172 rápido) | 132 alteradas | Rápido 172/172; completo `-j 12` 176/176 em 152 s; Lizard 0 avisos; tidy passou |
 | 2026-10-07 | Plan 11 step 35, chamadas dinâmicas `M:F(Args)`, `apply/2,3`, `fun M:F/A` em runtime (ABI 8) | 177 (173 rápido) | 290 (configuração do analisador alterada) | Rápido 173/173; completo `-j 12` 177/177 em 142 s; Lizard 0 avisos e tidy passou após uma correção de complexidade e três do tidy |
+| 2026-10-09 | Plan 11 step 63, Linux x86-64 (WSL2 Ubuntu 25.04, glibc 2.41, clang do SDK LLVM 23.1.2, libstdc++ 14, GDB 16.2) | 235 | 338 | CTest completo 235/235 em 161 s; Lizard e clang-tidy limpos (7 relatórios do analisador em cabeçalhos do Boost ignorados); gate Windows 235/235 com os cabeçalhos verificados |
+| 2026-10-09 | Plan 11 step 64, 32 bits: Windows x86 (WoW64, clang-cl) e Linux i386 (chroot Debian 13, clang 19) | 42 + 65 goldens | — | Testes do runtime/ABI 42/42 nativamente em ambos; goldens `cross.py` 65/65 em ambos (execuções `integer_limit` só de 64 bits saltadas) |
+| 2026-10-09 | Plan 11 step 65, Linux arm64 e armhf (sysroots Debian 13, qemu-user 9.2) | 42 + 65 goldens | — | Testes do runtime/ABI 42/42 em cada; goldens 64/65 em cada (`port_spawn` `enoent`: lacuna do `posix_spawn` no qemu), limite de execução 900 s |
+| 2026-10-10 | Plan 11 step 67, ASan + UBSan + LeakSanitizer (Linux x86-64) | 235 | — | Nenhum relatório dos sanitizers; quatro testes de recusa injetada do anfitrião fora do âmbito do ASan; `CLAUSE_TEST_TIMEOUT_SCALE=10` |
+| 2026-10-10 | Plan 11 step 68, ThreadSanitizer (Linux x86-64) | 233 | — | Uma inversão da ordem de bloqueios corrigida (`Executor::clear`); depois nenhum relatório no CTest completo nem em 15 testes de concorrência x5 |
+| 2026-10-10 | Plan 11 step 65A, `-behaviour`/`-behavior` e `behaviour_info/1` gerado | 234 (rápido) | 342 | Configuração nova; rápido 234/234; Lizard 0 avisos; tidy passou após uma correção (inicialização estática que lança exceções); novos `lint_diagnostics` (8 casos gerados pelo OTP) e `executables_behaviours`; o `--check` do OTP reproduz 60 goldens de executáveis e 8 de lint; goldens de programas regenerados apenas pelo hash alterado do oráculo |
+| 2026-10-10 | Plan 11 step 65B, `module_info/0,1` e atributos informativos | 235 (rápido) | 344 | Configuração nova; rápido 235/235; Lizard 0 avisos; tidy passou após dividir `parse_and_print`; os novos `executables_module_info` e os casos de lint `module_info_defined`, `exports_repeated` reproduzem-se com o OTP 29.1.1 |
+| 2026-10-10 | Plan 11 step 65C, imports, sugestões de compilação, rejeições de atributos com nome | 236 (rápido) | — | Ver a evidência do plano 65C; `executables_imports` e três casos de lint de imports reproduzem-se com o OTP 29.1.1 |
 | 2026-10-06 | Plan 11 step 27E, limite de inteiros grandes do ERTS, `error:system_limit` | 165 (161 rápido) | 157 alteradas | Rápido 161/161; completo `-j 12` 165/165 em 130 s; Lizard 0 avisos; tidy passou; 21 goldens de executáveis reproduzem-se com o OTP |
 | 2026-10-06 | Plan 11 step 27D, sem limites de tamanho de map nem de trabalho sobre chaves | 164 (160 rápido) | 13 alteradas | Rápido 160/160; completo `-j 12` 164/164 em 115 s; após uma correção do tidy em `bit_order`, passam 35 testes afetados; Lizard 0 avisos; tidy passou |
 | 2026-10-06 | Plan 11 step 27C, limite de aridade de tuplos 16 777 215 | 164 (160 rápido) | 51 alteradas | Rápido 160/160; completo `-j 12` 164/164 em 121 s; Lizard 0 avisos; tidy passou |

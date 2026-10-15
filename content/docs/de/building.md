@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: 06042fa
-sourceSha256: de3570e747becc95b3596b8c17bf4d8bab1fa83db2aae32da918222afd413e6c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 588e40c653165e5d39e7f284cf3173a4f04d81079cba804e17b7444a1f40662d
+translatedAt: 2026-10-15
 ---
 # Den Compiler bauen
 
@@ -79,8 +79,10 @@ hinzu, wenn `clang-cl` fehlt. Ein Build-Verzeichnis, das mit einem anderen
 Generator oder Compiler konfiguriert wurde, wird von Grund auf neu konfiguriert;
 `CLAUSE_TOOLCHAIN=default` setzen, um die eigene Wahl von CMake beizubehalten
 (zum Beispiel MSVC `cl` in einem separaten Verzeichnis). Build-Standards sind
-`BUILD_DIR=build/debug`, `BUILD_TYPE=Debug` und die Parallelität des nativen
-Build-Werkzeugs (überschreibbar mit `JOBS=N`); die Umgebungsvariablen
+`BUILD_DIR=build/debug` (Tests), `TOOL_BUILD_DIR=build/tool` (`make build`,
+`make-build.bat`, `clau.bat`, `run-macos.sh`: Tests aus, sodass sie den
+Test-Build nie neu konfigurieren), `BUILD_TYPE=Debug` und die Parallelität des
+nativen Build-Werkzeugs (überschreibbar mit `JOBS=N`); die Umgebungsvariablen
 `CMAKE`, `CTEST`, `CMAKE_ARGS` und `CLANG_FORMAT` überschreiben ebenfalls die
 entsprechenden Werkzeuge/Optionen.
 `make-test.bat` konfiguriert mit aktivierten Tests, baut alle Ziele und führt
@@ -88,6 +90,23 @@ dann CTest aus, entsprechend `make test`, und gibt Fehler bei Konfiguration,
 Build oder Tests weiter.
 Clean entfernt die repository-lokalen Verzeichnisse `build/` und
 `cmake-build*/`.
+
+`make benchmark` und `make-benchmark.bat` führen den manuellen
+Leistungsvergleich mit dem Erlang/OTP des Hosts aus (Release-Build in
+`build/bench`, nie Teil der Tests); siehe
+[Benchmarks](validation.md#benchmarks).
+
+`decompile-debug.bat <module>` und `decompile-release.bat <module>` kompilieren
+eine C++-Quelldatei (Name ohne Pfad oder Erweiterung; bei Mehrdeutigkeit
+übergeordnete Verzeichnisse ergänzen, z. B. `ast/attributes`) mit ihren
+erfassten Debug- oder Release-Flags neu und schreiben `<module>.debug.asm` /
+`<module>.release.asm` in das aktuelle Verzeichnis. Sie umhüllen `tools/asm.py`
+(nur clang-cl-Builds), das den Kompilierbefehl aus `build/tool`, dann
+`build/debug` übernimmt (`--build-dir` überschreibt). Die Ausgabe behält Code
+und Daten mit Kommentaren zu Quelltextzeilen und entmangelten Namen, ohne
+Direktiven für Debug-Informationen, Unwinding und Symboltabelle.
+`--function TEXT` behält nur Funktionen, deren entmangelter Name `TEXT`
+enthält, und `--raw` schreibt das ungefilterte Listing.
 
 Qualitätsprüfungen und Formatierung gelten standardmäßig für geänderte Dateien:
 alles, was sich im Arbeitsbaum von `HEAD` unterscheidet, plus nicht verfolgte
@@ -153,7 +172,8 @@ Das Windows-Preset legt die ausführbare Datei in
 `build/windows/bin/<Config>/clau.exe` und die Runtime in
 `build/windows/lib/<Config>/clause_runtime.lib` ab.
 
-Alternativ baut `make build` nur `clau` und seine Abhängigkeiten, und
+Alternativ baut `make build` nur `clau` und seine Abhängigkeiten in
+`build/tool`, und
 `make test` baut und führt die vollständige Testsuite aus. Für eine andere
 Konfiguration:
 
@@ -169,6 +189,7 @@ Standards zu überschreiben:
 |---------------------------------------------|---------------------------------------------------------------|
 | `-DCLAUSE_BOOST_ROOT=/path/to/boost`    | Eine Boost-Installation oder einen vollständigen Quellbaum auswählen |
 | `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Die festgelegte TOML-Abhängigkeit auswählen |
+| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Die festgelegte SQLite-Amalgamation auswählen (Build-Cache) |
 | `-DCLAUSE_OTP_AUDITS=ON` | Optionale Live-Audits gegen OTP/Referenz aktivieren; Standard ist OFF |
 | `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | OTP 29+ für optionale Audits auswählen; von normalen Tests nicht verwendet |
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Eine installierte Clang-Programmdatei unter Windows auswählen |

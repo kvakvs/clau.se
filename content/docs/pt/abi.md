@@ -1,10 +1,10 @@
 ---
 source: docs/abi.md
-sourceCommit: 06042fa
-sourceSha256: f8f56cfac2333ccc8481b962036e323d397415d2505365d432a3e26b811a54b6
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 28bc0f8706b31345a108f5bf8b8e9cc549766717aa19b28e456f94ce2b1d2009
+translatedAt: 2026-10-15
 ---
-# ABI do código gerado (revisão 4)
+# ABI do código gerado (revisão 21)
 
 Contrato privado entre a saída do compilador e o runtime. É C++23 interno ao
 projeto, não compatível com a BEAM e não é uma FFI de uso geral. Os objetos e o
@@ -27,7 +27,9 @@ outro alvo usa as larguras desse alvo.
   `word_bits - 4` bits, intervalo `[-2^(word_bits-5), 2^(word_bits-5)-1]`.
   Valores maiores são bignums no heap.
 - Átomos: seis bits baixos `0x0b`, carga útil não reciclada, global ao
-  processo. Os IDs nunca são serializados nem usados para ordenação.
+  processo. Os IDs nunca são serializados nem usados para ordenação. `false`,
+  `true`, `undefined`, `ok` e `error` são fixos: cargas úteis 0–4 em todos os
+  runtimes (revisões 11 e 13).
 - Tuplo vazio `0x2b` e nil `0x3b` exatamente; outros bits de carga útil são
   inválidos.
 - Pids locais: quatro bits baixos `0x3`, a carga útil é o número do processo,
@@ -35,6 +37,16 @@ outro alvo usa as larguras desse alvo.
   ([pids e referências](terms.md#pids-and-references)).
 - As palavras boxed e de lista apontam para o heap do processo proprietário e
   só são admitidas depois de o runtime provar a posse (ver [termos](terms.md)).
+- Tags primárias: lista `0x1`, boxed `0x2`. Um cabeçalho guarda o seu tipo a
+  partir do bit 2 e o número de palavras seguintes a partir do bit 7
+  (`header_count_shift`); o tipo de um tuplo é 0. O código gerado lê elementos
+  de tuplos e células cons inline apenas depois de a inferência ou um teste de
+  forma dominante ter provado a célula ([provas](specialization.md#proofs)); os
+  planos de correspondência testam formas de tuplos e cons inline em todos os
+  níveis de otimização (uma tag boxed e depois o cabeçalho), e a igualdade
+  exata compara primeiro as palavras, chamando `CLAUSE_exact_v1` apenas para
+  duas palavras de lista ou boxed distintas. O runtime verifica estas
+  constantes.
 
 ## Funções e símbolos
 
@@ -88,9 +100,10 @@ internados permanecem na tabela limitada).
 ## Canal de falhas (revisão 2)
 
 Os erros não são codificados nos bits do termo. Após cada chamada gerada que
-não seja de cauda, o chamador verifica `CLAUSE_call_failed_v2(context)` antes de
-usar o resultado ou de avaliar o argumento seguinte. Em caso de falha, o chamado
-devolve uma palavra zero inválida.
+não seja de cauda, o chamador verifica o canal antes de usar o resultado ou de
+avaliar o argumento seguinte: lê a palavra `failed` do `FrameState` do
+contexto, que o runtime mantém igual a `CLAUSE_call_failed_v2(context)`. Em
+caso de falha, o chamado devolve uma palavra zero inválida.
 
 | Resultado | Transporte |
 | --- | --- |
@@ -157,13 +170,23 @@ caso contrário, as cláusulas `else` selecionam por ele como as cláusulas
 
 As comprehensions usam os serviços existentes com algumas operações: os
 elementos acumulados são invertidos pela construção `reverse`
-(`ContainerConstruction::reverse = 2`, valores `{List, Tail}`); uma binary
+(`ContainerConstruction::reverse = 2`, valores `{List, Tail}`), que constrói o
+resultado numa única reserva de heap; os geradores de lista testam e leem
+células cons inline; uma binary
 comprehension junta as suas partes com `BitOperation::concat` (`{List}`) e uma
 map comprehension constrói o seu map com `MapOperation::from_list` (`{Pairs}`,
-as chaves posteriores prevalecem). Os geradores de map leem
-`MapOperation::key_at`/`value_at` (`{Map, Position}` na ordem canónica das
-chaves) e mostram a entrada restante de um zip com `MapOperation::iterator`, a
-cadeia `{K, V, Next}` do OTP que termina em `none`. Os geradores de bitstring
+as chaves posteriores prevalecem). Os geradores de map obtêm
+`MapOperation::entries` (11, `{Map}`) uma vez: uma célula com as chaves e os
+valores nas palavras `1 + 2i` e `2 + 2i` na ordem canónica das chaves (o
+próprio map clássico, ou uma cópia em forma de tuplo das entradas de um map
+fora do heap que só o código gerado lê) e leem cada entrada inline;
+`key_at`/`value_at` (`{Map, Position}`) mantêm-se para outros chamadores. A
+entrada restante de um zip é mostrada com `MapOperation::iterator`, a cadeia
+`{K, V, Next}` do OTP que termina em `none`.
+`MapOperation::update_owned` (10) recebe os operandos de `update` para uma
+atualização de map cuja origem o compilador provou não ser lida depois: um map
+de origem fora do heap é atualizado no local e o seu stub fica consumido
+(vazio). Os geradores de bitstring
 usam a extração de padrões comum mais um segmento final `binary`/`all` para o
 resto.
 
@@ -205,7 +228,7 @@ Diferenças em relação ao OTP, todas visíveis apenas no termo da pilha:
 - Nenhum frame nomeia uma BIF ou um operador que falhou (o OTP acrescenta
   `{erlang, '+', Args, [{error_info, ...}]}`), e nada abaixo da função de
   entrada aparece.
-- Uma chamada de cauda liberta o frame do chamador (step 19), pelo que, tal
+- Uma chamada de cauda liberta o frame do chamador, pelo que, tal
   como no OTP, um chamador que terminou numa chamada de cauda não aparece no
   trace. O OTP também transforma em chamadas de cauda as chamadas a funções que
   nunca retornam; o Clause não.
@@ -220,24 +243,107 @@ step 19; serviços em [frames.hpp](../abi/include/clause/abi/frames.hpp)).
 Cada função tem um descritor `<symbol>.frame` (`FrameDescriptor`: descritor do
 módulo, slots dos átomos do módulo e da função, aridade, código do corpo,
 número de slots, número de slots de termos; externo para funções exportadas) e
-um `<symbol>.body` interno do tipo `void(void *context)`. Um `<symbol>`
-exportado mantém a assinatura `TermWord(Context *,
+um `<symbol>.body` interno do tipo `abi::v1::Code`,
+`void(void *context, TermWord x0, TermWord x1, TermWord x2)` (revisão 10); com
+um runtime compilado com Clang em x86-64 e AArch64, os corpos e todas as
+transferências usam a convenção `preserve_none`, tal como `abi::v1::Code` nesses
+alvos (revisão 16): os corpos nunca regressam normalmente, pelo que não
+guardam registos preservados pelo chamado; o registo rejeita um módulo cuja
+`code_convention` (0 nenhuma, 1 C, 2 `preserve_none`) não seja a do runtime. Um
+`<symbol>` exportado mantém a assinatura `TermWord(Context *,
 const TermWord *)` como entrada do anfitrião que chama
 `CLAUSE_invoke_v1(context, frame, arguments)`.
 
-- Um corpo lê o cabeçalho do seu frame (`CLAUSE_frame_v1`) e os registos
-  (`CLAUSE_registers_v1`) à entrada e faz um switch sobre a palavra de retoma
-  do cabeçalho. Só sai por chamadas `musttail` do código que
-  `CLAUSE_enter_v1` (chamada), `CLAUSE_tail_v1` (chamada de cauda) ou
-  `CLAUSE_return_v1` (retorno) devolvem.
-- Os argumentos ocupam os primeiros slots do frame; cada valor avaliado é
-  guardado num slot de termo antes da expressão ou chamada seguinte. Os
+- Cada contexto começa com um `abi::v1::FrameState` (revisão 9): bloco de
+  pilha, topo, limite de push, offset do frame atual, reduções restantes,
+  ponteiro dos registos, número de registos vivos, bits lentos, a palavra
+  `failed` e (revisão 12) as palavras livres do bloco de heap
+  `[heap_top, heap_limit)`, uma palavra do alvo cada. Um corpo lê o cabeçalho do
+  seu frame (`stack + frame`) e os registos a partir dele à entrada e faz um
+  switch sobre a palavra de retoma do cabeçalho.
+- Padrões binários (alvos de 64 bits): o teste de início, o teste de fim e os
+  segmentos inteiros de largura constante em bytes inteiros até 56 bits numa
+  posição alinhada ao byte leem a célula inline
+  (`abi::v1::heap_binary_*_word`, `refc_*_word`: o `data_` de uma vista fora do
+  heap é o primeiro byte do seu buffer); os outros segmentos e as posições não
+  alinhadas chamam `CLAUSE_bits_v1`. Um sujeito `sub_binary` (`sub_*_word`) é
+  lido através do seu original. Um `Rest/binary` ou `Rest/bits` final de
+  unidade 1 é alocado inline por incremento como uma célula `sub_binary` de 4
+  palavras do original.
+- Uma construção binária cujos bytes são todos conhecidos em tempo de
+  compilação (constantes inteiras pequenas e literais de string com larguras
+  constantes em bytes inteiros, no máximo 64 bytes) é uma célula binária inline
+  da área de literais do módulo, como os outros literais compostos.
+- `Left ++ Right` em que `Left` está escrito como uma lista própria (um literal
+  de string, ou uma lista sem cauda) é construído como `[E1, ..., En | Right]`,
+  como faz o compilador do OTP, sem chamar `erlang:'++'/2`.
+- `erlang:make_tuple(N, V)` com um `N` pequeno em 1..64 aloca o tuplo por
+  incremento e preenche-o com `llvm.experimental.memset.pattern` quando o heap
+  tem espaço; caso contrário, corre o builtin.
+- As construções binárias (alvos de 64 bits) cujos segmentos são todos inteiros
+  de larguras constantes em bytes inteiros até 64 bits, no máximo 64 bytes no
+  total, são alocadas inline por incremento como células `heap_binary`
+  (cabeçalho, comprimento em bits, palavras de dados zeradas e depois os bytes
+  de cada segmento) quando todos os valores são inteiros pequenos e o heap tem
+  espaço; caso contrário, `CLAUSE_bits_v1` constrói-as. Os mesmos segmentos
+  depois de um acumulador binário completo (`<<Acc/binary, ...>>`) são escritos
+  no buffer do acumulador quando este é um `refc_binary` (ou um `sub_binary` de
+  um) que termina, alinhado ao byte, na `refc_append_end_word` da célula com
+  espaço abaixo de `refc_append_limit_word`: os bytes vão para além do fim, o
+  fim avança e o resultado é um `sub_binary` de 4 palavras dessa célula.
+- `+ - * /` (alvos de 64 bits) com um operando float, e `/` de quaisquer dois
+  números, leem cada operando como double (um inteiro pequeno convertido, o
+  valor de uma célula float lido através de um select da sua célula ou de uma
+  célula substituta constante, para que nenhuma leitura dependa de um salto),
+  calculam em registos e alocam por incremento a célula float de 2 palavras
+  quando o resultado é finito, o divisor não é zero e o heap tem espaço; caso
+  contrário, `CLAUSE_immediate_v1` lança `badarith` ou promove.
+- As expressões de map sem base cujas chaves são literais de átomo ou de
+  inteiro pequeno (no máximo 32 distintas) são escritas inline como células de
+  map clássico, com as chaves ordenadas em tempo de compilação pela ordem exata
+  dos termos e mantendo o último valor de uma chave repetida; caso contrário,
+  `CLAUSE_map_v1` constrói-as.
+- Os tuplos e as listas de no máximo 64 palavras são alocados inline por
+  incremento em `[heap_top, heap_limit)` (cabeçalho ou células cons escritos no
+  local, `heap_top` avançado), caso contrário construídos por
+  `CLAUSE_construct_v1`; o resultado é enraizado como uma saída de serviço. O
+  runtime contabiliza as palavras inline antes de cada operação de heap e
+  repõe ambos os campos depois dela; são nulos enquanto não existe bloco de
+  heap ou se aplica um orçamento de heap por processo, pelo que todas as
+  alocações chegam então ao serviço ([heap](runtime-heap.md#areas)).
+  `CLAUSE_frame_v1` e `CLAUSE_registers_v1` mantêm-se para outros
+  consumidores.
+- Um corpo só sai por chamadas `musttail`. As chamadas, as chamadas de cauda e
+  os retornos correm inline quando podem: uma entrada gasta uma redução,
+  empilha o frame zerado e copia ela própria os argumentos, salvo se o heap
+  quiser uma recolha, o processo estiver em profiling, não restar nenhuma
+  redução, o push ultrapassar o limite ou o chamado for um builtin (corpo
+  nulo); um retorno desempilha inline salvo se o processo estiver em
+  profiling. Caso contrário, o código vem de `CLAUSE_enter_v1` (chamada),
+  `CLAUSE_tail_v1` (chamada de cauda) ou `CLAUSE_return_v1` (retorno), que
+  mantêm o estado atualizado.
+- Cada transferência passa os primeiros `abi::v1::register_arguments` (6 desde
+  a revisão 17) registos X como parâmetros C a seguir ao contexto: os
+  argumentos iniciais de uma chamada, o resultado de um retorno (como `x0` do
+  corpo do chamador), zero para os não usados. Os argumentos adicionais seguem
+  no array de registos. Em torno de cada serviço de transferência, o código
+  gerado guarda os parâmetros no array (os serviços e o coletor leem-nos aí) e
+  volta a carregá-los depois. O runtime chama o código da mesma forma
+  (`ProcessStack::run_code`), e o corpo do seu frame de base guarda `x0` no
+  primeiro registo para o anfitrião.
+- Uma entrada zera o frame e copia para os seus slots apenas os argumentos
+  para além dos parâmetros; um corpo só mantém um argumento de parâmetro no
+  seu slot quando `lower_frames` o despeja através de uma chamada ou de um
+  safepoint. Os valores avaliados não são guardados de imediato: o lowering
+  marca os termos calculados (metadados `clause.term`) e `lower_frames` só dá
+  um slot de termo a um valor que atravessa uma chamada ou um safepoint; os
+  arrays de argumentos dos serviços continuam a passar por slots de raiz. Os
   candidatos falhados limpam os seus slots. Os valores de que um corpo ainda
   precisa depois de uma chamada ou de um safepoint no início de um ciclo são
   despejados (spilled): termos para slots de termos (contados nas `roots` do
   descritor), outras palavras para slots em bruto a seguir a esses; os slots em
   bruto não são raízes.
-- Um resultado passa no registo 0; as cargas úteis de erro são palavras de raiz
+- Um resultado passa como `x0`; as cargas úteis de erro são palavras de raiz
   do canal (`fvalue` da BEAM). Uma falha regressa ao chamador como um resultado
   e todos os chamadores verificam o canal após a chamada; a palavra do bloco de
   tratamento no cabeçalho permanece 0.
@@ -250,9 +356,14 @@ const TermWord *)` como entrada do anfitrião que chama
   o `FrameDescriptor` em que a transferência entra
   ([funs](funs.md#representation)).
 - Safepoints: `CLAUSE_enter_v1`/`CLAUSE_tail_v1` fazem a recolha antes de
-  empilhar o frame do chamado (os seus argumentos são raízes nos registos), e
+  empilhar o frame do chamado (os seus argumentos são raízes nos registos); o
+  heap define o bit `slow_collect` sempre que quer uma recolha, pelo que as
+  entradas inline nunca saltam nenhuma. E
   `CLAUSE_safepoint_v1(context)` no início de cada ciclo de comprehension
-  faz a recolha no local, quando o heap o pede. Todos os outros serviços são
+  faz a recolha no local; o início do ciclo só o chama enquanto
+  `FrameState::slow` tem `slow_collect`, gasta depois uma redução e, sem
+  nenhuma restante, entra em `erlang:self/0` (a entrada suspende o processo),
+  para que os ciclos longos sem chamadas partilhem o escalonador. Todos os outros serviços são
   uma secção crítica que nunca move o heap
   ([recolha no código gerado](runtime-heap.md#collection-in-generated-code)).
 
@@ -260,7 +371,9 @@ const TermWord *)` como entrada do anfitrião que chama
 
 O código gerado chama serviços C++ verificados: `CLAUSE_exact_v1` (igualdade
 exata), `CLAUSE_immediate_v1` (predicados/consultas sobre imediatos),
-`CLAUSE_construct_v1`, `CLAUSE_inspect_v1`, `CLAUSE_integer_v1`,
+`CLAUSE_construct_v1`, `CLAUSE_inspect_v1` (já não é chamado pelo código
+gerado: as formas e os campos de tuplos e cons são testados e lidos inline),
+`CLAUSE_integer_v1`,
 `CLAUSE_float_v1`, `CLAUSE_map_v1`, `CLAUSE_bits_v1`,
 `CLAUSE_record_v1` (make/get/update/match/test de native records sob um
 `RecordCheck`; resultados `bad_record`, `bad_field`, `no_match`),
@@ -272,6 +385,22 @@ semântico. `CLAUSE_halt_v1` nunca tem sucesso: regista um pedido de halt
 (`CallError::halted` com o estado de saída) ou `badarg`, pelo que o chamador
 desenrola. As grafias para o linker seguem o mangling C++ Itanium ou Microsoft
 do alvo.
+
+Formas inline (`codegen/lowering_inline.cpp`): os testes de tipo (`is_atom`,
+`is_integer`, `is_number`, `is_boolean`, `is_tuple`, `is_list`,
+`is_bitstring`, `is_float`, `is_map`, `is_pid`, `is_port`, `is_reference`,
+`is_function/1`, `is_record/1` nativo, `is_binary/1` pela palavra do
+comprimento em bits) leem as tags e, depois de um teste de tag boxed, o tipo
+do cabeçalho (`abi::v1::HeaderKind`); nunca chamam um serviço. As comparações
+de dois imediatos (`==`, `/=`) ou de dois inteiros pequenos (`<`, `=<`, `>`,
+`>=`), `element/2`, `tuple_size/1`, `hd/1`, `tl/1`, os operadores booleanos,
+`band`, `bor`, `bxor`, `bsr`, `bsl` (enquanto o resultado se mantiver pequeno)
+e `div`/`rem` pequenos correm inline; `self/0` lê `FrameState::self`. Correm
+inline quando os seus operandos o permitem e chamam `CLAUSE_immediate_v1` caso
+contrário, que mantém todos os casos de erro e de bignum. `setelement/3` de um
+índice pequeno dentro de um tuplo boxed copia o tuplo para as palavras livres
+do bloco de heap e substitui o slot inline; caso contrário, ou sem espaço,
+entra no builtin de ponte.
 
 `CLAUSE_builtin_frame_v1(context, builtin)` ([builtins.hpp](../abi/include/clause/abi/builtins.hpp))
 devolve o `FrameDescriptor` do builtin de produção com o índice `builtin` em
@@ -315,3 +444,16 @@ dos bytes do módulo/função, do array de argumentos e da aridade, devolvendo u
 | 6 | Descritores de native records nos descritores de módulo, `CLAUSE_record_v1` |
 | 7 | Descritores de funs nos descritores de módulo, `CLAUSE_make_fun_v1`, `CLAUSE_apply_v1` |
 | 8 | Os descritores de exportação nomeiam o seu `FrameDescriptor`; serviços de chamada dinâmica `CLAUSE_call_v1`, `CLAUSE_apply_list_v1`, `CLAUSE_call_list_v1`, `CLAUSE_make_external_fun_v1` |
+| 9 | Cada contexto começa com `abi::v1::FrameState`; transferências inline |
+| 10 | Registos X iniciais passados como parâmetros do código |
+| 11 | Palavras fixas de `false` e `true` |
+| 12 | Campos de heap inline `heap_top`/`heap_limit` em `FrameState` |
+| 13 | `undefined`, `ok`, `error` fixos; `ModuleDescriptor::atom_cache` e `FrameState::runtime` |
+| 14 | Áreas de literais dos módulos: `ModuleDescriptor::literals`, `literal_words` |
+| 15 | `FrameState::self`, a palavra do pid do contexto |
+| 16 | `Code` usa `preserve_none` em x86-64 e AArch64 com um runtime compilado com Clang; `ModuleDescriptor::code_convention` |
+| 17 | Seis registos X como parâmetros de `Code` (`register_arguments`) |
+| 18 | Células `sub_binary` (`HeaderKind::sub_binary`, `sub_*_word`) e extração inline de `Rest` |
+| 19 | Palavras de fim e de limite de acrescento nas células `refc_binary` (`refc_append_*_word`, 8 palavras de carga útil) e acrescentos inline |
+| 20 | `MapOperation::entries` e geradores de map inline |
+| 21 | `ModuleDescriptor::fun_cache` e closures inline |

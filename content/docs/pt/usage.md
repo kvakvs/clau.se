@@ -1,8 +1,8 @@
 ---
 source: docs/usage.md
-sourceCommit: 06042fa
-sourceSha256: 69cd5cc2e8c6acc6bf67d677812a78d984940084e75d4930fbdcdf681e488435
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: d4118cc040e610cc84df916720e96a6009b90b6a1cbfe086434dc5800fe49461
+translatedAt: 2026-10-15
 ---
 # Utilizar o compilador
 
@@ -14,7 +14,7 @@ translatedAt: 2026-10-09
 
 Em macOS, `./run-macos.sh --parse-check examples/project/src/main.erl` compila
 primeiro e corre o executável mais recente, passando todos os argumentos sem
-alteração. Aceita as variáveis de ambiente `BUILD_DIR`, `BUILD_TYPE` e `JOBS`
+alteração. Aceita as variáveis de ambiente `TOOL_BUILD_DIR`, `BUILD_TYPE` e `JOBS`
 para substituir os valores por omissão.
 
 ```text
@@ -27,16 +27,29 @@ clau [options] <source.erl>...
   --print-pp               Print expanded Erlang source
   --print-ast              Print an indented syntax tree
   --print-source           Print each module as Erlang source
+  --print-abstr            Print each module as OTP abstract format forms
+  --parse-transform <mod>  Apply a parse transform to every module
+  --transform-path <dir>   Directory of precompiled transform modules (.beam)
+  --erl <path|none>        Host Erlang/OTP 29 erl that runs parse transforms
+  --print-inputs           List the batch's sources, including modules added by reference; do not compile
+  --print-env              Print the resolved compile environment as TOML and exit
   --print-types            Print each module as source annotated with inferred types
   --print-ir               Print verified IR with Erlang source comments before LLVM optimization
   --print-optimized-ir     Print verified IR with Erlang source comments after LLVM optimization
+  --print-asm              Print each module's assembly with IR and Erlang source comments
   --emit obj|llvm-ir|llvm-bc  Write one artifact per module
   --artifact-dir <dir>     Override the artifact root (requires --emit)
   --target-triple <triple>  Select the machine/OS/ABI
   -O0 / -O2 / -Os         Generic O0 (default) / speed / size optimization
   --no-type-specialization  Disable compiler variants at either optimization level
+  -g                      Emit Erlang line tables; executables keep them for debuggers
+  --lto                   Link modules as bitcode with link-time optimization (LLD targets)
+  --keep-exports          Keep every export of an executable callable (default: unreachable ones left out)
+  --build-dir <dir>       Keep temporary files and caches below <dir> (projects default: <manifest-dir>/build)
+  --no-cache              Neither read nor write build caches
+  --cache-inference-in-dirs <pattern>  Cache inference results of modules in matching directories (besides OTP's)
   --verbose               Trace files and compilation phases to stderr
-  --impldebug <n[,n...]>   Enable debug output for selected implementation steps
+  --print-stage-times     Print preprocess/parse/transform time per file, compile time per batch and link time to stderr
   -I, --include <dir>      Add an include directory (last supplied searched first)
   -D, --define <name[=term]>  Define a macro (default value: true)
   --app-dir <app=dir>      Set an include_lib application directory
@@ -81,14 +94,19 @@ código de saída.
 clau -O2 -o demo answer.erl client.erl && ./demo
 clau -O2 --emit obj answer.erl client.erl
 clau --print-ir --print-optimized-ir -O2 answer.erl
+clau --print-asm -O2 answer.erl
 clau --print-types answer.erl client.erl
 ```
 
 A inspeção da IR permite ambas as fases em conjunto e para antes da emissão
 de objetos. Vários instantâneos são módulos separados; use `--emit llvm-ir`
-para ficheiros assembly individuais. A inspeção de tipos para antes do LLVM e
-imprime cada módulo como código-fonte com as assinaturas de funções inferidas
-e anotações `Expression :: Type`. Aceita opções de
+para ficheiros assembly individuais. `--print-asm` imprime o assembly do alvo
+de cada módulo, com cada sequência de instruções comentada com a instrução IR
+e a linha Erlang de onde veio
+([listagens assembly](compile.md#assembly-listings)). A inspeção de tipos para
+antes do LLVM e imprime cada módulo como código-fonte com as assinaturas de
+funções inferidas e comentários `% Type` no fim de cada linha, para a
+expressão mais exterior da linha. Aceita opções de
 pré-processamento/projeto/verbosidade, mas rejeita outras ações, destinos de
 saída e políticas de backend. Ver [opções de compilação](compile.md).
 
@@ -101,18 +119,15 @@ registo pode preceder o dos includes. `[comp]` acrescenta as fases
 semântica/backend e as decisões de especialização limitada à medida que
 começam. O registo vai para stderr em todos os modos, incluindo projetos.
 
-`--impldebug 23` ou `--impldebug 23,24,27` seleciona saída de depuração
-opcional dos passos de implementação, independentemente de `--verbose`. As
-opções repetidas combinam as suas seleções; os duplicados são ignorados. Os
-valores são inteiros decimais de 32 bits com sinal, com sinais `+`/`-`
-opcionais e sem espaços nem membros vazios na lista. Os steps 23–27 imprimem
-em stderr as entradas/resultados de funções inferidos e as relações entre
-parâmetros com o prefixo do step selecionado (por exemplo,
-`[impldebug 27]`). Estas são entradas analisadas do rebaixamento, não um dump
-da IR. Os steps futuros podem verificar o seu próprio número; selecionar um
-step sem saída de depuração não tem efeito. A mesma seleção aplica-se às
-entradas posicionais e a todos os alvos de projeto selecionados. As ações de
-verificação/impressão só de frontend não correm a inferência.
+`--print-stage-times` imprime `[time] <stage> <subject>: <milliseconds> ms` em
+stderr à medida que cada fase termina: `preprocess` (leitura e
+pré-processamento), `parse` e, para módulos que usam parse transforms,
+`transform` (a execução do `erl` do anfitrião e a importação das suas formas)
+por ficheiro de código-fonte, `compile` (da análise até à emissão de objetos)
+uma vez por lote, indicando o seu número de módulos e o alvo de projeto, e
+`link` por executável, indicando o seu caminho final. O parser obtém as formas
+do pré-processador, pelo que os dois tempos por ficheiro são medidos
+separadamente enquanto se intercalam.
 
 Códigos de saída: **0** em caso de sucesso (incluindo avisos), **1** para
 erros de código-fonte/projeto, **2** para erros de utilização ou nomes de
@@ -128,9 +143,7 @@ nenhum executável.
 Ver [pré-processamento](preprocessor.md), [utilização do parser](parser.md) e
 [estado da validação](validation.md) para mais pormenores.
 
-
 ## Projetos
-
 
 Corra o exemplo incluído com dois alvos:
 

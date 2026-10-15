@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 06042fa
-sourceSha256: a01c524098c785a3c361908d8a6a5221ef5182bf96ee3780a02e2e2a1efd0e2b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
+translatedAt: 2026-10-15
 ---
 # Comunicação de funcionalidades adiadas
 
@@ -37,6 +37,11 @@ pronta; o seu ID mantém-se reservado.
   injetar linhas. O UTF-8 é mantido.
 - Exatamente uma mensagem por operação falhada, independentemente de
   `--verbose`.
+- Uma funcionalidade adiada que o compilador pudesse saltar sem alterar o que
+  aceita seria comunicada como aviso e a compilação continuaria; hoje nenhuma
+  o faz (`parse transforms` fazia-o até o step 73F do plano as aplicar, ver
+  [transforms](transforms.md)). `codegen_placeholders` verifica uma mensagem
+  por cada funcionalidade adiada do compilador.
 - Compilador: [reject_feature](../compiler/src/codegen/features.hpp) comunica
   a primeira falha de um lote, regista a falha, descarta a saída preparada e
   marca o diagnóstico como `reported`, para que os drivers não o voltem a

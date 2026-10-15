@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 06042fa
-sourceSha256: 08b6bf1b734adf5fc6f8aef3972fd56c8f9d20c1a688610c989862794900cd67
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
+translatedAt: 2026-10-15
 ---
 # Preprocessor
 
@@ -41,8 +41,11 @@ parsern. Detta är ett internt gränssnitt, inte ett publikt stegformat.
 - Uppslag av inkluderingar: den aktuella filens katalog, arbetskatalogen, sedan
   include-sökvägar i API-ordning. CLI:n vänder ordningen på upprepade `-I` för
   att matcha `erlc`. Absoluta sökvägar kringgår sökningen. `include_lib` provar
-  vanliga sökvägar och sedan explicit angivna applikationskataloger; ingen
-  kodserver och ingen gissning av versioner.
+  vanliga sökvägar, sedan explicit angivna applikationskataloger och sedan
+  releasers kataloger `<app>-<version>` under varje genomsökt katalog
+  (versioner är punktseparerade siffror, så som OTP:s kodserver läser dem; den
+  högsta vinner). Flera versioner av en applikation ger en varning en gång per
+  körning som namnger den katalog som används; ingen kodserver.
 - Sökvägshuvuden `$VAR` använder en injicerad resolver; ej satta variabler
   förblir literala. Operander till inkluderingar makroexpanderas inte. Filer
   avkodas som UTF-8 eller deklarerad Latin-1; värdens sökvägsregler gäller

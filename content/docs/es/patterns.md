@@ -1,8 +1,8 @@
 ---
 source: docs/patterns.md
-sourceCommit: 06042fa
-sourceSha256: 5d4fa604cd009ece1e93b35b9f94ebc0ecf7f468356ccdc6e96a4d84c9280a97
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: ef7903895b7901a6980a3cd181783486ae8672876229d35fae120e802392e989
+translatedAt: 2026-10-15
 ---
 # Patrones, cláusulas y encajes en el cuerpo
 
@@ -151,8 +151,9 @@ que no son el último.
 
 ## Límites
 
-La normalización de patrones comparte el presupuesto semántico de 1.000.000 de
-unidades del módulo (un entero cuesta aproximadamente sus dígitos decimales);
+La normalización de patrones comparte el presupuesto semántico del módulo
+(1.000.000 de unidades, o 32 por expresión en módulos más grandes) (un entero
+cuesta aproximadamente sus dígitos decimales);
 una constante que supera el límite de enteros de 4.194.240 bits es un
 `illegal pattern`, como en OTP ([términos](terms.md#integers)). Cada plan de
 encaje tiene un techo de trabajo de 100.000. El analizador sintáctico limita

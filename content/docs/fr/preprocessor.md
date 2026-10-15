@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 06042fa
-sourceSha256: 08b6bf1b734adf5fc6f8aef3972fd56c8f9d20c1a688610c989862794900cd67
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
+translatedAt: 2026-10-15
 ---
 # Préprocesseur
 
@@ -44,8 +44,12 @@ l'analyseur. C'est une interface interne, pas un format d'étape public.
   travail, puis chemins d'inclusion dans l'ordre de l'API. La CLI inverse les
   `-I` répétés pour correspondre à `erlc`. Les chemins absolus contournent la
   recherche. `include_lib` essaie les chemins ordinaires, puis les répertoires
-  d'application fournis explicitement ; pas de serveur de code ni de
-  devinette de version.
+  d'application fournis explicitement, puis les répertoires `<app>-<version>`
+  des releases sous chaque répertoire parcouru (les versions sont des chiffres
+  séparés par des points, comme les lit le serveur de code d'OTP ; la plus
+  haute l'emporte). Plusieurs versions d'une même application produisent un
+  avertissement unique par exécution, nommant le répertoire utilisé ; pas de
+  serveur de code.
 - Les têtes de chemin `$VAR` utilisent un résolveur injecté ; les variables non
   définies restent littérales. Les opérandes d'inclusion ne sont pas développés
   comme macros. Les fichiers sont décodés en UTF-8 ou en Latin-1 déclaré ; les

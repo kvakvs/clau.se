@@ -1,8 +1,8 @@
 ---
 source: docs/patterns.md
-sourceCommit: 06042fa
-sourceSha256: 5d4fa604cd009ece1e93b35b9f94ebc0ecf7f468356ccdc6e96a4d84c9280a97
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: ef7903895b7901a6980a3cd181783486ae8672876229d35fae120e802392e989
+translatedAt: 2026-10-15
 ---
 # Muster, Klauseln und Matches im Rumpf
 
@@ -150,8 +150,8 @@ die nicht am Ende stehen, ab.
 
 ## Grenzen
 
-Die Normalisierung von Mustern teilt sich das semantische Budget des Moduls von
-1.000.000 Einheiten (eine Ganzzahl kostet etwa so viel wie ihre Dezimalziffern);
+Die Normalisierung von Mustern teilt sich das semantische Budget des Moduls
+(1.000.000 Einheiten, oder 32 pro Ausdruck bei größeren Modulen) (eine Ganzzahl kostet etwa so viel wie ihre Dezimalziffern);
 eine Konstante jenseits der Ganzzahlgrenze von 4.194.240 Bit ist ein
 `illegal pattern`, wie in OTP ([Terme](terms.md#integers)).
 Jeder Match-Plan hat eine Obergrenze von 100.000 Arbeitseinheiten. Der Parser

@@ -1,6 +1,6 @@
 # Execution model: frames and continuations
 
-Decision of plan 11 step 17 (2026-10-05). It fixes how generated Erlang
+It fixes how generated Erlang
 functions call, return, suspend and fail once recursion, tail calls and
 processes arrive. Step 19 implemented calls, returns, tail calls and frames
 ([Implementation](#implementation) lists what is still open); steps 23, 24,
@@ -78,7 +78,7 @@ under the first call of every process: continuation 1 is a normal exit
   `resume_at` and returns to the scheduler instead of pushing a frame; the
   arguments stay in `x[0..arity)`, which are then the process's only
   registers to root. Resuming refills the budget and transfers to
-  `resume_at`, which repeats the entry. Later waits (`receive`, step 46) store
+  `resume_at`, which repeats the entry. Later waits (`receive`) store
   a body continuation index instead of an entry.
 - **Exit.** Returning into the bottom frame records a normal exit; unwinding
   into it records an uncaught exception. Either way the code returns to the
@@ -164,10 +164,31 @@ Step 19 (2026-10-05) implements the model with these choices and gaps:
   turns calls, tail calls and returns into `musttail` transfers. Type
   specialization and test seams work on native form; the backend runs
   `lower_frames` before IR inspection and `optimize` runs it if still needed.
-- **Entry and body.** There is no separate entry function: the caller calls
-  `CLAUSE_enter_v1(context, callee.frame)`, which pushes the frame, copies
-  the arguments and returns the callee's body. A tail call uses
-  `CLAUSE_tail_v1`, which first releases the caller's frame.
+- **Entry and body.** There is no separate entry function. The process state
+  table above is `abi::v1::FrameState`, at the start of every context, so
+  generated code transfers inline (ABI revision 9): an entry spends a
+  reduction, pushes the zeroed frame, copies the arguments from the
+  registers and transfers to the callee's body; a tail entry first reuses the
+  caller's place; a return pops and transfers to the caller's body. Each path
+  falls back to `CLAUSE_enter_v1`, `CLAUSE_tail_v1` or `CLAUSE_return_v1` when
+  the heap wants a collection, the process profiles, no reduction is left,
+  the stack must grow or reach its limit, or the callee is a builtin. The
+  failure check after a call reads the state's `failed` word. A self tail call
+  keeps its frame where it is: it spends a reduction, resets the
+  frame's resume and handler words and the live count and copies the
+  arguments past the registers, without rewriting the header or zeroing the
+  slots (each holds zero or a term word that collections rewrite, and the body
+  writes a slot before reading it).
+- **Register parameters** (ABI revision 10). Code is
+  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: every transfer
+  passes the first three X registers as C parameters, so a call's leading
+  arguments and a return's result stay in machine registers. A body reads its
+  leading arguments from the parameters when it starts and the call result
+  from `x0` when it resumes; `lower_frames` spills either to a slot only when
+  it is live across a call or safepoint. The service paths store the
+  parameters into the register array before the service and reload them
+  after it. With every body sharing one prototype, LLVM turns a self tail call
+  whose inline push leads back into the same body into a loop.
 - **Tail positions** are the last expression of a clause body, followed
   through blocks, parentheses, `case` and `if` clause bodies. Calls in
   `catch`, `try`, `maybe` and `andalso`/`orelse` operands are not tail calls.
@@ -178,17 +199,17 @@ Step 19 (2026-10-05) implements the model with these choices and gaps:
   cursors and accumulator live in term slots, so no SSA value is carried
   around a loop and a resume point inside it needs nothing beyond the usual
   spills.
-- **Yields** (step 43, [processes](processes.md)). `CLAUSE_enter_v1` and
-  `CLAUSE_tail_v1` spend one of the process's reductions; with none left
+- **Yields** ([processes](processes.md)). Every entry, inline or
+  through `CLAUSE_enter_v1` and `CLAUSE_tail_v1`, spends one of the
+  process's reductions; with none left the services take over:
   they record the entered function (`ProcessStack::resume_`, the model's
   `resume_at`), keep its arguments as register roots and return code that
   ends the time slice, so the native stack unwinds to the executor, which
   later repeats the entry. Loop heads do not yield. The collector enumerates frame term slots, the registers a
   suspension keeps live (`ProcessStack::keep_registers`) and the failure
-  channel (step 23, [roots](runtime-heap.md#roots-and-safe-points)). Function
+  channel ([roots](runtime-heap.md#roots-and-safe-points)). Function
   entries and comprehension loop heads are safepoints that collect when the
-  heap asks for it (step 26,
-  [collection in generated code](runtime-heap.md#collection-in-generated-code));
+  heap asks for it (  [collection in generated code](runtime-heap.md#collection-in-generated-code));
   raw spill slots never hold terms.
 - **No cap.** The stack grows until the host refuses memory, which fails
   with `out_of_memory` (exit 70, [executables](executables.md)), as an OTP

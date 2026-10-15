@@ -1,12 +1,12 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 06042fa
-sourceSha256: 4496f092872f90d6a3fb46c26f67950a76fa663502d4f2c80d8be45d55c8a599
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
+translatedAt: 2026-10-15
 ---
 # Ausführungsmodell: Frames und Fortsetzungen
 
-Entscheidung von Plan 11, step 17 (2026-10-05). Sie legt fest, wie erzeugte
+Sie legt fest, wie erzeugte
 Erlang-Funktionen aufrufen, zurückkehren, sich unterbrechen und scheitern,
 sobald Rekursion, Endaufrufe und Prozesse hinzukommen. Step 19 hat Aufrufe,
 Rückkehr, Endaufrufe und Frames umgesetzt ([Implementierung](#implementation)
@@ -91,7 +91,7 @@ Ausnahme.
   Frame zu pushen; die Argumente bleiben in `x[0..arity)`, die dann die einzigen
   zu wurzelnden Register des Prozesses sind. Das Fortsetzen füllt das Budget
   auf und übergibt an `resume_at`, was den Eintritt wiederholt. Spätere
-  Wartevorgänge (`receive`, step 46) speichern statt eines Eintritts einen
+  Wartevorgänge (`receive`) speichern statt eines Eintritts einen
   Fortsetzungsindex des Rumpfs.
 - **Ende.** Die Rückkehr in den Boden-Frame vermerkt ein normales Ende; das
   Abwickeln in ihn vermerkt eine nicht abgefangene Ausnahme. In beiden Fällen
@@ -189,11 +189,35 @@ um:
   `musttail`-Übergaben. Typspezialisierung und Test-Nahtstellen arbeiten auf
   der nativen Form; das Backend führt `lower_frames` vor der IR-Inspektion aus,
   und `optimize` führt es aus, falls noch nötig.
-- **Eintritt und Rumpf.** Es gibt keine separate Eintrittsfunktion: Der
-  Aufrufer ruft `CLAUSE_enter_v1(context, callee.frame)` auf, das den Frame
-  pusht, die Argumente kopiert und den Rumpf des Aufgerufenen zurückgibt. Ein
-  Endaufruf verwendet `CLAUSE_tail_v1`, das zuerst den Frame des Aufrufers
-  freigibt.
+- **Eintritt und Rumpf.** Es gibt keine separate Eintrittsfunktion. Die
+  obige Zustandstabelle des Prozesses ist `abi::v1::FrameState` am Anfang jedes
+  Kontexts, sodass erzeugter Code inline übergibt (ABI-Revision 9): Ein
+  Eintritt verbraucht eine Reduktion, pusht den genullten Frame, kopiert die
+  Argumente aus den Registern und übergibt an den Rumpf des Aufgerufenen; ein
+  Endeintritt verwendet zuerst den Platz des Aufrufers wieder; eine Rückkehr
+  poppt und übergibt an den Rumpf des Aufrufers. Jeder Pfad weicht auf
+  `CLAUSE_enter_v1`, `CLAUSE_tail_v1` oder `CLAUSE_return_v1` aus, wenn der
+  Heap eine Speicherbereinigung will, der Prozess profiliert wird, keine
+  Reduktion übrig ist, der Stack wachsen muss oder seine Grenze erreicht oder
+  der Aufgerufene ein Builtin ist. Die Fehlerprüfung nach einem Aufruf liest
+  das Wort `failed` des Zustands. Ein Endaufruf seiner selbst behält seinen
+  Frame, wo er ist: Er verbraucht eine Reduktion, setzt die Fortsetzungs- und
+  Handler-Wörter des Frames sowie die Anzahl lebendiger Werte zurück und
+  kopiert die Argumente über die Register hinaus, ohne den Header neu zu
+  schreiben oder die Slots zu nullen (jeder hält null oder ein Term-Wort, das
+  Speicherbereinigungen umschreiben, und der Rumpf schreibt einen Slot, bevor
+  er ihn liest).
+- **Register-Parameter** (ABI-Revision 10). Code ist
+  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: Jede Übergabe reicht
+  die ersten drei X-Register als C-Parameter weiter, sodass die führenden
+  Argumente eines Aufrufs und das Ergebnis einer Rückkehr in
+  Maschinenregistern bleiben. Ein Rumpf liest seine führenden Argumente zu
+  Beginn aus den Parametern und das Aufrufergebnis beim Fortsetzen aus `x0`;
+  `lower_frames` lagert beides nur dann in einen Slot aus, wenn es über einen
+  Aufruf oder Safepoint hinweg lebendig ist. Die Dienstpfade speichern die
+  Parameter vor dem Dienst in das Register-Array und laden sie danach neu. Da
+  jeder Rumpf denselben Prototyp teilt, macht LLVM aus einem Endaufruf seiner
+  selbst, dessen Inline-Push in denselben Rumpf zurückführt, eine Schleife.
 - **Endpositionen** sind der letzte Ausdruck eines Klauselrumpfs, verfolgt
   durch Blöcke, Klammern sowie Klauselrümpfe von `case` und `if`. Aufrufe in
   Operanden von `catch`, `try`, `maybe` und `andalso`/`orelse` sind keine
@@ -205,18 +229,18 @@ um:
   Rumpfs. Ihre Cursor und ihr Akkumulator liegen in Term-Slots, sodass kein
   SSA-Wert um eine Schleife herumgetragen wird und ein Fortsetzungspunkt darin
   nichts über die üblichen Auslagerungen hinaus braucht.
-- **Abgaben** (step 43, [Prozesse](processes.md)). `CLAUSE_enter_v1` und
-  `CLAUSE_tail_v1` verbrauchen eine der Reduktionen des Prozesses; ist keine
-  mehr übrig, vermerken sie die betretene Funktion
+- **Abgaben** ([Prozesse](processes.md)). Jeder Eintritt, inline oder über
+  `CLAUSE_enter_v1` und `CLAUSE_tail_v1`, verbraucht eine der Reduktionen des
+  Prozesses; ist keine mehr übrig, übernehmen die Dienste: Sie vermerken die betretene Funktion
   (`ProcessStack::resume_`, das `resume_at` des Modells), behalten ihre
   Argumente als Register-Wurzeln und geben Code zurück, der die Zeitscheibe
   beendet, sodass sich der native Stack bis zum Executor abwickelt, der später
   den Eintritt wiederholt. Schleifenköpfe geben nicht ab. Der Collector zählt Frame-Term-Slots, die Register, die eine
   Unterbrechung lebendig hält (`ProcessStack::keep_registers`), und den
-  Fehlerkanal auf (step 23, [Wurzeln](runtime-heap.md#roots-and-safe-points)).
+  Fehlerkanal auf ([Wurzeln](runtime-heap.md#roots-and-safe-points)).
   Funktionseintritte und Schleifenköpfe von comprehensions sind Safepoints, die
-  bereinigen, wenn der Heap es verlangt (step 26,
-  [Speicherbereinigung in erzeugtem Code](runtime-heap.md#collection-in-generated-code));
+  bereinigen, wenn der Heap es verlangt
+  ([Speicherbereinigung in erzeugtem Code](runtime-heap.md#collection-in-generated-code));
   Roh-Slots für Auslagerungen halten nie Terme.
 - **Keine Obergrenze.** Der Stack wächst, bis der Host Speicher verweigert, was
   mit `out_of_memory` scheitert (Exit 70, [ausführbare Dateien](executables.md)),

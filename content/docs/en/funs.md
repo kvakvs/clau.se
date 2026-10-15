@@ -1,6 +1,6 @@
 # Function values
 
-Plan 11 steps 32–35 (2026-10-07): `fun F/A`, `fun M:F/A`, anonymous funs
+`fun F/A`, `fun M:F/A`, anonymous funs
 with captured variables (closures), named funs (`fun Name(...) -> ... end`),
 calls of function values (`F(Args)`) and dynamic calls (`M:F(Args)`,
 `apply/2,3`). Facts come from the pinned `maint-29` sources
@@ -108,6 +108,14 @@ and probes on OTP 29.1.1.
   checks a called value, records the errors above in the failure channel
   (`ErrorReason` 22-24) and otherwise appends the captured values after the
   arguments and returns the `FrameDescriptor` to enter.
+- **Inline closures** (ABI 21). The runtime that claims a module's atom cache
+  also fills `ModuleDescriptor::fun_cache` with the address of each fun's
+  definition; while the claim is its own, generated code bump-allocates the
+  fun cell (header, definition, captured values) itself and calls
+  `CLAUSE_make_fun_v1` only without heap room or in another runtime.
+  `CLAUSE_apply_v1` and `CLAUSE_apply_list_v1` read a fun of the right arity
+  (and the argument list) straight from its cells before the checked path
+  that reports errors.
 - **Calls.** Native form passes the arguments in a word array and calls the
   `clause.apply` marker with the descriptor; `lower_frames` makes the
   array the process registers and the marker a transfer through
@@ -146,7 +154,7 @@ Recorded in [differences](differences.md):
 
 ## Fun information
 
-Plan 11 step 41G3 (`builtins/erlang/fun_info.cpp`). `erlang:fun_info/1`
+Source: `builtins/erlang/fun_info.cpp`. `erlang:fun_info/1`
 lists OTP's items in OTP's order: for a local fun `pid`, `module`,
 `new_index`, `new_uniq`, `index`, `uniq`, `name` (`-F/A-fun-N-` for an
 anonymous fun), `arity`, `env` (the captured values) and `type`; for

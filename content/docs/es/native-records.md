@@ -1,12 +1,12 @@
 ---
 source: docs/native-records.md
-sourceCommit: 06042fa
-sourceSha256: 0e98c21bafd3e6c9a4cfb352c5e877f3046dc42e7d5ccd0a1e348eb3a81ed695
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 5383c5a0c72bed06730432be7a2605262122d7580d5a4e6124e01661d7e93086
+translatedAt: 2026-10-15
 ---
 # Records nativos
 
-Decisión del plan 11 step 31A (2026-10-07). Delimita las formas de record de
+Delimita las formas de record de
 OTP 29 más allá de los records ordinarios de tupla y fija su representación,
 operaciones y errores. El step 31B implementó las celdas del runtime y
 `CLAUSE_record_v1`; 31C compila los records nativos locales, 31D

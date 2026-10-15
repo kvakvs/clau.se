@@ -1,16 +1,16 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 06042fa
-sourceSha256: 0f7d89ad7d9a7b44ece9255eeeda2ea552e3290554f1549ffddde04ed6b5bd6d
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
+translatedAt: 2026-10-15
 ---
 # Referência das fontes do Erlang/OTP
 
 O Clause acompanha o ramo oficial `maint-29`. A fixação revista encontra-se em
 [`references/otp-pin.cmake`](../references/otp-pin.cmake):
 
-- Revisão `21776803ecd11f5fa948732c0ec66b8f325dedfc` (commit upstream datado
-  de 2026-09-22), confirmada pela última vez como inalterada em 2026-10-03.
+- Revisão `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2, commit
+  upstream datado de 2026-10-14), atualizada em 2026-10-14.
 - Oráculo instalado usado para goldens e auditorias: OTP 29.1.1 / ERTS 17.1.
 
 `references/otp` é um checkout ignorado. As compilações e os testes normais
@@ -65,3 +65,4 @@ Os registos históricos mantêm a revisão em relação à qual foram feitos.
 | 2026-09-28 | Mudança para `maint-29`; gramática e dez ficheiros do corpus idênticos | `21776803ecd11f5fa948732c0ec66b8f325dedfc` |
 | 2026-10-01 – 10-03 | Obtida de novo antes de cada step de padrões/guards; inalterada | a mesma |
 | 2026-10-03 | Plano 11, step 1: 14 testes de auditoria passam, 19 corpora reproduzem-se | a mesma |
+| 2026-10-14 | Atualizada para OTP 29.1.2: hashes da gramática, do scanner, do pré-processador e de `phase6/otp.tsv` inalterados (`genop.tab` só num comentário); 17 testes de auditoria passam e 19 corpora reproduzem-se com o oráculo 29.1.1; atualizada a revisão registada pelos goldens de executáveis, lint, programas e impressão (saídas inalteradas, `external_terms` mantém a sua saída de map dependente da ordem dos átomos) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |

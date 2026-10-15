@@ -1,6 +1,6 @@
 # Ports
 
-Decision of plan 11 step 57A (2026-10-08). It replaces the step-53 decision
+It replaces the step-53 decision
 (no ports, [processes](processes.md#ports)): programs get ports as OTP
 defines them, and external I/O goes through them. Steps 57B–57F implement
 it; each section names its step. This contract settles the representation,
@@ -8,21 +8,16 @@ the driver model and the I/O thread before any source can open a port.
 
 Implemented: identities, the port table, the port builtins and messages,
 links, monitors, names and exit signals of ports, and output-only `fd` ports
-(step 57B, `runtime/src/scheduler/ports.cpp`, `runtime/src/builtins/erlang/ports.cpp`,
+(`runtime/src/scheduler/ports.cpp`, `runtime/src/builtins/erlang/ports.cpp`,
 `runtime/src/ports/`; OTP golden `executables_port_identities`); the I/O
-thread and `fd` port input with stream, packet and line framing (step 57C,
-`runtime/src/ports/io*.cpp`; OTP golden `executables_port_input`);
-subprocess ports, `os:type/0`, `os:getenv/1` and `os:cmd/1` (step 57D,
-`runtime/src/ports/spawn*.cpp`, `library/stdlib/os.erl`; OTP golden
+thread and `fd` port input with stream, packet and line framing (`runtime/src/ports/io*.cpp`; OTP golden `executables_port_input`);
+subprocess ports, `os:type/0`, `os:getenv/1` and `os:cmd/1` (`runtime/src/ports/spawn*.cpp`, `library/stdlib/os.erl`; OTP golden
 `executables_port_spawn`); the file driver, the library `file` subset and
-standard input through `io:get_line`/`io:get_chars` (step 57E,
-`runtime/src/ports/file.cpp`, `library/stdlib/{file,io}.erl`; OTP golden
-`executables_file_io`); sockets (step 57F, OTP golden `executables_sockets`);
-one event-driven I/O thread for every port kind (step 57G1,
-`runtime/src/ports/reactor.cpp`; OTP golden `executables_many_ports`, runtime
-test `runtime_port_io`); port tasks on the scheduler workers (step 57G2,
-`runtime/src/scheduler/ports.cpp`; OTP golden `executables_port_fairness`);
-busy ports and bounded input (step 57G3; OTP goldens `executables_busy_ports`,
+standard input through `io:get_line`/`io:get_chars` (`runtime/src/ports/file.cpp`, `library/stdlib/{file,io}.erl`; OTP golden
+`executables_file_io`); sockets (OTP golden `executables_sockets`);
+one event-driven I/O thread for every port kind (`runtime/src/ports/reactor.cpp`; OTP golden `executables_many_ports`, runtime
+test `runtime_port_io`); port tasks on the scheduler workers (`runtime/src/scheduler/ports.cpp`; OTP golden `executables_port_fairness`);
+busy ports and bounded input (OTP goldens `executables_busy_ports`,
 `executables_slow_owner`).
 
 ## Identity
@@ -134,8 +129,7 @@ OTP's `prim_inet`/`efile` protocols.
 
 ## I/O thread
 
-One I/O thread per runtime (`detail::Reactor`, `runtime/src/ports/reactor.hpp`,
-step 57G1) runs a Boost.Asio `io_context`: an I/O completion port on Windows,
+One I/O thread per runtime (`detail::Reactor`, `runtime/src/ports/reactor.hpp`) runs a Boost.Asio `io_context`: an I/O completion port on Windows,
 `epoll` on Linux, `kqueue` on macOS. The first port that needs it starts it;
 it serves every port kind, so a port costs no thread of its own:
 
@@ -167,7 +161,7 @@ methods only post work to the I/O thread, where all I/O state lives.
 
 ## Port tasks
 
-Step 57G2. A port is scheduled like a process: what the I/O thread hands
+A port is scheduled like a process: what the I/O thread hands
 over waits in the port, and the port waits in the executor's port queue
 until a scheduler worker runs its task.
 
@@ -207,7 +201,7 @@ nothing more.
 
 ## Busy ports
 
-Step 57G3. Output a driver queues for the I/O thread (spawned programs'
+Output a driver queues for the I/O thread (spawned programs'
 pipes) counts against the port's busy limits, OTP's `busy_limits_port`
 (defaults: high 8,192 bytes, low 4,096; `{busy_limits_port, {Low, High}}`
 or `disabled` as an `open_port/2` option, limits at least 1, a low limit
@@ -241,7 +235,7 @@ A port also bounds the input it holds:
 
 ## Subprocesses
 
-Step 57D. `open_port({spawn, Command}, Options)` and
+`open_port({spawn, Command}, Options)` and
 `open_port({spawn_executable, File}, Options)` start a program whose stdin and
 stdout are pipes of the port:
 
@@ -276,8 +270,6 @@ stdout are pipes of the port:
 
 ## Standard I/O and files
 
-Step 57E.
-
 - `io:format`, `io:put_chars` and `erlang:display` keep writing standard
   output directly ([io](io.md)). Standard input is read by one library
   server process, registered as `clause_stdin` and started on first use,
@@ -290,15 +282,52 @@ Step 57E.
   `{spawn_driver, "clause_file"}`, with `port_control/3`. Its operations
   (`ports/file.cpp`: open, read, write, position, read_line, close, and the
   path operations read_file, write_file, delete, rename, list_dir, make_dir,
-  del_dir) are synchronous system calls on the caller's worker, outside the
+  del_dir and read_file_info, `ports/file_info.cpp`; get_cwd, set_cwd, read_link, read_link_info, make_link and
+  make_symlink, `ports/file_paths.cpp`) are synchronous system calls on the caller's worker, outside the
   executor mutex; their replies start with a status byte (0 ok, 1 error and
   its POSIX reason, 2 end of file). The protocol is Clause's own.
 - `file:open/2` returns an I/O server pid that owns a file port and is linked
   to the opener (modes `read`, `write`, `append`, `exclusive`, `binary`;
-  other modes are ignored, as OTP ignores options it does not use).
+  other modes are ignored, as OTP ignores options it does not use; `write`
+  truncates unless `append` is also given).
+- `file:write_file/3` opens with its modes plus `binary` and `write`; `file:read_file_info/1,2` return OTP's `#file_info{}` from the
+  path's status (following links), with times as local or universal date and
+  time or POSIX seconds (`{time, local | universal | posix}`; `raw` is
+  accepted). On Windows `inode`, `uid` and `gid` are 0 and `major_device` is
+  the drive number, as OTP reports them.
   `read/2`, `read_line/1`, `write/2`, `position/2` and `io:get_line/2`,
   `io:get_chars/3` on it are requests to that server; after `close/1`
   requests return `{error, terminated}` and `close/1` stays `ok`.
+- OTP's I/O protocol: the standard input server and every
+  open file's server answer `{io_request, From, ReplyAs, Request}` with
+  `{io_reply, ReplyAs, Reply}`, which `io:request/1,2` and `io:requests/1,2`
+  send (`standard_io` and `user` name the standard input server, another
+  atom a registered process; `{error, arguments}` when it is not registered,
+  `{error, calling_self}` for the caller itself). Requests: `get_until`
+  (`M:F(Cont, Chars | eof, Extra...)` from `Cont = []`, fed what is buffered
+  or 4 KiB file chunks until `{done, Result, Rest}`; `Rest` is read again by
+  the next request: kept in the buffer, or for a file the position moves
+  back over it), `get_line`, `get_chars`, `put_chars` (characters or `M:F(A)`),
+  the old forms without an encoding (latin1), and `{requests, List}` (in
+  order, stopping at the first `{error, _}`). Characters are bytes, as above;
+  a binary-mode file returns a `get_until` list result as a binary. Others get
+  `{error, {request, Request}}`. A failing `get_until` or `put_chars`
+  function makes a file's server reply `{error, Function}` and exit with the
+  failure, as OTP's does; the opener lives on (OTP's file server is not
+  linked to it). Input requests on standard input write their prompt.
+- Directories, links and copies: `get_cwd/0` spells the current directory as OTP does (forward
+  slashes, a lowercase drive letter), `get_cwd/1` takes a Windows drive (`enotsup` elsewhere); `set_cwd/1` changes
+  it for the whole program; `read_link/1`, `read_link_all/1` (`einval` for a path that is not a link),
+  `read_link_info/1,2` (a final link's own status: POSIX `lstat`, on Windows the target's fields with type
+  `symlink`), `make_link/2`, `make_symlink/2` (needs a privilege on Windows: `eperm`, as OTP), `list_dir_all/1`,
+  `del_dir_r/1`, `copy/2,3` (names, `{Name, Modes}` or open files; `{ok, BytesCopied}`), `raw_read_file_info/1`,
+  `read_file/2`, `delete/2`, `native_name_encoding/0` (`utf8`). `del_dir/1` answers `enoent` for a missing path and
+  `enotdir` for a file. `consult/1` and the `eval`/`script` family stay stubs: they need OTP's generated parser.
+- Files decided: Clause's `file` is the file layer; OTP's `filelib` and `filename` are plain
+  Erlang that runs on it when a program's search path holds OTP's sources (`filelib:fold_files/5` needs `re`);
+  `erl_prim_loader` is provided over `file` with OTP's bare `error` answers and a loader path of `["."]`
+  (`set_path/1`), its loading and archive functions declined until step 71; `prim_file` and `prim_buffer` stay
+  missing, so OTP's `raw_file_io*` callers never enter a program.
 - Errors follow OTP: `{error, enoent}`, `eexist`, `eisdir` (a directory
   opened or read as a file), `einval` (a negative position), `ebadf`
   (reading a write-only or writing a read-only file), `badarg` for bad names
@@ -351,6 +380,19 @@ Implementation (`runtime/src/ports/sockets.cpp`):
   lookup runs on the caller's worker, as it blocks.
 - Socket ports are scheduled like other ports ([port tasks](#port-tasks)): a
   socket's messages wait in its port until the port's task delivers them.
+- Addresses and hosts: `inet:parse_address/1,2`,
+  `parse_strict_address/1,2`, `parse_ipv4_address/1`, `parse_ipv4strict_address/1`,
+  `parse_ipv6_address/1`, `parse_ipv6strict_address/1` (OTP's relaxed forms: short
+  and octal or hexadecimal IPv4 fields, `::`, IPv4 tails, `%scope` of `fe80::` and
+  `ff02::`), `ntoa/1` (OTP's spelling: lowercase hexadecimal, the first longest
+  zero run as `::`), `is_ipv4_address/1`, `is_ipv6_address/1`, `is_ip_address/1`
+  are Erlang; `gethostname/0` (a socket operation), `getaddr/2`, `getaddrs/2`
+  (the system resolver, `getaddrinfo`) and `gethostbyname/1,2` (`h_name` is the
+  name asked, no aliases) answer through a socket port opened for the query.
+- Decided in 41R: Clause's `gen_tcp`, `gen_udp` and `inet` are the network layer
+  and grow toward OTP's export lists as programs need; OTP's `socket` and `net`
+  modules (the socket NIF API) are missing, so are `prim_socket`, `prim_net`,
+  `prim_inet` and `socket_registry`.
 
 ## Not provided
 

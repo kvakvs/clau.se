@@ -20,6 +20,8 @@ records; native records ([native records](native-records.md)); funs
   next collection ([roots](runtime-heap.md#roots-and-safe-points)); it does not
   pin heap storage. After context teardown, access returns `expired_context`;
   after a later collection, `stale_term`. Terms are always safe to destroy.
+  The teardown check reads the context's lifetime token without locking it: a
+  context and its terms are used by one thread at a time.
 - Construction validates children, reserves, initializes, then publishes in one
   step; failure rolls back backing and counters.
 - `Term::from_word(word)` admits only owner-independent immediates;
@@ -40,9 +42,26 @@ records; native records ([native records](native-records.md)); funs
   malformed/overlong/surrogate UTF-8 rejected.
 - Payloads come from a process-wide counter so a foreign runtime's atom word is
   detectable. 32-bit processes have 2^26 lifetime identities in total.
+- Admitting an atom word reads a lock-free index by atom number (the fixed
+  atoms directly, then chunks of 4,096 entries published once under the
+  interning lock); numbers past 2^24 fall back to the locked table.
 - Host atom Terms pin the spelling, surviving runtime teardown. Moving an atom
   between runtimes means interning `atom_utf8()` in the destination.
-- Booleans are the atoms `true`/`false`.
+- Booleans are the atoms `true`/`false`. The fixed atoms `false`, `true`,
+  `undefined`, `ok` and `error` (`abi::v1::fixed_atom_spellings`) have the
+  words of atom numbers 0–4 in every runtime, entered with
+  the storage, found without the lock and counted neither by `size()` nor
+  toward `max_atoms`; generated code uses them as constants. Every other atom
+  word is runtime-private.
+- Compound literals of constants (strings, lists and tuples of immediates and
+  other literals, floats, bignums) are cells of the module literal area,
+  built at compile time and shared ([literal areas](runtime-heap.md#areas)); integer literals in the small range are immediates.
+- Other atom literals load from the module's atom cache
+  (`ModuleDescriptor::atom_cache`: the claiming runtime's identity, then one
+  word per slot), which the first runtime to register the module fills; a
+  context whose `FrameState::runtime` matches the claim reads it without a
+  call, any other calls `CLAUSE_atom_v3`. The claim is given back when
+  the runtime's code server releases the module.
 - Interning and lookup are safe from concurrent scheduler workers
   ([threads](runtime.md#threads)); a spelling keeps one word.
 
@@ -55,7 +74,9 @@ records; native records ([native records](native-records.md)); funs
   result range skips the overflow check and fallback too
   ([proofs](specialization.md#proofs)).
 - Generated `+`, `-`, `*` try an inline fast path on two immediates (double-width
-  compute with explicit bounds), otherwise call the runtime service.
+  compute with explicit bounds), otherwise call the runtime service; so do
+  `band`, `bor`, `bxor`, `bsr`, `div`, `rem` and comparisons of two small
+  integers ([inline forms](abi.md#runtime-services)).
 - `div` truncates toward zero; `rem` takes the dividend's sign; bitwise ops use
   infinite two's complement; negative shift counts reverse direction; huge right
   shifts saturate to 0 or -1.
@@ -94,9 +115,11 @@ records; native records ([native records](native-records.md)); funs
 
 - Immutable tables sorted by exact key order. Duplicate construction keys keep
   the last value. Construction sorts the keys (O(n log n) comparisons; already
-  ascending keys are only checked); updates insert by binary search. No size
-  or work cap beyond memory, as in OTP; on 32-bit targets the header's word
-  count bounds a map at 2^24 - 1 entries (`resource_limit`). Integer and float keys differ (also `0.0` vs `-0.0`, also
+  ascending keys are only checked). Up to 32 entries a map is one heap cell and
+  an update inserts by binary search into a copy; above that it is an off-heap
+  B+ tree updated by path copying in O(log n)
+  ([off-heap maps](runtime-heap.md#off-heap-maps)). No size or work cap beyond
+  memory, as in OTP. Integer and float keys differ (also `0.0` vs `-0.0`, also
   nested).
 - `K := V` updates require the key; `K => V` inserts or replaces. Updates stage
   a new table and publish once.
@@ -112,7 +135,24 @@ records; native records ([native records](native-records.md)); funs
   There is no size cap beyond an optional process heap budget; integer
   segments are written without building an integer as wide as the segment.
 - Construction stages all segments before publishing. Integer segments truncate;
-  native endianness comes from the target data layout.
+  native endianness comes from the target data layout. An integer segment of a
+  small value and a width of at most 64 bits is written from its machine word
+  (whole bytes at once on a byte boundary); others take the multiprecision path. On 64-bit targets generated code writes a binary of whole-byte
+  integer segments of constant widths (at most 64 bytes) directly into the
+  heap block as an inline binary when every value is a small integer and the
+  heap has room; otherwise the bits service builds it, reading small-integer
+  segments from their argument words.
+- Appends (as OTP's writable binaries): a construction starting with a
+  whole binary (`<<Acc/binary, ...>>`) builds its result in a buffer with
+  spare room (twice its size, at least 256 bytes) whose off-heap cell in the
+  creating process records its bits in use and capacity (zero in
+  every other cell, copies included). A later append whose accumulator view ends
+  exactly there writes the new bytes into the spare room, which no view
+  covers, and returns a longer view of the same buffer: a sub-binary of the
+  buffer's own off-heap cell, which may reach past that cell's bits. Generated code does this inline for whole-byte constant-width
+  integer segments of small values; any other accumulator
+  (an older view, another process's, an unaligned one, a full buffer) is
+  copied into a new doubled buffer. Other views of the buffer never change.
 - Float segments: widths 16/32/64; construction may encode infinity, but
   matching rejects infinite/NaN fields. Zero-width float matches extract `0.0`.
 - UTF-8/16/32 segments validate scalars, surrogates and truncation.
@@ -150,7 +190,7 @@ records; native records ([native records](native-records.md)); funs
 
 ## Pids and references
 
-Plan 11 step 42. `self/0` returns the calling process's pid, `make_ref/0` a
+`self/0` returns the calling process's pid, `make_ref/0` a
 new reference; `pid_to_list/1` and `ref_to_list/1` return their text.
 
 - A pid is an immediate word (low four bits `0x3`) holding the process's
@@ -160,7 +200,7 @@ new reference; `pid_to_list/1` and `ref_to_list/1` return their text.
   exited process stays a valid term, as in OTP. 32-bit targets have 2^28
   numbers per program run, 64-bit targets 2^60; creating a process past them
   fails with `resource_limit`.
-- A port (plan step 57B) is an immediate word (low four bits `0x7`) holding
+- A port is an immediate word (low four bits `0x7`) holding
   its number from its own never-reused sequence, admitted like a pid; it
   prints as `#Port<0.N>` and orders between funs and pids
   ([ports](ports.md#identity)).
@@ -169,6 +209,10 @@ new reference; `pid_to_list/1` and `ref_to_list/1` return their text.
   a collection of a host `Term`, copied by value between processes.
   Numbers come from one process-wide counter, so every reference of a program
   run is unique.
+- A handle reference (an OTP magic reference) is a reference
+  cell that also holds an off-heap buffer; it is the same reference to every
+  service and shares its buffer with every copy
+  ([handle references](runtime-heap.md#handle-references)).
 - Printing follows OTP's local identities: a pid as `<0.N.S>` (N the low 28
   bits of its number, S the rest), a reference as `#Ref<0.A.B.C>` (C the low
   18 bits of its number, B the next 32, A the rest), in both `~w` and display
@@ -182,6 +226,8 @@ comparison, map key searches included, and identical words are equal without
 a walk. Byte-aligned bitstrings compare whole bytes at once. Order: numbers < atoms < references < funs < pids < tuples < native records < maps < nil < lists <
 bitstrings ([funs](funs.md#comparison-and-printing) order among themselves). Atoms compare by UTF-8 spelling (code-point order); tuples by arity
 then fields; maps by size, then keys, then values; bitstrings by logical bits.
+Two small integers, two floats or two whole-byte binaries are ordered straight
+from their words or cells (`detail::word_order`), with no term admission.
 
 ## Printing
 

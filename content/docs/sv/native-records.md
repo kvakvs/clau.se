@@ -1,12 +1,12 @@
 ---
 source: docs/native-records.md
-sourceCommit: 06042fa
-sourceSha256: 0e98c21bafd3e6c9a4cfb352c5e877f3046dc42e7d5ccd0a1e348eb3a81ed695
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 5383c5a0c72bed06730432be7a2605262122d7580d5a4e6124e01661d7e93086
+translatedAt: 2026-10-15
 ---
 # Native records
 
-Beslut i plan 11 step 31A (2026-10-07). Det avgränsar OTP 29:s record-former
+Det avgränsar OTP 29:s record-former
 utöver vanliga tupel-records och fastställer deras representation, operationer
 och fel. Step 31B implementerade runtime-cellerna och `CLAUSE_record_v1`;
 31C kompilerar lokala native records, 31D kvalificerade och importerade former

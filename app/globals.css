@@ -20,6 +20,9 @@
   --color-accent: #a2153f;
   --color-accent-fg: #ffffff;
   --color-accent-soft: #fbe9ee;
+  /* Benchmark bars: Clause faster / slower than OTP (validated pair). */
+  --color-faster: #2f6fcf;
+  --color-slower: #c0392b;
 }
 
 @layer base {
@@ -33,6 +36,8 @@
     --color-accent: #ff6b8e;
     --color-accent-fg: #1a0a10;
     --color-accent-soft: #3a1622;
+    --color-faster: #4a86e0;
+    --color-slower: #dc5a4c;
   }
 
   html {

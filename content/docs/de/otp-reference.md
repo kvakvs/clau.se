@@ -1,16 +1,16 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 06042fa
-sourceSha256: 0f7d89ad7d9a7b44ece9255eeeda2ea552e3290554f1549ffddde04ed6b5bd6d
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
+translatedAt: 2026-10-15
 ---
 # Referenz auf den Erlang/OTP-Quelltext
 
 Clause verfolgt den offiziellen Branch `maint-29`. Der geprüfte Pin liegt in
 [`references/otp-pin.cmake`](../references/otp-pin.cmake):
 
-- Revision `21776803ecd11f5fa948732c0ec66b8f325dedfc` (Upstream-Commit vom
-  2026-09-22), zuletzt am 2026-10-03 als unverändert bestätigt.
+- Revision `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2,
+  Upstream-Commit vom 2026-10-14), aktualisiert am 2026-10-14.
 - Installiertes Orakel für Goldens und Audits: OTP 29.1.1 / ERTS 17.1.
 
 `references/otp` ist ein ignorierter Checkout. Normale Builds und Tests
@@ -62,3 +62,4 @@ Historische Einträge behalten die Revision, gegen die sie entstanden sind.
 | 2026-09-28 | Wechsel zu `maint-29`; Grammatik und zehn Korpusdateien identisch | `21776803ecd11f5fa948732c0ec66b8f325dedfc` |
 | 2026-10-01 – 10-03 | Vor jedem Pattern-/Guard-Step neu geholt; unverändert | dieselbe |
 | 2026-10-03 | Plan 11, step 1: 14 Audit-Tests bestehen, 19 Korpora reproduzieren | dieselbe |
+| 2026-10-14 | Auf OTP 29.1.2 aktualisiert: Hashes von Grammatik, Scanner, Präprozessor und `phase6/otp.tsv` unverändert (`genop.tab` nur Kommentar); 17 Audit-Tests bestehen und 19 Korpora reproduzieren unter Oracle 29.1.1; die von Executable-, Lint-, Programm- und Ausgabe-Goldens erfasste Revision aktualisiert (Ausgaben unverändert, `external_terms` behält seine von der Atomreihenfolge abhängige Map-Ausgabe) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |

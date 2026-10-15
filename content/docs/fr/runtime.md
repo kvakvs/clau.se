@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 06042fa
-sourceSha256: 6baeafe0372058547653e00c8d05e2f39a894329ac165b982d1553ad6ba2093e
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 487cb38fceea0b489183ca4c47c3c3b8494d2df44fd821e82de92e1c896f5864
+translatedAt: 2026-10-15
 ---
 # Runtime
 
@@ -143,6 +143,15 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
 - Un `ModuleRegistry` associe un nom/arité exact (≤ 255) à un appelable
   entièrement en `Term`. `load` le fige et le publie ; les doublons ou les
   échecs ne publient rien.
+- L'enregistrement indexe aussi les liaisons des modules générés dans des
+  tables de hachage : descripteurs de module, de record et de fun vers leurs
+  liaisons et définitions, et mots d'atomes `Module:Function/Arity` vers les
+  cadres d'export. Les appels dynamiques, `apply/3`, les `fun M:F/A` créées à
+  l'exécution et les recherches de descripteurs prennent donc un temps attendu
+  constant en fonction du nombre de modules et d'exports (environ 80 ns par
+  recherche d'export en Debug avec 10 ou 400 modules). Les index sont
+  construits au sein de l'enregistrement : un module rejeté n'ajoute aucune
+  entrée, et ils ne changent que sous le verrou exclusif du serveur.
 - `resolve` distingue module manquant et export manquant. `ResolvedFunction`
   épingle l'image du module ; `call` vérifie l'arité, les arguments et les
   résultats, et transforme les exceptions de l'hôte en échecs.
@@ -164,6 +173,34 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
   externes construites à l'exécution.
 - `CodeServer::unload` est différé ; le chargement dynamique n'est pas pris en
   charge.
+
+## Termes persistants
+
+Source : `memory/persistent_terms`. Une table par runtime, détenue par
+`Runtime::Impl` et atteinte via `ProcessContext::persistent_terms()`, conserve
+les termes de `persistent_term` (builtins : step 41M2).
+
+- Une clé et sa valeur sont chacune copiées dans un `MessageBuffer`
+  ([tampons de messages](runtime-heap.md#message-buffers)) hors de tout
+  processus, de sorte qu'elles survivent au processus qui les a stockées et
+  qu'aucune collecte ne les déplace.
+- Les entrées sont trouvées par un hachage de la clé (les builtins utilisent le
+  hachage de termes de `phash2`) et une égalité exacte, comparée sur place dans
+  le tampon (`MessageBuffer::value`).
+- Une lecture copie la valeur dans le tas du lecteur (décidé le 2026-10-14).
+  OTP remet à la place une référence vers une zone de littéraux et ne copie
+  qu'au remplacement ou à l'effacement, via une collecte globale ; l'admission
+  de Clause n'accepte que les mots des zones propres au processus, de sorte que
+  des littéraux sur place exigeraient une nouvelle région de termes partagée.
+  La copie garde chaque tas de processus autonome : une valeur remplacée ou
+  effacée est libérée lorsque le dernier lecteur qui la copie encore abandonne
+  sa référence au tampon, et aucune collecte globale n'est nécessaire. Les
+  lectures coûtent la taille de la valeur ([différences](differences.md)).
+- Un verrou partagé sert les lecteurs sur un nombre quelconque de workers ;
+  `put` et l'effacement le prennent en exclusif et ne copient jamais en le
+  détenant. Le test CTest `runtime_persistent_terms` couvre les valeurs qui
+  survivent à leur auteur, les valeurs remplacées détenues par des lecteurs,
+  les lecteurs et auteurs concurrents, et les imputations libérées.
 
 ## Gestion de l'ordonnanceur
 
@@ -191,19 +228,19 @@ du destinataire et l'ajoute à sa boîte de réception des signaux
 
 ## Threads
 
-Les workers de l'ordonnanceur (plan step 56, [workers](processes.md#workers))
+Les workers de l'ordonnanceur ([workers](processes.md#workers))
 exécutent les processus sur plusieurs threads d'un même runtime. Les services
 qu'ils partagent sont synchronisés ; tout le reste reste confiné au thread qui
 exécute son processus ou protégé par le mutex de l'exécuteur.
 
-- Atomes (step 54) : `AtomStorage` protège ses deux index par un mutex
+- Atomes : `AtomStorage` protège ses deux index par un mutex
   partagé. Les recherches (`lookup`, `boolean`, `size`) le partagent ;
   `intern` cherche sous le verrou partagé et seule une nouvelle orthographe
   prend le verrou exclusif, vérifie à nouveau et publie l'entrée, de sorte que
   des appels `intern` concurrents pour une même orthographe obtiennent un seul
   mot. Les mots restent stables : une entrée n'est jamais modifiée ni
   supprimée avant la destruction.
-- Code (step 55) : `CodeServer` protège ses modules et les définitions de funs
+- Code : `CodeServer` protège ses modules et les définitions de funs
   externes par un mutex partagé. Les recherches (`find_module`, `resolve`,
   `atom_word`, `record_definition`, `fun_definition`, `export_frame`,
   `function_frame`, `owns`) le partagent ; `load` et la construction d'une
@@ -219,12 +256,12 @@ exécute son processus ou protégé par le mutex de l'exécuteur.
   restent valides pour chaque invocation et chaque cellule de fun. Les handles
   `ResolvedFunction` et `find_module` conservent aussi leur module après la
   disparition du runtime.
-- Numéros de pid (step 56) : `ProcessNumbers` émet les numéros sous un verrou
+- Numéros de pid : `ProcessNumbers` émet les numéros sous un verrou
   exclusif et admet les mots de pid sous un verrou partagé.
-- Mémoire (step 56) : le compte à l'échelle du runtime (`RuntimeMemory`)
+- Mémoire : le compte à l'échelle du runtime (`RuntimeMemory`)
   impute et libère par des opérations atomiques ; une imputation ne fait
   jamais dépasser au compte une limite optionnelle.
-- E/S des ports (steps 57C–57F) : les threads de lecture, d'écriture et de
+- E/S des ports : les threads de lecture, d'écriture et de
   surveillance du service d'E/S et le thread des sockets
   ([ports](ports.md#io-thread)) ne touchent l'état des processus qu'à travers
   le mutex de l'exécuteur.
@@ -265,7 +302,7 @@ et ne changent aucun état :
 
 | Frontière | Erreur |
 | --- | --- |
-| `TermFactory::port` (pas encore de ports, plan step 53), `reference(ReferenceIdentity)` et `function(FunctionIdentity)` | `TermError::not_implemented` |
+| `TermFactory::port` (pas encore de ports), `reference(ReferenceIdentity)` et `function(FunctionIdentity)` | `TermError::not_implemented` |
 | `SchedulerService::run` / `execute` | `SchedulerError::not_implemented` |
 | `CodeServer::unload` | `CodeError::not_implemented` |
 | `dispatch_builtin` sur un BIF catalogué | `Status::not_implemented` |

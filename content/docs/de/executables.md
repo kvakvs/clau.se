@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: 06042fa
-sourceSha256: aaec2d5d2a83da50b160d09c8b37ecf1648199279e5aed4b35ef794633bf589a
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 84319a420ecb674ad4d7c524783b1696997988d90503989810d27f6feb553bc4
+translatedAt: 2026-10-15
 ---
 # Ausführbare Dateien
 
@@ -15,7 +15,10 @@ Ziel zu seinem `output` im Manifest ([Linken](#linking),
 ## Auswahl des Einstiegspunkts
 
 Der Einstiegspunkt ist eine exportierte Funktion der Stelligkeit 1, die die
-Argumentliste erhält.
+Argumentliste erhält. Eine ausgewählte `FUNCTION` ohne `FUNCTION/1` darf
+stattdessen ein exportiertes `FUNCTION/0` sein: Sie läuft ohne die
+Programmargumente (Runtime-Optionen werden trotzdem herausgenommen). Der
+Standard (keine Auswahl) ist immer `main/1`.
 
 | Quelle | Schreibweise | Geltungsbereich |
 | --- | --- | --- |
@@ -41,10 +44,10 @@ Argumentliste erhält.
 | Fehler | Diagnose (Exit 1) |
 | --- | --- |
 | Modul nicht im Batch | `<origin>: entry module M is not among the compiled modules` (Herkunft: `--entry` oder Manifest `file:line:col [target t] (entry)`) |
-| Kein `F/1` | `<file>:<line>:<col>: entry function M:F/1 is not defined` an der Moduldeklaration |
-| Nur andere Stelligkeiten | `... is not defined; found F/N, but the entry receives one argument (the argument list)` an dieser Definition |
-| `F/1` nicht exportiert | `<file>:<line>:<col>: entry function M:F/1 is not exported` an der Definition |
-| Keine Auswahl, kein Export von `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1; FUNCTION defaults to main)` |
+| Weder `F/1` noch `F/0` | `<file>:<line>:<col>: entry function M:F/1 is not defined` an der Moduldeklaration |
+| Nur andere Stelligkeiten | `... is not defined; found F/N, but the entry takes the argument list (FUNCTION/1) or nothing (FUNCTION/0)` an dieser Definition |
+| `F/1` (sonst `F/0`) nicht exportiert | `<file>:<line>:<col>: entry function M:F/A is not exported` an der Definition |
+| Keine Auswahl, kein Export von `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main)` |
 | Keine Auswahl, mehrere | `ambiguous entry point: main/1 is exported by a, b; choose the entry with ...` (gleicher Hinweis) |
 
 Für Projektziele nennt der Hinweis auch den Manifest-Schlüssel: `... --entry MODULE[:FUNCTION] or with
@@ -54,7 +57,7 @@ entry = "MODULE[:FUNCTION]" in this target's [[targets]] table of the project ma
 [[targets]]
 name = "app"
 sources = ["src/*.erl"]
-entry = "app:start"   # calls app:start/1; plain "app" calls app:main/1
+entry = "app:start"   # calls app:start/1 (or app:start/0); plain "app" calls app:main/1
 ```
 
 ## Argumente
@@ -86,6 +89,7 @@ werden gleich ausgewertet; ein Wert steht im nächsten Argument oder nach `=`.
 | `--max-stack BYTES` | Obergrenze für den Frame-Stack jedes Prozesses; standardmäßig unbegrenzt |
 | `--max-memory BYTES` | Obergrenze für den Speicher aller Prozesse zusammen (Heaps, Off-Heap-binaries, Stacks); standardmäßig unbegrenzt |
 | `--schedulers N` | Scheduler-Worker, die Prozesse ausführen, 1 bis 1.024; Standard einer pro logischem Prozessor, wie `+S` von OTP ([Worker](processes.md#workers)) |
+| `--profile FILE` | Schreibt beim Programmende einen Bericht über Eintritte und Eigenzeit pro Funktion und pro Prozess nach `FILE` ([Profiling](profiling.md)); standardmäßig aus |
 | `--args-file FILE` | Optionsdatei wie `vm.args` von OTP: reserviert, meldet `runtime option --args-file is not implemented` |
 | `--` | Beendet die Runtime-Optionen; alle folgenden Argumente gehen an `Entry` |
 
@@ -139,7 +143,7 @@ ab, sodass er das Programm erst nach dem erzeugten Aufräumen stoppt.
   `standard_error`, Runtime-Fehler und die Fehlerberichte anderer Prozesse, die
   abstürzen ([Prozesse](processes.md#exits)).
 - Der Bericht ist eine Zeile `uncaught exception <class>: <reason in ~w form>`,
-  später gefolgt von Stack-Frames (step 15). Sein genauer Text ist keine stabile
+  später gefolgt von Stack-Frames. Sein genauer Text ist keine stabile
   Schnittstelle; Tests matchen ihn über Muster.
 
 ## Startobjekt
@@ -196,6 +200,82 @@ Datenobjekt in einen eigenen Abschnitt und linkt mit `--gc-sections` (ELF),
 `-dead_strip` (Mach-O) oder `/OPT:REF /OPT:ICF` (MSVC), sodass Code, den kein
 Einstiegspfad erreicht, entfernt wird.
 
+`--lto` kompiliert die Module und das Startmodul zu LLVM-Bitcode statt zu
+Objekten und linkt mit `-flto -fuse-ld=lld`, sodass LLD den erzeugten Code des
+Programms als eine Einheit gegen das native Runtime-Archiv optimiert. Modul-
+und Startdeskriptoren, exportierte Einstiegspunkte und `main` bleiben
+referenziert und überleben; Programme verhalten sich wie ohne die Option. Nur
+LLD liest den Bitcode dieses Compilers, daher wird `--lto` für Windows-MSVC- und
+ELF-Ziele akzeptiert; andere scheitern vor dem Linken mit
+`--lto is not supported for target <triple>: it needs LLD`. `--lto` braucht
+eine ausführbare Ausgabe (`-o` oder einen linkenden Projekt-Build). Das
+installierte Clang/LLD muss dasselbe LLVM-Release wie `clau` sein (23.1).
+
+### Lebendigkeit von Exporten
+
+Eine ausführbare Datei lässt die Exporte weg, die sie nicht erreichen kann,
+sodass das Dead-Stripping von `-Os` und `--lto` Bibliothekscode entfernen, den
+das Programm nie aufruft. Direkt nach der Auflösung der Aufrufe, vor der
+Typinferenz, beginnt eine Analyse des ganzen Batches bei der
+Einstiegsfunktion und markiert als lebendig alles, was eine lebendige Funktion
+direkt aufruft (auch über `-import` und Auto-Importe von OTP), jedes
+`fun F/A` und literale `fun M:F/A` sowie die literalen Ziele von `apply/3`,
+`spawn/3`, `spawn_link/3`, `spawn_monitor/3`, `spawn_opt/4,5`,
+`spawn_request/3,5`, `hibernate/3` und `make_fun/3` (jede Stelligkeit von
+`M:F`, wenn die Argumentliste nicht literal ist), und `file:write/2`, sobald
+`io:format/3`, `io:fwrite/3`, `io:put_chars/2` oder `io:nl/1` lebendig ist
+(ihre Builtins schreiben darüber auf ein Prozessgerät). Sie bleibt
+konservativ:
+
+- ein Modul, dessen Namensatom irgendwo in lebendigem Code als Wert verwendet
+  wird (übergeben, gespeichert, gesendet, `?MODULE`, ein Record-Tag,
+  `M:F(...)` mit einer Funktion zur Laufzeit, `fun M:F/A` mit einem Teil zur
+  Laufzeit), behält jeden Export, was auch die Callbacks von per Namen
+  gestarteten Behaviour-Modulen behält;
+- sobald lebendiger Code sowohl einen Aufruf mit einem Modul zur Laufzeit
+  (`M:F(...)`, `apply/3` oder ein Spawn mit variablem Modul, `fun M:F/A` mit
+  variablem Modul, `binary_to_term/1,2`) als auch ein atomerzeugendes Builtin
+  (`list_to_atom/1`, `list_to_existing_atom/1`, `binary_to_atom/1,2`,
+  `binary_to_existing_atom/1,2`, `binary_to_term/1,2`, `fun_info/1,2`,
+  `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`, `pre_loaded/0`) enthält,
+  bleibt jeder Export jedes Moduls.
+
+Eine Funktion, die nichts Lebendiges erreicht, erhält überhaupt keinen Code.
+Ein weggelassener Export behält seinen Namen in der Exporttabelle des Moduls
+ohne Code, sodass `function_exported/3` und `module_info(exports)` antworten,
+als wäre er exportiert, während ein dynamischer Aufruf, der ihn erreicht,
+`undef` auslöst ([Unterschiede](differences.md#errors-stack-traces-and-reports)).
+Das kann nur geschehen, wenn ein Modulname von außerhalb der Analyse stammt:
+aus einem Stacktrace, einem Ausnahmeterm oder Daten von außerhalb des
+Programms. `--verbose` protokolliert das Ergebnis pro Modul
+(`phase=liveness detail="dropped-exports=3"` oder
+`detail="kept-all-exports reason='m' is used as a value in main:main/1"`).
+
+Eine Funktion, die nichts Lebendiges erreicht, wird auch nie typinferiert oder
+gegen ihre `-spec` geprüft: Die Inferenz deckt nur lebendigen Code ab, was für
+Programme schneller ist, die wenig von großen Bibliotheksmodulen nutzen
+(`bench_gc`: 68 ms auf 10 ms), und die Fakten lebendiger Funktionen nur
+einengen kann, da unerreichbare Aufrufer ihre Argumente nicht mehr vereinigen.
+Eine Spezifikation, der nur unerreichbarer Code widerspricht, wird daher für
+`--emit`-Artefakte gemeldet, aber nicht für die ausführbare Datei.
+
+`--keep-exports` (oder die Projektoption `keep_exports = true`) hält jeden
+Export aufrufbar, wie vor step 62C. Die Analyse gilt für ausführbare Dateien
+(`-o` oder ein linkender Projekt-Build) und für IR- und Assembly-Inspektionen
+mit einem Einstiegspunkt (`--entry` oder das Manifest-`entry` des Ziels), die
+dann den Code der ausführbaren Datei zeigen; `--emit`-Artefakte, die für andere
+Programme gedacht sind, behalten jeden Export.
+
+Schwache Referenzen der Exporttabelle, die der Linker auflöst, wurden
+stattdessen geprüft und verworfen: Schwache Externals in COFF brauchen eine
+Standarddefinition und lassen `/OPT:REF` das Ziel nicht entfernen, und schwache
+Referenzen in Mach-O binden nur importierte Dylib-Symbole, daher funktioniert
+keine Form auf allen drei Objektformaten.
+
+`-g` behält Erlang-Zeilentabellen für Debugger: in der ausführbaren Datei (ELF)
+oder in einer daneben veröffentlichten `<name>.pdb` (MSVC-Ziele)
+([Debugging](debugging.md)).
+
 - `PATH` ist relativ zum Aufruf. Für Windows-Ziele wird `.exe` angehängt, wenn
   der Dateiname keine Erweiterung hat. Sein Verzeichnis muss existieren.
 - Linker: `--linker PATH` (ein Pfad oder Programmname), sonst `clang++` oder
@@ -211,7 +291,9 @@ Einstiegspfad erreicht, entfernt wird.
   `--target-triple` für ein anderes Ziel braucht daher eine dafür gebaute
   Runtime.
 - Objekte und die ausführbare Datei werden in einem privaten Verzeichnis
-  `.clause-link-*` neben der Ausgabe bereitgestellt, das danach entfernt wird.
+  `.clause-link-*` neben der Ausgabe bereitgestellt, das danach entfernt wird;
+  es bleibt dort und nicht im [Build-Verzeichnis](projects.md#build-directory),
+  weil die abschließende Umbenennung keine Laufwerksgrenzen überschreiten darf.
   Die Ausgabe wird erst nach einem erfolgreichen Linken ersetzt, sodass jeder
   Fehler eine vorhandene Datei unverändert lässt. Die Ausgabe darf kein
   Verzeichnis sein und keine Eingabe überdecken.

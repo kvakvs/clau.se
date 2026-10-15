@@ -1,8 +1,8 @@
 ---
 source: docs/differences.md
-sourceCommit: 06042fa
-sourceSha256: b5d1cfc31fec7aaf6e6c4ca75f9056df534ca608a2c93e97a44e6c5e00a1109b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 7f5e373cf63cd3d962f6e9954719a80cdb14f9cf5bfdb3af590c58fc8e0cabf3
+translatedAt: 2026-10-15
 ---
 # Відмінності від Erlang/OTP
 
@@ -18,6 +18,7 @@ translatedAt: 2026-10-09
 | --- | --- | --- | --- |
 | Порядок генератора map (`K := V <- M`) | Пласкі map (до 32 ключів) перебираються в порядку ключів, але атомні ключі — в порядку таблиці атомів, який різниться між запусками VM; більші map — у порядку хешів | Завжди канонічний порядок ключів (порядок термів) | [зразки](patterns.md#comprehensions) |
 | Вміст `bad_generators` для генератора map у zip-групі | Його ітератор: ланцюжок `{K, V, Next}`, що закінчується `none`, у порядку OTP | Той самий ланцюжок, побудований у канонічному порядку ключів | [зразки](patterns.md#comprehensions) |
+| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3` | Внутрішній порядок (порядок таблиці атомів для атомних ключів, порядок хешів понад 32 ключі); ітератор — це позиція або ланцюжок `{K, V, Next}` | Канонічний порядок ключів; ітератор продовжує обхід списку ключів | [вбудовані функції](builtins.md#erts-internal) |
 | Друк map (`erlang:display/1`, `~w`, `~p`) | Порядок внутрішнього розміщення (порядок таблиці атомів для атомних ключів, порядок хешів понад 32 ключі) | Порядок ключів map, як `~kw` в OTP | [терми](terms.md#printing) |
 | Друк native record (`erlang:display/1`) | Поля в порядку індексів таблиці атомів | Порядок визначення, як `~w` | [native records](native-records.md#printing-and-order) |
 | `==` між native record, поля яких відрізняються лише як ціле число/число з рухомою комою | Компілятор може згорнути його до `=:=` (false) | Числове порівняння (true) | [native records](native-records.md#printing-and-order) |
@@ -33,10 +34,60 @@ translatedAt: 2026-10-09
 | --- | --- | --- | --- |
 | Номери pid | Перший процес користувача — приблизно `<0.80.0>`; номери повторно використовуються після переповнення таблиці pid | Перший процес — `<0.1.0>`; номери беруться з однієї послідовності й ніколи не використовуються повторно | [терми](terms.md#pids-and-references) |
 | Код після `spawn(Fun)` для fun іншої арності | Аналіз типів компілятора може вважати код після виклику недосяжним і відкинути його, тож викликач одразу повертає pid | Викликач продовжує роботу; завершується з помилкою лише новий процес, з `{badarity, {Fun, []}}` | [процеси](processes.md#builtins) |
+| Стек `function_clause`, викликаного вбудованою функцією `lists` (`lists:sublist/2`, `lists:max/1`, ...) | Верхній фрейм — функція Erlang, часто внутрішня допоміжна (`lists:sublist_2/2`), з її аргументами | Нагорі викликач: вбудовані функції не додають фрейм | [вбудовані функції](builtins.md#lists-module) |
+| Останній біт результатів `math` (`math:erfc(1)`, ...) | Бібліотека C, з якою зібрано OTP | Бібліотека C, з якою компонуються програми Clause (Windows: `0.15729920705028513` для `erfc(1)`, OTP `0.1572992070502851`) | [вбудовані функції](builtins.md#math-module) |
+| Результат `binary:compile_pattern/1` | `{bm, Ref}` або `{ac, Ref}` з непрозорим посиланням | `{bm, [Pattern]}` або `{ac, Patterns}` | [вбудовані функції](builtins.md#binary-module) |
+| `binary:referenced_byte_size/1` для sub-binary | Розмір binary, на який він посилається | Його власний розмір | [вбудовані функції](builtins.md#binary-module) |
+| Вартість `persistent_term:get/1,2` | Стала: значення лежить в області літералів; `put`/`erase` заміненого значення запускають глобальне збирання | Копіює значення в купу читача при кожному читанні; без глобального збирання | [runtime](runtime.md#persistent-terms) |
+| `persistent_term:info/0` і `get/0` | Включають терми, які `kernel` і `stdlib` з OTP зберігають під час завантаження (26 в OTP 29) | Лише власні терми програми | [вбудовані функції](builtins.md#persistent-terms) |
+| `code:is_loaded/1`, `code:which/1`, `code:all_loaded/0` для скомпільованого модуля | Файл `.beam`, з якого його завантажено | `preloaded`: кожен модуль скомпоновано у виконуваний файл | [вбудовані функції](builtins.md#code-module) |
+| `init:get_arguments/0`, `init:get_argument/1` | Прапорці емулятора: `root`, `bindir`, `progname`, `home` і кожен `-Flag` командного рядка | Лише `home`; виконуваний файл не має прапорців емулятора | [вбудовані функції](builtins.md#init-module) |
+| `init:script_name/0`, `init:script_id/0` | Шлях до скрипту завантаження і `{"Erlang/OTP", "29"}` | Абсолютний шлях до виконуваного файлу і `{"Clause", "29"}` | [вбудовані функції](builtins.md#init-module) |
+| `init:get_status/0`, `init:ensure_loaded/1` у вхідній функції | `{starting, started}` і завантаження коду, поки під час завантаження системи виконується код `escript`, `-s` або `-eval`; `{started, started}` і `not_allowed` після запуску | Завжди відповіді для запущеної системи | [вбудовані функції](builtins.md#init-module) |
+| `init:stop/0,1`, `init:reboot/0` | Повертають `ok`; потім `init` зупиняє застосунки і завершує роботу, а викликач продовжує виконуватися | Зупиняють роботу одразу; виклик ніколи не повертається | [вбудовані функції](builtins.md#init-module) |
+| `init:get_argument(home)` у Windows без `HOMEDRIVE`/`HOMEPATH` | Папка профілю оболонки | `USERPROFILE`, зазвичай та сама папка | [вбудовані функції](builtins.md#init-module) |
+| `erlang:halt(Slogan)`, `init:stop(Slogan)` | Друкує гасло, записує `erl_crash.dump` у поточний каталог і повідомляє про це в stderr; код виходу 1 | Друкує гасло в stderr, crash dump не записує; код виходу 1 | [виконувані файли](executables.md) |
+| `init:restart/0,1`, `init:boot/1`, `init:make_permanent/2` | Перезапускають систему в тому самому вузлі, завантажують її або задають скрипт завантаження наступного перезапуску | Відхиляються: помилка `notsup`, `{error, notsup}` від `make_permanent/2` | [вбудовані функції](builtins.md#init-module) |
+| Арність `atomics:new/2` | Будь-яке додатне ціле, яке може обслужити алокатор; надто велике завершує вузол із crash dump | Від 1 до 2^27, інакше `badarg` | [вбудовані функції](builtins.md#atomics-and-counters) |
+| `counters` з `write_concurrency` | Лічильники окремих планувальників, що підсумовуються при читанні; пам'ять у `info/1` зростає з кількістю планувальників | Один масив atomics; пам'ять у `info/1` — це пам'ять масиву | [вбудовані функції](builtins.md#atomics-and-counters) |
+| `erts_internal:term_type/1` | Внутрішнє представлення: `flatmap` або `hashmap`, `heap_binary`, `refc_binary` або `sub_binary`, ... | Кожен map — `flatmap`, кожен bitstring — `sub_binary` | [вбудовані функції](builtins.md#erts-internal) |
+| `erl_prim_loader:get_path/0` | Шлях коду завантаження | `["."]` до `set_path/1` | [порти](ports.md#standard-io-and-files) |
+| `file:read_link_info/1,2` для символьного посилання у Windows | Власні дані точки повторного розбору (reparse point) посилання | Розмір і часи цілі з типом `symlink` | [порти](ports.md#standard-io-and-files) |
+| `inet:gethostbyname/1,2` | Канонічне ім'я і псевдоніми від резолвера (`inet_res`, файл hosts, нативний) | Запитане ім'я без псевдонімів; адреси від системного резолвера | [порти](ports.md#sockets-57f) |
+| Модулі `socket`, `net` | API сокетів на NIF | Відсутні: посилання на них — помилка компіляції; використовуйте `gen_tcp`, `gen_udp`, `inet` | [бібліотека](library.md) |
+| Списки виводу `zlib` | Один binary на внутрішній фрагмент, вкладені там, де потік закінчився і почався знову | Один binary на виклик, `[]`, коли його немає; байти такі самі, як в OTP | [вбудовані функції](builtins.md#zlib-module) |
+| `zlib:safeInflate/2` і довгі виклики `zlib` | Повертаються після обмеженого обсягу виводу (`{continue, Output}`) і поступаються виконанням | Розпаковують усе введення з черги за один виклик (`{finished, Output}`); довгий виклик утримує свій потік планувальника | [вбудовані функції](builtins.md#zlib-module) |
+| Довгі зіставлення `re` | `re:run/3` і глобальний цикл поступаються виконанням після обмеженого обсягу роботи | Одне зіставлення виконується до кінця й утримує свій потік планувальника; глобальний прогін поступається лише між зіставленнями | [вбудовані функції](builtins.md#re-module) |
+| `re:compile/2` з `export`, `re:import/1` | Експортований шаблон `{re_exported_pattern, ...}`, який імпортує інший вузол | `export` — `badarg`; `import/1` викликає `{not_implemented, import, 1}` | [вбудовані функції](builtins.md#re-module) |
+| Помилки аргументів `re` | `badarg` з `re:run/3` (або `replace`, `split`) з аргументами викликача і `error_info` | `badarg` з допоміжної функції `re`, яка відхилила аргумент, з аргументами цієї функції | [вбудовані функції](builtins.md#re-module) |
+| `code:is_sticky/1` | `true` для модулів `kernel`, `stdlib` і `compiler` | Завжди `false` | [вбудовані функції](builtins.md#code-module) |
+| Вивід на файловий пристрій (`io:format(File, ...)`) | Символи кодуються відповідно до кодування файлу (`latin1` за замовчуванням: символи понад 255 — помилка) | Завжди байти UTF-8 | [io](io.md#calls) |
 | Форматування великого терма (`io:format/1,2`) | Виконується в коді Erlang (`io_lib`) і в group leader, тож процес може бути витіснений під час форматування | Виконується до кінця в одному виклику вбудованої функції; інші процеси чекають | [вбудовані функції](builtins.md#portions) |
 | Прапорці `process_flag/2` | `trap_exit`, `priority`, `message_queue_data`, `min_heap_size` та інші | Лише `trap_exit`; будь-який інший прапорець викликає `badarg` | [процеси](processes.md#builtins) |
 | Порядок звітів про помилки процесів, що аварійно завершуються одночасно | Порядок logger | Порядок, у якому їх завершують їхні робочі потоки | [процеси](processes.md#workers) |
 | Сигнали процесу, що виконується на іншому планувальнику | Ставляться в чергу сигналів і обробляються пізніше, поки відправник продовжує роботу | Відправник чекає, доки закінчиться квант часу цілі, і тоді діє одразу; помітно лише за часом | [процеси](processes.md#workers) |
+| `term_to_binary/1` для локального fun або native record | Кодується (`NEW_FUN_EXT`, ...) | `error:notsup`; `fun M:F/A` кодується | [вбудовані функції](builtins.md#external-term-format) |
+| `term_to_binary/1` для map з понад 32 ключами | Порядок хешів, якщо не задано `deterministic` | Завжди порядок ключів (байти `deterministic`) | [вбудовані функції](builtins.md#external-term-format) |
+| `binary_to_term/1` для pid, порту або посилання іншого вузла; параметр `local` у `term_to_binary/2` | Зовнішні ідентичності; кодування `LOCAL_EXT` | `badarg` | [вбудовані функції](builtins.md#external-term-format) |
+| Межа часу таймера | Залежить від нативної одиниці часу (близько 2^49.7 мс у Windows) | Відносний час 0..2^49-1 мс на кожній платформі | [процеси](processes.md#timers) |
+| `unique_integer/0,1` без `positive` | Може бути від'ємним | Завжди додатне і зростає | [вбудовані функції](builtins.md#time) |
+| Елементи `process_info/2` `current_function`, `initial_call`, `current_stacktrace`, ... | Повідомляються | `error:{notsup, Item}`; `process_info/1` їх пропускає | [процеси](processes.md#introspection) |
+| `reductions` у `process_info/2`; `reductions`, `garbage_collection`, `io` у `statistics/1` | Лічаться | 0 (не ведуться) | [вбудовані функції](builtins.md#system-information) |
+| `garbage_collect/0,1,2` | Збирає сміття перед поверненням | Збирає в наступній безпечній точці (safepoint) цілі | [процеси](processes.md#introspection) |
+| `erlang:system_info(machine)` | `"BEAM"` | `"Clause"` | [вбудовані функції](builtins.md#system-information) |
+| Параметри налаштування `spawn_opt/2..5` (`priority`, `min_heap_size`, ...) | Застосовуються | Перевіряються і приймаються, але не застосовуються | [процеси](processes.md#spawn-options) |
+| `hibernate/3` | Відкидає стек; процес завершується, коли `M:F` повертається | Зберігає стек; результат `M:F` повертається до викликача `hibernate/3` | [процеси](processes.md#spawn-options) |
+| `monitor(port, Item, Options)` з параметрами | Приймається | `badarg` | [процеси](processes.md#aliases) |
+| `spawn_request_abandon/1` | `true`, поки відповідь очікується | Завжди `false`: відповідь надсилається до повернення `spawn_request` | [процеси](processes.md#spawn-options) |
+| Останній біт `math:log2/1` (Windows) | Збірка OTP для Windows ділить `log(X)` на `log(2)` (`math:log2(1.0e308)` дає `1023.1538532253077`) | `log2` бібліотеки C (`1023.1538532253076`) | [вбудовані функції](builtins.md#math-module) |
+| Значення `phash/2`, `phash2/1,2` | Хеш-функція OTP | Власний стабільний хеш Clause з тими самими діапазонами і гарантією рівності | [вбудовані функції](builtins.md#hashing) |
+| `erlang:is_builtin/3` для `lists:reverse/2` та інших бібліотечних функцій, реалізованих на C | `true` | `false`: лише вбудовані функції runtime і `apply/2,3` | [fun](funs.md#fun-information) |
+| `pid`, `uniq`, `new_uniq` у `fun_info/1,2` локального fun | Pid творця, контрольні суми компілятора | `undefined`, MD5 імені модуля | [fun](funs.md#fun-information) |
+| Контекст `md5_init/0` | 92-байтовий стан OTP | 96-байтовий стан Clause; дайджести однакові | [вбудовані функції](builtins.md#hashing) |
+| `erlang:delete_module/1` для завантаженого модуля | Робить його код старим (`true`) | `error:notsup`: скомпонований код лишається | [вбудовані функції](builtins.md#code-loading) |
+| `erlang:prepare_loading/2` | Готує дійсний binary BEAM | Завжди `{error, badfile}` | [вбудовані функції](builtins.md#code-loading) |
+| `erlang:pre_loaded/0` | Попередньо завантажені модулі завантаження системи | Кожен модуль програми | [вбудовані функції](builtins.md#code-loading) |
+| `list_to_pid/1` для номера, який ніколи не видавався | Повертає терм pid | `badarg`: допускаються лише pid, створені цією програмою | [терми](terms.md#pids-and-references) |
 | `list_to_port/1` для номера, який ніколи не видавався | Повертає терм порту | `badarg`: допускаються лише порти, відкриті цією програмою | [порти](ports.md#identity) |
 | Значення `port_info/1,2` | `id` — індекс таблиці; `memory`, `queue_size`, `locking` описують драйвер | `id` — номер порту; `memory` і `queue_size` дорівнюють 0; `locking` — `port_level` | [порти](ports.md#builtins-and-port-messages) |
 | Запис у файл, відкритий лише для читання | `{error, eacces}` у Windows, `{error, ebadf}` деінде | `{error, ebadf}` скрізь | [порти](ports.md#standard-io-and-files) |
@@ -61,6 +112,7 @@ translatedAt: 2026-10-09
 | Розташування в трасуванні стека | `[{file, F}, {line, L}]`, `error_info` для `error/3` | Завжди `[]`; без `error_info` | [ABI](abi.md#stack-traces) |
 | Верхній фрейм `function_clause` | Список аргументів | Арність | [ABI](abi.md#stack-traces) |
 | Верхній фрейм `undef` | `{M, F, Args, []}` відсутньої функції | Фрейм функції, що викликає | [fun](funs.md#dynamic-calls) |
+| Динамічний виклик експорту, недосяжного для виконуваного файлу (його модуль названо лише через трасування стека, виняток або повідомлення ззовні програми) | Викликає його | `undef`, якщо не зібрано з `--keep-exports`; `function_exported/3` і `module_info(exports)` усе одно його перелічують | [виконувані файли](executables.md#export-liveness) |
 | Фрейми BIF/операторів, що завершилися з помилкою | Присутні (`{erlang, '+', Args, ...}`) | Відсутні; нічого нижче за вхідну функцію | [ABI](abi.md#stack-traces) |
 | Таблиця атомів заповнена (`list_to_atom/1`) | Емулятор аварійно зупиняється (`no more index entries in atom_tab`) і записує crash dump | `clau: runtime failure: entry call failed: resource_limit`, код виходу 70 | [вбудовані функції](builtins.md#how-calls-reach-them) |
 | `list_to_integer/1,2` із символами понад 255 | Його перші цифри використовують лише молодший байт кожного символу (`[16#131]` дає 1) | `badarg` | [вбудовані функції](builtins.md#how-calls-reach-them) |
@@ -68,10 +120,23 @@ translatedAt: 2026-10-09
 | Звіти про помилки аварійно завершених процесів | Надсилаються до logger, записуються пізніше його обробником за замовчуванням (у стандартний вивід під `erl`, часто губляться, коли escript зупиняється раніше) | Записуються в stderr, коли процес завершується, до будь-якого подальшого виводу | [процеси](processes.md#exits) |
 | Виклики функцій, що ніколи не повертаються | Компілюються як хвостові виклики (викликача немає в трасуванні) | Звичайні виклики (викликач присутній) | [ABI](abi.md#stack-traces) |
 | Пам'ять хоста вичерпано | Емулятор повідомляє, що не може виділити пам'ять, записує crash dump і зупиняється | `clau: runtime failure: entry call failed: out_of_memory`, код виходу 70, без dump | [купа runtime](runtime-heap.md#failure-behavior) |
+| Зберігання map з понад 32 ключами | HAMT у купі, що враховується в `heap_size` і копіюється кожним збиранням | Дерево поза купою за 4-слівною заглушкою в купі, що враховується разом із binary поза купою; розміри купи менші, і збирання копіюють лише заглушку | [купа runtime](runtime-heap.md#off-heap-maps) |
 | Обмеження пам'яті процесу | `max_heap_size` (у словах, купа і стек) вбиває процес із причиною `killed` і журналює звіт про помилку | `--max-heap` / `--max-stack` (у байтах) і загальний для runtime `--max-memory` завершують процес, що запитує пам'ять, як `resource_limit`: `clau: runtime failure: entry call failed: resource_limit`, код виходу 70 | [купа runtime](runtime-heap.md#runtime-memory-limit) |
 | Аргументи програми | `escript` передає кожен аргумент у `main/1`; прапорці емулятора (`+t`) беруться з `%%!` або `ERL_FLAGS` | Початкові параметри runtime (`--max-atoms`, `--max-heap`, `--max-stack`, `--max-memory`, `--args-file`, `--`) вилучаються першими; `CLAUSE_FLAGS` містить ті самі параметри | [виконувані файли](executables.md#runtime-options) |
 | Неперехоплений виняток у звичайному вхідному модулі | `escript` завершується з кодом 127 | Завершується з кодом 1 і одним рядком `uncaught exception <class>: <reason>` (вихідні файли escript зберігають 127) | [виконувані файли](executables.md) |
 | Діагностика компілятора | Формулювання `erl_lint` (`variable 'X' is unbound`) і попередження | Власні формулювання (`unbound variable X`); попередження lint з OTP здебільшого не видаються (також для невідомих полів native record у доступі, оновленні та зразках) | [семантика](semantic.md#bindings) |
+| Модуль поведінки з написаною вручну `behaviour_info/1` | Викликає її під час компіляції користувачів і попереджає про відсутні, неправильно визначені або застарілі callback-функції | Не обчислюється: callback-функції його користувачів не перевіряються | [семантика](semantic.md#behaviours) |
+| Модулі поведінок поза пакетом (`gen_server`, `supervisor`, ...) | Завантажуються зі шляху коду; їхні callback-функції перевіряються | Попередження `behaviour M undefined` | [семантика](semantic.md#behaviours) |
+| `-behaviour` зі значенням, що не є атомом | Попередження друкує терм через `~w` (`behaviour [115,116,114] undefined`) | Друкує вихідний текст атрибута (`behaviour "str" undefined`); помилка та сама | [семантика](semantic.md#behaviours) |
+| `module_info(md5)` і `vsn`, який OTP з нього виводить | MD5 скомпільованого коду BEAM | MD5 надрукованого вихідного коду модуля; виведене ціле `vsn` відповідно відрізняється | [семантика](semantic.md#predefined-functions) |
+| `module_info(compile)` | `version` застосунку compiler з OTP, `options`, передані йому | Версія Clause; `options` завжди `[]` | [семантика](semantic.md#predefined-functions) |
+| `module_info(functions)` | Також перелічує функції, які OTP генерує для fun (`'-f/0-fun-0-'/0`) | Лише функції з вихідного коду і попередньо визначені | [семантика](semantic.md#predefined-functions) |
+| `-nominal` у `module_info(attributes)` | Зберігається як `{nominal,[{Name,AbstractType,Params}]}` в абстрактному форматі | Пропускається | [семантика](semantic.md#predefined-functions) |
+| `erlang:get_module_info/1,2` | BIF, що стоїть за `module_info/0,1` | Не надається; `module_info/0,1` повертають літеральні дані | [семантика](semantic.md#predefined-functions) |
+| `-compile({parse_transform, Module})` | Застосовує перетворення до форм модуля | Не застосовується; попередження `[parse transforms] notimpl`, і модуль компілюється без перетворення | [компіляція](compile.md#accepted-source-subset) |
+| Функція бібліотечного модуля Clause, яку Clause не реалізував (BIF `erlang`, `lists:keysort/2`, `persistent_term:get/1`, ...) | Виконується | Компілюється; під час виклику викликає `error({not_implemented, F, A})` з `M:F/A` на вершині стека ([статуси](../library/modules.terms)) | [бібліотека](library.md#provided-or-missing), [вбудовані функції](builtins.md#erlang-module) |
+| Імпорт модуля поза пакетом | Компілюється; виклик викликає `undef` під час виконання, якщо модуля немає | Помилка компіляції `unknown module M`, коли імпорт викликається (невикористані імпорти модуля не потребують) | [семантика](semantic.md#imports) |
+| Попередження `import directive overrides auto-imported BIF` | Для кожного автоімпортованого BIF з `erl_internal:bif/2` | Лише для автоімпортованих BIF, які реалізує Clause | [семантика](semantic.md#imports) |
 
 ## Граничні випадки мови
 
@@ -83,7 +148,8 @@ translatedAt: 2026-10-09
 | `lists` і `maps` | Повні модулі; `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` дотримуються внутрішнього порядку map (порядок таблиці атомів для атомних ключів, порядок хешів понад 32 ключі) | [Підмножина бібліотеки](library.md); функції map дотримуються порядку ключів | [бібліотека](library.md) |
 | Файли без `#!`, передані як escript | `escript file.erl` пропускає перший рядок | Компілюються як звичайні модулі | [виконувані файли](executables.md) |
 | Попередньо скомпільовані beam та архівні escript | Виконуються | Не підтримуються | [виконувані файли](executables.md) |
-| `-spec`, типи якого не мають спільного значення з виведеним результатом, вхідною областю визначення чи аргументами виклику | Компілюється; Dialyzer може попередити | Помилка компіляції із зазначенням оголошених і виведених типів | [семантичний аналіз](semantic.md#inference) |
+| `include_lib` застосунку, знайденого в кількох каталогах `<app>-<version>` | Шлях коду містить одну версію (завантаження вибирає найвищу); без діагностики | Найвища версія в кожному каталозі пошуку, з одним попередженням за запуск, що їх перелічує | [препроцесор](preprocessor.md#compatibility-policies) |
+| `-spec`, типи якого не мають спільного значення з виведеним результатом, вхідною областю визначення чи аргументами виклику | Компілюється; Dialyzer може попередити | Суперечлива вхідна область визначення аргументів — помилка компіляції із зазначенням оголошених і виведених типів; суперечливий результат чи виклик — попередження, і використовуються виведені типи | [семантичний аналіз](semantic.md#inference) |
 
 ## io
 
@@ -94,3 +160,13 @@ translatedAt: 2026-10-09
 | Ширина полів і точність `~ts` з комбінованими символами або `\r\n` | Лічать кластери графем | Лічать кодові точки | [io](io.md#formats) |
 | Від'ємна точність або кількість заповнення (`~.*c` з -1) | Нескінченний цикл | `badarg` | [io](io.md#formats) |
 | Функції `io`, крім `format/1,2`, `put_chars/1` | Існують | `unknown module io` | [io](io.md#calls) |
+
+## Parse transforms
+
+| Відмінність | OTP | Clause | Власник |
+| --- | --- | --- | --- |
+| Ім'я в атрибуті `file` включеного файлу (`--print-abstr`, вхід перетворення) | Каталог включення, поєднаний з ім'ям, як знайдено (`inc.hrl`, `/abs/dir/inc.hrl`, `../inc/x.hrl`) | Шлях відносно робочого каталогу, якщо файл у ньому, інакше абсолютний шлях | [перетворення](transforms.md#interchange) |
+| Анотації `generated` імпортованих форм (входи `.abstr`, вихід перетворення) | `erl_lint` і компілятор пропускають деякі попередження для згенерованого коду | Ігноруються: код перевіряється як вихідний | [перетворення](transforms.md#importing-forms) |
+| Форми `{error, {Location, Module, Descriptor}}` в імпортованому коді | Форматуються через `Module:format_error/1` | Текст терма дескриптора; форматування потребує OTP | [перетворення](transforms.md#importing-forms) |
+| Модуль із помилками препроцесора чи розбору, що називає parse transform | Перетворення виконується й отримує помилки як форми `{error, E}`; `erl_lint` повідомляє про них згодом | Про помилки повідомляється, і перетворення не виконується | [перетворення](transforms.md#clause-pipeline) |
+| Параметри компіляції, які отримує перетворення | Повний список параметрів erlc | `{features, _}`, `report_warnings`, `report_errors`, `{cwd, _}`, `{outdir, _}` (робочий каталог), `{i, _}`, `{d, ...}` і `{parse_transform, _}` | [перетворення](transforms.md#otp-behavior) |

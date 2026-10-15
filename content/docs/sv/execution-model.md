@@ -1,12 +1,12 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 06042fa
-sourceSha256: 4496f092872f90d6a3fb46c26f67950a76fa663502d4f2c80d8be45d55c8a599
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
+translatedAt: 2026-10-15
 ---
 # Exekveringsmodell: ramar och fortsättningar
 
-Beslut i plan 11 step 17 (2026-10-05). Det fastställer hur genererade
+Det fastställer hur genererade
 Erlang-funktioner anropar, returnerar, suspenderas och misslyckas när
 rekursion, svansanrop och processer tillkommer. Step 19 implementerade anrop,
 returer, svansanrop och ramar ([Implementation](#implementation) listar vad
@@ -91,7 +91,7 @@ hanteraren för ett ofångat undantag.
   stället för att pusha en ram; argumenten stannar i `x[0..arity)`, som då är
   processens enda register att rota. Återupptagning fyller på budgeten och
   överför till `resume_at`, som upprepar ingången. Senare väntanden
-  (`receive`, step 46) lagrar ett fortsättningsindex i kroppen i stället för
+  (`receive`) lagrar ett fortsättningsindex i kroppen i stället för
   en ingång.
 - **Avslut.** Att returnera in i bottenramen registrerar ett normalt avslut;
   att rulla upp in i den registrerar ett ofångat undantag. I båda fallen
@@ -181,10 +181,33 @@ Step 19 (2026-10-05) implementerar modellen med dessa val och luckor:
   `musttail`-överföringar. Typspecialisering och testsömmar arbetar på
   native-form; backend kör `lower_frames` före IR-inspektion och `optimize`
   kör det om det fortfarande behövs.
-- **Ingång och kropp.** Det finns ingen separat ingångsfunktion: anroparen
-  anropar `CLAUSE_enter_v1(context, callee.frame)`, som pushar ramen,
-  kopierar argumenten och returnerar den anropades kropp. Ett svansanrop
-  använder `CLAUSE_tail_v1`, som först frigör anroparens ram.
+- **Ingång och kropp.** Det finns ingen separat ingångsfunktion. Tabellen
+  över processtillstånd ovan är `abi::v1::FrameState`, i början av varje
+  kontext, så genererad kod överför inline (ABI-revision 9): en ingång
+  förbrukar en reduktion, pushar den nollställda ramen, kopierar argumenten
+  från registren och överför till den anropades kropp; en svansingång
+  återanvänder först anroparens plats; en retur poppar och överför till
+  anroparens kropp. Varje väg faller tillbaka på `CLAUSE_enter_v1`,
+  `CLAUSE_tail_v1` eller `CLAUSE_return_v1` när heapen vill ha en
+  skräpsamling, processen profileras, ingen reduktion återstår, stacken måste
+  växa eller nå sin gräns, eller den anropade är en inbyggd funktion.
+  Felkontrollen efter ett anrop läser tillståndets ord `failed`. Ett
+  självsvansanrop behåller sin ram där den är: det förbrukar en reduktion,
+  återställer ramens återupptagnings- och hanterarord och antalet levande
+  platser och kopierar argumenten förbi registren, utan att skriva om huvudet
+  eller nollställa platserna (var och en innehåller noll eller ett termord som
+  skräpsamlingar skriver om, och kroppen skriver en plats innan den läser den).
+- **Registerparametrar** (ABI-revision 10). Koden är
+  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: varje överföring
+  skickar de tre första X-registren som C-parametrar, så att ett anrops
+  inledande argument och en returs resultat stannar i maskinregister. En kropp
+  läser sina inledande argument från parametrarna när den startar och
+  anropsresultatet från `x0` när den återupptas; `lower_frames` spiller något
+  av dem till en plats endast när det är levande över ett anrop eller en
+  safepoint. Tjänstevägarna lagrar parametrarna i registerarrayen före tjänsten
+  och läser in dem igen efteråt. Eftersom varje kropp delar en prototyp gör
+  LLVM ett självsvansanrop vars inline-push leder tillbaka till samma kropp
+  till en loop.
 - **Svanspositioner** är det sista uttrycket i en klausulkropp, följt genom
   block, parenteser samt klausulkroppar i `case` och `if`. Anrop i operander
   till `catch`, `try`, `maybe` och `andalso`/`orelse` är inte svansanrop.
@@ -195,19 +218,20 @@ Step 19 (2026-10-05) implementerar modellen med dessa val och luckor:
   markörer och ackumulator finns i termplatser, så inget SSA-värde förs runt
   en loop och en återupptagningspunkt inuti den behöver inget utöver de
   vanliga spillningarna.
-- **Att lämna ifrån sig** (step 43, [processer](processes.md)).
-  `CLAUSE_enter_v1` och `CLAUSE_tail_v1` förbrukar en av processens
-  reduktioner; när inga återstår registrerar de den anropade funktionen
+- **Att lämna ifrån sig** ([processer](processes.md)). Varje ingång, inline
+  eller genom `CLAUSE_enter_v1` och `CLAUSE_tail_v1`, förbrukar en av
+  processens reduktioner; när inga återstår tar tjänsterna över:
+  de registrerar den anropade funktionen
   (`ProcessStack::resume_`, modellens `resume_at`), behåller dess argument
   som registerrötter och returnerar kod som avslutar tidsskivan, så att
   native-stacken rullas upp till exekutorn, som senare upprepar ingången.
   Loophuvuden lämnar inte ifrån sig körningen. Skräpsamlaren räknar upp
   ramarnas termplatser, de register som en suspension håller levande
-  (`ProcessStack::keep_registers`) och felkanalen (step 23,
-  [rötter](runtime-heap.md#roots-and-safe-points)). Funktionsingångar och
+  (`ProcessStack::keep_registers`) och felkanalen
+  ([rötter](runtime-heap.md#roots-and-safe-points)). Funktionsingångar och
   loophuvuden i comprehensions är safepoints som samlar skräp när heapen
-  begär det (step 26,
-  [skräpsamling i genererad kod](runtime-heap.md#collection-in-generated-code));
+  begär det
+  ([skräpsamling i genererad kod](runtime-heap.md#collection-in-generated-code));
   råa spillplatser innehåller aldrig termer.
 - **Inget tak.** Stacken växer tills värden vägrar minne, vilket misslyckas
   med `out_of_memory` (exit 70, [körbara filer](executables.md)), på samma

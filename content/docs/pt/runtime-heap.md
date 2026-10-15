@@ -1,13 +1,13 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 06042fa
-sourceSha256: b86a14bcde03a998409e7048283225de3a5f8f84ded889ba64544a4671571cbc
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 9883758a534ec454ceeb011c2dc1e6e2d1893aca483c1b3ca7f36f99319bc537
+translatedAt: 2026-10-15
 ---
 # Contrato do heap do processo
 
 Os heaps dos processos seguem o desenho clássico do ERTS. Esta nota é o
-contrato; o plan 11 phase C (steps 8A–8I) implementou-o, e os steps
+contrato; o plan 11 phase C implementou-o, e os steps
 posteriores indicados abaixo estendem-no.
 [runtime.md](runtime.md#process-memory) resume a API.
 
@@ -35,7 +35,12 @@ percorredor analisa a partir da sua primeira palavra:
   `BoxedKind`, os bits 7 e seguintes o número de palavras que se seguem ao
   cabeçalho. Um termo boxed aponta para o seu cabeçalho. A contagem abrange
   todas as palavras de prefixo, de carga útil e de enchimento, pelo que o
-  percorredor salta a carga útil não rastreada sem a interpretar.
+  percorredor salta a carga útil não rastreada sem a interpretar. Tem 25 bits
+  em alvos de 32 bits (no máximo 33 554 431 palavras) e 57 em alvos de 64 bits
+  (`BoxHeader::MAX_COUNT`): o limite de aridade dos tuplos (2^24 - 1) e o maior
+  bignum (131 072 palavras em 32 bits) cabem por asserção estática, os maps
+  verificam-no quando são construídos, e as células cons e as células de
+  tamanho fixo não têm contagens grandes.
 - **Célula cons**: duas palavras de termo (cabeça, cauda) sem cabeçalho. Um
   termo de lista aponta para a cabeça. Uma cabeça nunca é um cabeçalho, porque
   nenhum termo tem a etiqueta `00`.
@@ -47,21 +52,23 @@ percorredor analisa a partir da sua primeira palavra:
 
 Nenhuma célula precisa de um alinhamento mais forte do que uma palavra. `memory/heap_walk` analisa uma área célula a célula e `ProcessHeap::verify`
 verifica um heap inteiro (8C). As células contêm apenas palavras e bytes,
-exceto o `std::shared_ptr` do binary fora do heap (abaixo), pelo que uma célula
-se move copiando as suas palavras.
+exceto o `std::shared_ptr` do binary fora do heap e o ponteiro da árvore do map
+fora do heap (abaixo), pelo que uma célula se move copiando as suas palavras.
 
 | Tipo | Palavras após o cabeçalho | Palavras rastreadas |
 | --- | --- | --- |
 | cons (sem cabeçalho) | 2 palavras no total | cabeça, cauda |
 | `tuple` | n slots de elementos | todas |
-| `map` | 2n slots: chaves pela ordem exata dos termos, cada uma seguida do seu valor | todas |
+| `map` | 2n slots: chaves pela ordem exata dos termos, cada uma seguida do seu valor; no máximo 32 entradas | todas |
+| `tree_map` | número de entradas, raiz da árvore fora do heap, ligação de map fora do heap: 3 palavras ([maps fora do heap](#off-heap-maps)) | nenhuma no heap; as palavras da árvore |
 | `native_record` | endereço da `RecordDefinition` do runtime, depois n valores de campos pela ordem da definição | valores |
 | `fun_closure` | endereço da `FunDefinition` do runtime, depois n valores capturados ([funs](funs.md)) | valores |
 | `bignum` | palavra de sinal, depois os limbs da magnitude, do menos significativo para o mais significativo | nenhuma |
 | `floating` | 8 bytes: 1 palavra (64 bits) ou 2 palavras (32 bits) | nenhuma |
 | `reference` | 8 bytes: o número da referência ([pids e referências](terms.md#pids-and-references)) | nenhuma |
 | `heap_binary` | comprimento em bits, depois os bytes de dados arredondados para palavras (no máximo 64 bytes) | nenhuma |
-| `refc_binary` | deslocamento em bits, comprimento em bits, `std::shared_ptr` (2 palavras), ligação fora do heap: 5 palavras | nenhuma |
+| `refc_binary` | deslocamento em bits, comprimento em bits, o primeiro byte do buffer (lido pelo código gerado), fim e limite de acrescento, `std::shared_ptr` (2 palavras), ligação fora do heap: 8 palavras | nenhuma |
+| `sub_binary` | deslocamento em bits no original, comprimento em bits, o `heap_binary` ou `refc_binary` original (nunca um sub-binary): 3 palavras | o original |
 | `filler` | n palavras não usadas | nenhuma |
 
 A contagem de `map` é em palavras (entradas = contagem / 2). Os pids são imediatos, admitidos face aos números
@@ -76,11 +83,12 @@ os heaps dos processos, partilhado por contagem de referências (ProcBin e
 `Binary` da BEAM).
 
 - A sua célula boxed `refc_binary` contém um `std::shared_ptr` para o buffer,
-  um deslocamento em bits e um comprimento em bits; as fatias de um binary
-  grande são novas células `refc_binary` que partilham o buffer (os
-  sub-binaries do ERTS não são usados). Copiar uma célula para outro processo
-  copia o `shared_ptr` ([cópia entre heaps](#copying-between-heaps)),
-  nunca os bytes.
+  um deslocamento em bits e um comprimento em bits. As fatias de um binary
+  grande (e as fatias dessas) são células `sub_binary` que nomeiam a célula
+  original, como fazem os sub-binaries do ERTS: uma fatia não toma nenhuma
+  referência ao buffer e mantém o original vivo. Copiar uma célula para outro
+  processo copia o `shared_ptr`
+  ([cópia entre heaps](#copying-between-heaps)), nunca os bytes.
 - Cada célula está ligada à lista fora do heap do seu processo através da sua
   palavra de ligação. A lista é a única forma de encontrar o estado C++ destas
   células.
@@ -95,15 +103,97 @@ os heaps dos processos, partilhado por contagem de referências (ProcBin e
   desse processo para ele, e uma vez à conta global do runtime desde a criação
   até o buffer ser libertado.
 - `std::shared_ptr` corresponde a dois ponteiros em todas as STL suportadas;
-  um `static_assert` mantém o tamanho da célula fixo em cinco palavras após o
+  um `static_assert` mantém o tamanho da célula fixo em oito palavras após o
   cabeçalho em ambas as larguras.
+
+### Referências handle
+
+Uma referência handle é uma referência que também detém um buffer fora do
+heap, tal como uma referência mágica do OTP detém um recurso; os arrays de
+`atomics` vivem nelas ([atomics e counters](builtins.md#atomics-and-counters)).
+
+- A sua célula tem o tipo `reference` e a disposição de `refc_binary`: oito
+  palavras após o cabeçalho, o número de 64 bits da referência nas palavras de
+  deslocamento e de comprimento em bits (onde uma célula de referência simples
+  o guarda), depois o `shared_ptr` e a palavra de ligação. Todos os serviços de
+  referências leem apenas o número, pelo que se compara, calcula o hash,
+  imprime e codifica como uma referência simples.
+- É listada, movida, varrida, cobrada e copiada exatamente como uma célula de
+  binary fora do heap (`layout::off_heap_cell`); o seu buffer é libertado
+  quando morre a última cópia da referência em qualquer processo.
+- Um registo global ao processo associa os números dos handles vivos aos seus
+  buffers (referências fracas), pelo que `binary_to_term/1` de um handle
+  codificado reconstrói um handle que partilha o buffer enquanto este vive, e
+  uma referência simples depois. As entradas expiradas são descartadas à medida
+  que o registo cresce.
+
+## Maps fora do heap
+
+Um map com mais de 32 entradas (`MAP_SMALL_MAP_LIMIT` do OTP) é um stub
+`tree_map` de 4 palavras no heap que nomeia uma árvore B+ persistente privada
+do processo (`terms/map_tree`). Os maps mais pequenos continuam a ser células
+`map`.
+
+- As folhas contêm até 32 palavras de chaves e valores pela ordem exata das
+  chaves; os ramos contêm até 32 filhos com as suas primeiras chaves e números
+  de entradas, pelo que a pesquisa e o acesso por posição são O(log n). As
+  palavras de chaves e valores apontam para o heap do proprietário: ao
+  contrário dos binaries, a árvore contém termos.
+- Uma atualização copia o caminho até cada folha alterada e partilha todos os
+  outros nós com o map de origem, que fica inalterado, pelo que construir um
+  map chave a chave custa O(n log n) em vez de O(n^2). Os nós têm contagem de
+  referências; os nós criados pela mesma atualização levam o seu token de
+  edição e são alterados no local até o stub ser publicado. Uma atualização
+  falhada liberta o que construiu.
+- Cada stub está ligado à lista de maps fora do heap do seu processo. Uma
+  recolha copia um stub como qualquer célula e, quando analisa a cópia,
+  reescreve as palavras de chaves e valores da árvore do stub, visitando cada
+  nó partilhado uma vez por recolha. A varredura volta então a ligar os stubs
+  movidos e liberta as árvores dos mortos; a destruição do processo liberta
+  todas.
+- As palavras dos nós são cobradas ao processo como palavras fora do heap (com
+  os binaries: em quantidade suficiente pedem uma recolha) e à conta global do
+  runtime. Os nós libertados são guardados para reutilização, até 1 024 de
+  cada tipo por processo (cerca de 1 MB no máximo), já que uma atualização por
+  cópia de caminho aloca um nó por nível e uma recolha liberta os caminhos
+  antigos em conjunto.
+- Copiar um map para outro heap (mensagens, `MessageBuffer`) constrói uma nova
+  árvore no destino a partir das entradas traduzidas.
+- Uma atualização própria (`MapOperation::update_owned`) cuja origem o
+  compilador provou não ser lida depois assume a referência à árvore do stub de
+  origem e altera no local cada nó a que chega através de nós não partilhados,
+  copiando apenas os partilhados. O stub de origem fica consumido (sem árvore,
+  tamanho 0); uma atualização própria falhada devolve-lhe a árvore. O
+  compilador só marca uma atualização como própria quando a função construiu
+  ela mesma o map de origem (`M = <map expression or
+  comprehension>` no mesmo corpo de cláusula), não lê `M` em mais lado nenhum e
+  nunca o captura numa fun (`semantic/map_ownership`).
 
 ## Áreas
 
 - **Heap.** Um bloco `[start, top, end)` por processo com alocação por
   incremento (bump allocation) (8G). É criado pela primeira alocação do
   processo, com tamanho `max(min_heap_words, request)` para que esse pedido
-  caiba sempre, e pertence apenas a esse processo.
+  caiba sempre, e pertence apenas a esse processo. O código gerado aloca nele
+  tuplos e listas pequenos diretamente por incremento através de
+  `FrameState::heap_top`/`heap_limit`: `HeapStorage::absorb` incorpora essas
+  palavras no topo e em `used_words_` antes de qualquer operação de heap
+  (reserva, admissão, recolha, verificação, consultas de utilização) e
+  `expose` volta a mostrar as palavras livres depois dela. A alocação inline
+  nunca cria um fragmento e fica desligada sob um orçamento por processo.
+- **Áreas de literais**. Os literais compostos de cada módulo — strings e
+  listas constantes, tuplos de constantes, floats e literais bignum — são
+  dispostos pelo compilador como células de heap numa única variável global só
+  de leitura (`ModuleDescriptor::literals`), registada a nível global do
+  runtime (`detail::LiteralAreas`, um instantâneo ordenado sem locks) quando o
+  módulo é registado. Os termos de qualquer processo podem apontar para elas: a
+  admissão e `TermAccess::object` leem as células através de
+  `HeapStorage::readable` (heap, fragmentos, depois literais); o garbage
+  collector deixa as palavras de literais como estão (`owned` continua a
+  abranger apenas o heap); as cópias entre heaps e para buffers de mensagens
+  continuam a apontar para elas (uma raiz literal não precisa de cópia); o
+  verificador aceita-as. Os literais contêm apenas imediatos (apenas átomos
+  fixos) e palavras de outros literais.
 - **Fragmentos.** Quando um pedido não cabe e o heap não se pode mover, vai
   para o fragmento mais recente se lá couber; caso contrário, para um novo
   fragmento dimensionado para caber (pelo menos o tamanho mínimo do heap) e
@@ -114,7 +204,7 @@ os heaps dos processos, partilhado por contagem de referências (ProcBin e
   seguinte ou à recolha pelo anfitrião
   ([recolha no código gerado](#collection-in-generated-code)).
 - **Pilha.** Os frames gerados (registos Y da BEAM) vivem numa pilha plana por
-  processo, separada do heap (`ProcessStack`, step 19). Cada frame é um
+  processo, separada do heap (`ProcessStack`). Cada frame é um
   cabeçalho de quatro palavras (deslocamento do cabeçalho do chamador,
   descritor, retoma, bloco de tratamento) seguido de slots de termos (incluindo
   os termos despejados) e de slots de despejo em bruto; os frames
@@ -140,11 +230,11 @@ os heaps dos processos, partilhado por contagem de referências (ProcBin e
   25% de dados vivos é copiado mais uma vez para o tamanho de que os seus dados
   vivos precisam (8H); se não for possível alocar esse bloco, mantém-se o
   maior. Nenhum dos dois é menor do que `min_heap_words`. Ambos os tamanhos
-  contam as palavras da pilha do processo como vivas (step 26), já que o ERTS
+  contam as palavras da pilha do processo como vivas, já que o ERTS
   mantém a pilha dentro do bloco do heap.
 - Com um orçamento definido (abaixo), um novo bloco contém no máximo as suas palavras vivas mais metade
   do orçamento que resta depois delas e dos buffers fora do heap
-  (`block_limit`, step 27), nunca menos do que `min_heap_words`. A outra metade
+  (`block_limit`), nunca menos do que `min_heap_words`. A outra metade
   fica livre para fragmentos e novos buffers fora do heap, pelo que o lixo
   alocado após uma recolha chega ao safepoint seguinte como gatilho em vez de
   esgotar o orçamento. A primeira cópia é dimensionada a partir de todas as
@@ -169,15 +259,15 @@ os heaps dos processos, partilhado por contagem de referências (ProcBin e
 - Um limite opcional global do runtime, `RuntimeOptions::memory_limit_bytes`
   (predefinição `UNLIMITED_HEAP_BYTES`; os programas definem-no com
   `--max-memory`), limita a memória de todos os processos em conjunto: blocos
-  de heap, fragmentos, buffers fora do heap e capacidade da pilha (step 27A). O
+  de heap, fragmentos, buffers fora do heap e capacidade da pilha. O
   OTP não tem tal limite; o mais próximo é executar a VM sob um limite de
   memória do sistema operativo, mas aqui falha um processo em vez do nó.
 - Uma conta por runtime (`detail::RuntimeMemory`, partilhada por todo o
   armazenamento de heap e por todas as pilhas) é cobrada quando um bloco,
   fragmento, buffer fora do heap ou capacidade de pilha é criado e libertada
   quando este é descartado; um buffer partilhado por vários processos é
-  cobrado uma vez e libertado quando morre a sua última referência
-  (step 28). A destruição do processo devolve todas as suas cobranças.
+  cobrado uma vez e libertado quando morre a sua última referência. A
+  destruição do processo devolve todas as suas cobranças.
   `Runtime::memory_bytes()` relata o total.
 - Para cada processo, o limite funciona como um orçamento do armazenamento que
   possui mais o que o limite deixa livre (`HeapStorage::budget`, `room`), pelo
@@ -212,19 +302,21 @@ cada slot nomeia o início de um objeto, para os testes.
 ## Raízes e pontos seguros
 
 `ProcessContext::visit_roots` enumera todas as palavras de raiz para o garbage
-collector (step 23). Num ponto seguro, nada mais contém palavras do heap do
+collector. Num ponto seguro, nada mais contém palavras do heap do
 processo:
 
 | Proprietário | Palavras de raiz | Notas |
 | --- | --- | --- |
-| Slots de termos do frame | Os primeiros `roots` slots de cada frame na pilha (step 19) | Os frames de base não têm nenhum; os índices de retoma e de bloco de tratamento são inteiros |
+| Slots de termos do frame | Os primeiros `roots` slots de cada frame na pilha | Os frames de base não têm nenhum; os índices de retoma e de bloco de tratamento são inteiros |
 | Slots em bruto do frame | Nenhuma | Valores nativos despejados; o código gerado não guarda aí nenhuma palavra do heap num ponto seguro (regra de recarregamento do step 24) |
-| Registos | `x[0..live)` (`ProcessStack::keep_registers`) | Os argumentos de uma entrada suspensa (step 43); cada push e pop limpa `live` |
+| Registos | `x[0..live)` (`ProcessStack::keep_registers`) | Os argumentos de uma entrada suspensa; cada push e pop limpa `live` |
 | Canal de falhas | Carga útil do erro (`fvalue` da BEAM), lista de argumentos de `erlang:error/2,3`, termo do stack trace | Reatribuídos no local; os frames do trace capturados são ponteiros de descritores para o código |
-| Estado de trap | As palavras de termo do `TrapState` de um builtin que faz trap (step 43A) | Libertadas quando o builtin termina ou falha |
-| Caixa de correio | Todas as mensagens na caixa de entrada de sinais e na fila de mensagens (step 45), incluindo as mensagens `'EXIT'` e `'DOWN'` | Até um receive a retirar; reescritas no local, pelo que o cursor do receive (uma posição na lista) e o prazo do timeout permanecem válidos |
+| Estado de trap | As palavras de termo do `TrapState` de um builtin que faz trap | Libertadas quando o builtin termina ou falha |
+| Dicionário do processo | Todas as chaves e valores | Até serem apagados ou o processo terminar |
+| Caixa de correio | Todas as mensagens na caixa de entrada de sinais e na fila de mensagens, incluindo as mensagens `'EXIT'` e `'DOWN'` | Até um receive a retirar; reescritas no local, pelo que o cursor do receive (uma posição na lista) e o prazo do timeout permanecem válidos |
 | Raízes explícitas | O intervalo que o anfitrião passa a `collect(roots)` (8E) | Relidas após a chamada |
 | Lista fora do heap | Nenhuma | As ligações são varridas e refeitas, não rastreadas |
+| Maps fora do heap | Nenhuma diretamente: as palavras de chaves e valores da árvore de cada stub que a recolha copia | Reescritas quando o stub copiado é analisado; a lista é varrida como a lista de binaries |
 
 Nenhuma célula do heap contém uma fixação. Os átomos são imediatos e a tabela
 de átomos nunca é recolhida. As células de fun nomeiam o código através da sua
@@ -254,9 +346,21 @@ Qualquer outro pedido devolve `unsafe_point` e não altera nada, nem sequer o
 canal de falhas de uma chamada gerada em execução. A alocação nunca move o
 heap: um pedido que não cabe cria um fragmento.
 
+## Buffers de mensagens
+
+Um `MessageBuffer`
+([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) mantém um termo
+fora de todos os processos: `copy_of` copia o grafo do heap do seu processo
+para um `HeapStorage` próprio (com o seu próprio token de tempo de vida, os
+átomos e a conta de memória do runtime, e os binaries fora do heap partilhados
+e detidos), com o mesmo `GraphCopy` que um envio usa; `copy_to` copia-o para o
+heap de um recetor. Os imediatos não precisam de armazenamento. O buffer nunca
+é recolhido e é libertado com o seu último proprietário. As mensagens dos
+temporizadores usam-no, pelo que nunca são recodificadas.
+
 ## Recolha no código gerado
 
-Decisão do plan 11 step 24 (2026-10-06), implementada no step 26
+Implementada no step 26
 ([implementação](#implementation)). O código
 gerado só faz a recolha em alguns **safepoints** onde cada termo vivo já está
 numa raiz. Tudo o resto, incluindo cada serviço que aloca, é uma **secção
@@ -270,7 +374,7 @@ verificação.
 | Gatilho | Condição no safepoint | Equivalente no ERTS |
 | --- | --- | --- |
 | Heap cheio | Existe algum fragmento: uma alocação não coube no bloco do heap desde a última recolha | O topo do heap atinge o fim do heap |
-| Pressão dos binaries fora do heap | As palavras fora do heap atingem o limite do heap binário virtual: 46 422 palavras de início, após cada recolha o dobro das palavras fora do heap sobreviventes, nunca menos do que isso, mas no máximo os sobreviventes mais metade do orçamento deixado livre após o bloco do heap (step 27) | `bin_vheap_sz` / heap binário virtual |
+| Pressão dos binaries fora do heap | As palavras fora do heap atingem o limite do heap binário virtual: 46 422 palavras de início, após cada recolha o dobro das palavras fora do heap sobreviventes ou os sobreviventes mais as palavras vivas do heap, o que for maior (nunca menos de 46 422; recolhas de binaries amortizadas), mas no máximo os sobreviventes mais metade do orçamento deixado livre após o bloco do heap | `bin_vheap_sz` / heap binário virtual |
 | `erlang:garbage_collect/0` | Sempre; chega com as famílias de builtins (steps 36-37) como um safepoint forçado | Varredura completa explícita |
 
 O novo bloco é dimensionado para as palavras vivas **mais as palavras da pilha
@@ -294,13 +398,13 @@ individuais de serviços.
 Não são safepoints (secções críticas, que continuam a alocar em fragmentos):
 todos os outros serviços do runtime, incluindo os serviços de alocação,
 construção e correspondência; `CLAUSE_return_v1`; a propagação de exceções; e,
-mais tarde, a entrega de mensagens (step 45). Os serviços podem, portanto,
+mais tarde, a entrega de mensagens. Os serviços podem, portanto,
 manter palavras do heap em bruto em C++ durante toda a sua execução, e os seus
 arrays de entrada e as suas saídas não precisam de recarregamento.
 
 ### Processos em espera e suspensos
 
-Plan step 51. Um processo que não está em execução nunca é recolhido: está à
+Um processo que não está em execução nunca é recolhido: está à
 espera num receive, em fila após uma cedência (yield) ou um trap, ou ainda não
 foi iniciado, e tudo o que contém já é uma raiz (os seus frames, os registos da
 entrada ou da continuação em que irá retomar, o estado de trap e as suas
@@ -343,16 +447,16 @@ um erro em `lower_frames`).
   porque uma recolha reescreve as palavras da pilha no local e nunca move a
   pilha; cada transferência relê-a no prólogo do corpo, como antes.
 - A otimização é executada após `lower_frames` e não pode substituir um
-  recarregamento pelo valor SSA mais antigo: o endereço do frame provém de
-  `CLAUSE_frame_v1`, pelo que a chamada do safepoint pode escrever em qualquer
-  slot (protótipo abaixo).
+  recarregamento pelo valor SSA mais antigo: o endereço do frame é carregado do
+  `FrameState` do contexto, e a chamada opaca do safepoint pode escrever em
+  qualquer slot através dele (protótipo abaixo).
 
 ### Comportamento em caso de falha
 
 - Uma recolha num safepoint nunca regista uma falha. Quando o seu novo bloco
   não pode ser alocado (`out_of_memory`), o heap fica como está e a execução
   continua com fragmentos.
-- **Esgotamento da memória** (step 27). Sem limite, a memória só se esgota
+- **Esgotamento da memória**. Sem limite, a memória só se esgota
   quando o anfitrião recusa um bloco de heap, um fragmento, um buffer fora do
   heap ou o crescimento da pilha: `out_of_memory`. Com um orçamento opcional
   ou um [limite global do runtime](#runtime-memory-limit) definido, um pedido
@@ -369,8 +473,6 @@ um erro em `lower_frames`).
   recolhido primeiro.
 
 ### Implementação
-
-Step 26 (2026-10-06):
 
 - `ProcessStack::safepoint(live)` pergunta a `ProcessHeap::wants_collection()`
   (existe um fragmento, ou as palavras fora do heap atingiram
@@ -395,8 +497,6 @@ Step 26 (2026-10-06):
   binary) por frame, e uma carga útil de erro capturada após desenrolar frames
   que alocam e mantida ao longo de um ciclo longo que aloca.
 
-Step 27 (2026-10-06):
-
 - `collected_size` limita o bloco a `block_limit(live)`; `shrink` também é
   executado quando o bloco excede o limite das palavras sobreviventes;
   `collect` limita `binary_limit_words_` aos sobreviventes mais metade do
@@ -416,8 +516,6 @@ Step 27 (2026-10-06):
   (72 MB) enquanto descarta quatro por passo e imprime a contagem como o OTP.
   `runtime_collection` `near_budget` verifica ambos os limites com um orçamento
   de 10 000 palavras (bloco do heap e buffers fora do heap).
-
-Step 27A (2026-10-06):
 
 - Limite global do runtime e `--max-heap`, `--max-stack`, `--max-memory`
   ([limite de memória do runtime](#runtime-memory-limit)). Execuções golden
@@ -479,7 +577,7 @@ capacidade de slots da pilha e as palavras fora do heap.
 ## Cópia entre heaps
 
 `ProcessHeap::add(value)`, ou equivalentemente `value.copy_to(heap)`, devolve
-um termo do heap de destino (step 28, `size_object` e `copy_struct` da BEAM):
+um termo do heap de destino (`size_object` e `copy_struct` da BEAM):
 
 - Os imediatos e os átomos do mesmo runtime não precisam de armazenamento, e
   um termo do heap de destino mantém a sua identidade. Um grafo de outro
@@ -491,8 +589,9 @@ um termo do heap de destino (step 28, `size_object` e `copy_struct` da BEAM):
 - Um único percurso com uma pilha explícita (sem recursão) encontra cada
   objeto distinto alcançável a partir do valor, indexado pelo endereço, pelo
   que a partilha interna sobrevive: `{T, T}` copia `T` uma única vez, ao
-  contrário do `copy_struct` predefinido do ERTS, que achata a partilha. A
-  cópia é uma única reserva da soma das suas palavras, no bloco do heap ou num
+  contrário do `copy_struct` predefinido do ERTS, que achata a partilha. Os
+  endereços vão para um map de endereçamento aberto
+  (`boost::unordered_flat_map`). A cópia é uma única reserva da soma das suas palavras, no bloco do heap ou num
   fragmento, preenchida pela ordem do percurso com os ponteiros reescritos para
   as cópias.
 - A cópia de um binary fora do heap é uma nova célula que partilha o buffer; o

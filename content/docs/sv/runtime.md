@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 06042fa
-sourceSha256: 6baeafe0372058547653e00c8d05e2f39a894329ac165b982d1553ad6ba2093e
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 487cb38fceea0b489183ca4c47c3c3b8494d2df44fd821e82de92e1c896f5864
+translatedAt: 2026-10-15
 ---
 # Runtime
 
@@ -138,6 +138,14 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
 - En `ModuleRegistry` avbildar exakt namn/aritet (≤ 255) på ett anropbart
   objekt där allt är `Term`. `load` fryser och publicerar det; dubbletter
   eller fel publicerar ingenting.
+- Registreringen indexerar också genererade modulers bindningar i hashtabeller:
+  modul-, record- och fun-deskriptorer till deras bindningar och definitioner,
+  och atomord för `Module:Function/Arity` till exportramar. Dynamiska anrop,
+  `apply/3`, `fun M:F/A` under körning och uppslag av deskriptorer tar därför
+  konstant förväntad tid i antalet moduler och exporter (ungefär 80 ns per
+  exportuppslag i Debug med 10 eller 400 moduler). Indexen byggs inuti
+  registreringen: en avvisad modul lägger inte till någon post, och de ändras
+  endast under serverns exklusiva lås.
 - `resolve` skiljer mellan saknad modul och saknad export.
   `ResolvedFunction` fäster modulavbildningen; `call` kontrollerar aritet,
   argument och resultat och gör om värdundantag till fel.
@@ -158,6 +166,34 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
   funktionerna för dynamiska anrop; `external_fun` internerar definitionerna
   av externa funs som byggs under körning.
 - `CodeServer::unload` är uppskjuten; dynamisk laddning stöds inte.
+
+## Persistenta termer
+
+Källa: `memory/persistent_terms`. En tabell per runtime, som ägs av
+`Runtime::Impl` och nås genom `ProcessContext::persistent_terms()`, håller
+termerna för `persistent_term` (inbyggda funktioner: step 41M2).
+
+- En nyckel och dess värde kopieras var för sig till en `MessageBuffer`
+  ([meddelandebuffertar](runtime-heap.md#message-buffers)) utanför varje
+  process, så att de överlever processen som lagrade dem och ingen
+  skräpsamling flyttar dem.
+- Poster hittas genom en hash av nyckeln (de inbyggda funktionerna använder
+  termhashen från `phash2`) och exakt likhet, jämförd på plats i bufferten
+  (`MessageBuffer::value`).
+- En läsning kopierar värdet till läsarens heap (beslutat 2026-10-14). OTP
+  delar i stället ut en referens in i ett literalområde och kopierar endast vid
+  ersättning eller borttagning genom en global skräpsamling; Clauses
+  admission godtar endast ord från processens egna områden, så literaler på
+  plats skulle kräva en ny delad termregion. Kopiering håller varje processheap
+  självständig: ett ersatt eller borttaget värde frigörs när den sista läsare
+  som fortfarande kopierar det släpper sin buffertreferens, och ingen global
+  skräpsamling behövs. Läsningar kostar värdets storlek
+  ([skillnader](differences.md)).
+- Ett delat lås betjänar läsare på valfritt antal arbetstrådar; put och erase
+  tar det ensamma och kopierar aldrig medan de håller det. CTest
+  `runtime_persistent_terms` täcker värden som överlever sin skrivare, ersatta
+  värden som hålls av läsare, samtidiga läsare och skrivare samt frigjorda
+  debiteringar.
 
 ## Schemaläggarens bokföring
 
@@ -183,18 +219,18 @@ dess signalinkorg (`runtime/include/mailbox.hpp`).
 
 ## Trådar
 
-Schemaläggarens arbetstrådar (plan step 56,
-[arbetstrådar](processes.md#workers)) kör processer på flera trådar i en
+Schemaläggarens arbetstrådar
+([arbetstrådar](processes.md#workers)) kör processer på flera trådar i en
 runtime. Tjänster som de delar är synkroniserade; allt annat förblir
 begränsat till tråden som kör dess process eller skyddas av exekutorns mutex.
 
-- Atomer (step 54): `AtomStorage` skyddar båda indexen med en delad mutex.
+- Atomer: `AtomStorage` skyddar båda indexen med en delad mutex.
   Uppslagningar (`lookup`, `boolean`, `size`) delar den; `intern` slår upp
   under det delade låset och endast en ny stavning tar det exklusiva låset,
   kontrollerar igen och publicerar posten, så att kapplöpande internering av
   samma stavning får ett och samma ord. Orden förblir stabila: en post ändras
   eller tas aldrig bort före nedrivningen.
-- Kod (step 55): `CodeServer` skyddar sina moduler och definitioner av
+- Kod: `CodeServer` skyddar sina moduler och definitioner av
   externa funs med en delad mutex. Uppslagningar (`find_module`, `resolve`,
   `atom_word`, `record_definition`, `fun_definition`, `export_frame`,
   `function_frame`, `owns`) delar den; `load` och byggandet av en ny
@@ -208,12 +244,12 @@ begränsat till tråden som kör dess process eller skyddas av exekutorns mutex.
   ramar och atomplatser som den returnerat förblir giltiga för varje anrop och
   varje fun-cell. Handtag från `ResolvedFunction` och `find_module` behåller
   också sin modul efter att runtimen är borta.
-- Pid-nummer (step 56): `ProcessNumbers` utfärdar nummer under ett exklusivt
+- Pid-nummer: `ProcessNumbers` utfärdar nummer under ett exklusivt
   lås och godtar pid-ord under ett delat.
-- Minne (step 56): redovisningen för hela runtimen (`RuntimeMemory`)
+- Minne: redovisningen för hela runtimen (`RuntimeMemory`)
   debiterar och frigör med atomära operationer; en debitering tar aldrig
   redovisningen förbi en valfri gräns.
-- Port-I/O (steps 57C–57F): I/O-tjänstens läs-, skriv- och bevakningstrådar
+- Port-I/O: I/O-tjänstens läs-, skriv- och bevakningstrådar
   samt sockettråden ([portar](ports.md#io-thread)) rör processtillstånd
   endast genom exekutorns mutex.
 - Länkning: på Linux lägger runtimen till `-pthread` för sina trådar; på
@@ -252,7 +288,7 @@ Dessa rapporterar en rad `[feature] notimpl` ([funktioner](features.md)) och
 
 | Gräns | Fel |
 | --- | --- |
-| `TermFactory::port` (inga portar ännu, plan step 53), `reference(ReferenceIdentity)` och `function(FunctionIdentity)` | `TermError::not_implemented` |
+| `TermFactory::port` (inga portar ännu), `reference(ReferenceIdentity)` och `function(FunctionIdentity)` | `TermError::not_implemented` |
 | `SchedulerService::run` / `execute` | `SchedulerError::not_implemented` |
 | `CodeServer::unload` | `CodeError::not_implemented` |
 | `dispatch_builtin` på en katalogiserad BIF | `Status::not_implemented` |

@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: 06042fa
-sourceSha256: f48733b2827bbf09b77162c249d6b913411b1f3a60e76cf52b281ba68666f65b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 42d519fef371b8ba151942ea3a92a7ab67b3f1f6aaae2cf1f40c9cc18b5df542
+translatedAt: 2026-10-15
 ---
 # Clause-Dokumentation
 
@@ -17,6 +17,9 @@ Verhalten und Grenzen, die heute bestehen; Pläne und Schrittverlauf liegen in
 | TOML-Projekte und Zielauswahl | [projects.md](projects.md) |
 | Compiler-CLI, Artefakte, LLVM SDK, Beispiel | [compile.md](compile.md) |
 | Eintrittspunkt ausführbarer Dateien, Argumente, Exit-Status, Ausgabeströme, Linken | [executables.md](executables.md) |
+| Debug-Informationen (`-g`), Debugger und der Erlang-Aufrufstapel | [debugging.md](debugging.md) |
+| Opt-in-Profiling (`--profile FILE`): Eintritte und Eigenzeit pro Funktion und Prozess | [profiling.md](profiling.md) |
+| Parse transforms: OTP-Loader des Hosts, Austausch im Abstract Format, Suche nach Transforms | [transforms.md](transforms.md) |
 | Semantische Analyse, Typen, Inferenz, Bindungen | [semantic.md](semantic.md) |
 | Richtlinie zur Typspezialisierung | [specialization.md](specialization.md) |
 | ABI des erzeugten Codes: Terme, Symbole, Registrierung, Fehlschläge, Wurzeln | [abi.md](abi.md) |

@@ -1,15 +1,14 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 06042fa
-sourceSha256: b86a14bcde03a998409e7048283225de3a5f8f84ded889ba64544a4671571cbc
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 9883758a534ec454ceeb011c2dc1e6e2d1893aca483c1b3ca7f36f99319bc537
+translatedAt: 2026-10-15
 ---
 # Vertrag des Prozess-Heaps
 
 Prozess-Heaps folgen dem klassischen ERTS-Design. Diese Notiz ist der Vertrag;
-Plan 11 phase C (steps 8A–8I) hat ihn umgesetzt, und spätere, unten genannte
-Schritte erweitern ihn. [runtime.md](runtime.md#process-memory) fasst die API
-zusammen.
+Plan 11 phase C hat ihn umgesetzt, und spätere, unten genannte Schritte
+erweitern ihn. [runtime.md](runtime.md#process-memory) fasst die API zusammen.
 
 ## Was phase C ersetzt hat
 
@@ -35,7 +34,11 @@ Walker ab ihrem ersten Wort parst:
   ab 7 die Anzahl der Wörter, die dem Header folgen. Ein geboxter Term zeigt
   auf seinen Header. Die Anzahl umfasst jedes Präfix-, Nutzdaten- und
   Füllwort, sodass der Walker nicht verfolgte Nutzdaten überspringt, ohne sie
-  zu interpretieren.
+  zu interpretieren. Sie hat 25 Bits auf 32-Bit-Zielen (höchstens 33.554.431
+  Wörter) und 57 auf 64-Bit-Zielen (`BoxHeader::MAX_COUNT`): die Grenze der
+  Tupelstelligkeit (2^24 - 1) und das größte Bignum (131.072 Wörter auf 32 Bit)
+  passen laut statischer Assertion, Maps prüfen sie beim Aufbau, und
+  cons-Zellen und Zellen fester Größe haben keine große Anzahl.
 - **cons-Zelle**: zwei Termwörter (Kopf, Tail) ohne Header. Ein Listenterm
   zeigt auf den Kopf. Ein Kopf ist nie ein Header, weil kein Term den Tag `00`
   hat.
@@ -48,21 +51,23 @@ Walker ab ihrem ersten Wort parst:
 Keine Zelle braucht eine stärkere Ausrichtung als ein Wort. `memory/heap_walk`
 parst einen Bereich Zelle für Zelle, und `ProcessHeap::verify` prüft einen
 ganzen Heap (8C). Zellen enthalten nur Wörter und Bytes, außer dem
-`std::shared_ptr` des Off-Heap-binarys (unten), sodass eine Zelle durch Kopieren
-ihrer Wörter verschoben wird.
+`std::shared_ptr` des Off-Heap-binarys und dem Baumzeiger der Off-Heap-Map
+(unten), sodass eine Zelle durch Kopieren ihrer Wörter verschoben wird.
 
 | Art | Wörter nach dem Header | Verfolgte Wörter |
 | --- | --- | --- |
 | cons (kein Header) | insgesamt 2 Wörter | Kopf, Tail |
 | `tuple` | n Elementplätze | alle |
-| `map` | 2n Plätze: Schlüssel in exakter Termordnung, jeweils gefolgt von ihrem Wert | alle |
+| `map` | 2n Plätze: Schlüssel in exakter Termordnung, jeweils gefolgt von ihrem Wert; höchstens 32 Einträge | alle |
+| `tree_map` | Anzahl der Einträge, Wurzel des Off-Heap-Baums, Verknüpfung der Off-Heap-Map: 3 Wörter ([Off-Heap-Maps](#off-heap-maps)) | keine auf dem Heap; die Wörter des Baums |
 | `native_record` | Adresse der `RecordDefinition` der Runtime, dann n Feldwerte in Definitionsreihenfolge | Werte |
 | `fun_closure` | Adresse der `FunDefinition` der Runtime, dann n erfasste Werte ([Funs](funs.md)) | Werte |
 | `bignum` | Vorzeichenwort, dann Betragsglieder (limbs), niederwertigstes zuerst | keine |
 | `floating` | 8 Bytes: 1 Wort (64 Bit) oder 2 Wörter (32 Bit) | keine |
 | `reference` | 8 Bytes: die Referenznummer ([Pids und Referenzen](terms.md#pids-and-references)) | keine |
 | `heap_binary` | Bitlänge, dann Datenbytes, auf Wörter aufgerundet (höchstens 64 Bytes) | keine |
-| `refc_binary` | Bit-Offset, Bitlänge, `std::shared_ptr` (2 Wörter), Off-Heap-Verknüpfung: 5 Wörter | keine |
+| `refc_binary` | Bit-Offset, Bitlänge, das erste Byte des Puffers (von erzeugtem Code gelesen), Anhängeende und -grenze, `std::shared_ptr` (2 Wörter), Off-Heap-Verknüpfung: 8 Wörter | keine |
+| `sub_binary` | Bit-Offset in das Original, Bitlänge, das ursprüngliche `heap_binary` oder `refc_binary` (nie ein Sub-binary): 3 Wörter | das Original |
 | `filler` | n ungenutzte Wörter | keine |
 
 Die Anzahl bei `map` ist in Wörtern angegeben (Einträge = Anzahl / 2). Pids sind
@@ -78,11 +83,12 @@ jedes Prozess-Heaps liegt und per Referenzzählung geteilt wird (BEAM ProcBin un
 `Binary`).
 
 - Seine geboxte `refc_binary`-Zelle enthält einen `std::shared_ptr` auf den
-  Puffer, einen Bit-Offset und eine Bitlänge; Ausschnitte eines großen binarys
-  sind neue `refc_binary`-Zellen, die den Puffer teilen (ERTS-Sub-binaries
-  werden nicht verwendet). Das Kopieren einer Zelle in einen anderen Prozess
-  kopiert den `shared_ptr` ([Kopieren zwischen Heaps](#copying-between-heaps)),
-  nie die Bytes.
+  Puffer, einen Bit-Offset und eine Bitlänge. Ausschnitte eines großen binarys
+  (und Ausschnitte davon) sind `sub_binary`-Zellen, die die ursprüngliche Zelle
+  benennen, wie es ERTS-Sub-binaries tun: ein Ausschnitt nimmt keine
+  Pufferreferenz und hält das Original am Leben. Das Kopieren einer Zelle in
+  einen anderen Prozess kopiert den `shared_ptr`
+  ([Kopieren zwischen Heaps](#copying-between-heaps)), nie die Bytes.
 - Jede Zelle ist über ihr Verknüpfungswort in die Off-Heap-Liste ihres
   Prozesses eingehängt. Die Liste ist der einzige Weg, den C++-Zustand dieser
   Zellen zu finden.
@@ -98,15 +104,98 @@ jedes Prozess-Heaps liegt und per Referenzzählung geteilt wird (BEAM ProcBin un
   dieses Prozesses dafür stirbt, und einmal dem runtime-weiten Konto von der
   Erzeugung bis zur Freigabe des Puffers.
 - `std::shared_ptr` besteht in jeder unterstützten STL aus zwei Zeigern; ein
-  `static_assert` hält die Zellgröße bei beiden Wortbreiten auf fünf Wörtern
+  `static_assert` hält die Zellgröße bei beiden Wortbreiten auf acht Wörtern
   nach dem Header fest.
+
+### Handle-Referenzen
+
+Eine Handle-Referenz ist eine Referenz, die zusätzlich einen Off-Heap-Puffer
+hält, so wie eine magische Referenz in OTP eine Ressource hält; `atomics`-Arrays
+leben darin ([atomics und counters](builtins.md#atomics-and-counters)).
+
+- Ihre Zelle hat die Art `reference` und das Layout von `refc_binary`: acht
+  Wörter nach dem Header, die 64-Bit-Referenznummer in den Wörtern für Offset
+  und Bitlänge (wo eine einfache Referenzzelle sie hält), dann der `shared_ptr`
+  und das Verknüpfungswort. Jeder Referenz-Service liest nur die Nummer, daher
+  wird sie wie eine einfache Referenz verglichen, gehasht, ausgegeben und
+  kodiert.
+- Sie wird genau wie eine Off-Heap-binary-Zelle gelistet, verschoben,
+  durchlaufen, angerechnet und kopiert (`layout::off_heap_cell`); ihr Puffer
+  wird freigegeben, wenn die letzte Kopie der Referenz in irgendeinem Prozess
+  stirbt.
+- Eine prozessweite Registry bildet die Nummern lebender Handles auf ihre
+  Puffer ab (schwache Referenzen), sodass `binary_to_term/1` eines kodierten
+  Handles ein Handle neu aufbaut, das den Puffer teilt, solange er lebt, und
+  danach eine einfache Referenz. Abgelaufene Einträge werden verworfen, während
+  die Registry wächst.
+
+## Off-Heap-Maps
+
+Eine Map mit mehr als 32 Einträgen (`MAP_SMALL_MAP_LIMIT` von OTP) ist ein
+4-Wort-Stub `tree_map` auf dem Heap, der einen prozessprivaten persistenten
+B+-Baum benennt (`terms/map_tree`). Kleinere Maps bleiben `map`-Zellen.
+
+- Blätter halten bis zu 32 Schlüssel- und Wertwörter in exakter
+  Schlüsselreihenfolge; Verzweigungen halten bis zu 32 Kinder mit ihren ersten
+  Schlüsseln und Eintragszahlen, sodass Lookup und Zugriff nach Position
+  O(log n) sind. Schlüssel- und Wertwörter zeigen in den Heap des Besitzers:
+  anders als bei binaries hält der Baum Terme.
+- Eine Aktualisierung kopiert den Pfad zu jedem geänderten Blatt und teilt jeden
+  anderen Knoten mit der Quell-Map, die unverändert bleibt, sodass der Aufbau
+  einer Map Schlüssel für Schlüssel O(n log n) statt O(n^2) kostet. Knoten
+  werden per Referenz gezählt; von derselben Aktualisierung erzeugte Knoten
+  tragen deren Bearbeitungstoken und ändern sich an Ort und Stelle, bis der Stub
+  veröffentlicht ist. Eine gescheiterte Aktualisierung gibt frei, was sie gebaut
+  hat.
+- Jeder Stub ist in die Off-Heap-Map-Liste seines Prozesses eingehängt. Eine
+  Bereinigung kopiert einen Stub wie jede Zelle und schreibt, wenn sie die Kopie
+  durchsucht, die Schlüssel- und Wertwörter des Baums des Stubs um, wobei sie
+  jeden geteilten Knoten einmal pro Bereinigung besucht. Der Durchlauf hängt
+  danach verschobene Stubs neu ein und gibt die Bäume toter frei; der Abbau gibt
+  alle frei.
+- Knotenwörter werden dem Prozess als Off-Heap-Wörter angerechnet (zusammen mit
+  binaries: genug davon fordern eine Bereinigung an) und dem runtime-weiten
+  Konto. Freigegebene Knoten werden zur Wiederverwendung behalten, bis zu 1.024
+  jeder Art pro Prozess (höchstens etwa 1 MB), da eine pfadkopierende
+  Aktualisierung pro Ebene einen Knoten alloziert und eine Bereinigung die alten
+  Pfade zusammen freigibt.
+- Das Kopieren einer Map in einen anderen Heap (Nachrichten, `MessageBuffer`)
+  baut im Ziel aus den übersetzten Einträgen einen neuen Baum.
+- Eine besitzende Aktualisierung (`MapOperation::update_owned`), deren Quelle
+  laut Nachweis des Compilers danach nicht mehr gelesen wird, übernimmt die
+  Baumreferenz des Quell-Stubs und ändert jeden Knoten, den sie über ungeteilte
+  Knoten erreicht, an Ort und Stelle, wobei sie nur geteilte kopiert. Der
+  Quell-Stub bleibt verbraucht zurück (kein Baum, Größe 0); eine gescheiterte
+  besitzende Aktualisierung gibt ihm den Baum zurück. Der Compiler markiert eine
+  Aktualisierung nur dann als besitzend, wenn die Funktion die Quell-Map selbst
+  gebaut hat (`M = <map expression or
+  comprehension>` im selben Klauselrumpf), `M` nirgends sonst liest und nie in
+  einem fun erfasst (`semantic/map_ownership`).
 
 ## Bereiche
 
 - **Heap.** Ein Block `[start, top, end)` pro Prozess mit Bump-Allokation (8G).
   Er wird durch die erste Allokation des Prozesses erzeugt, mit der Größe
   `max(min_heap_words, request)`, damit diese Anforderung immer passt, und
-  gehört allein diesem Prozess.
+  gehört allein diesem Prozess. Erzeugter Code legt darin kleine Tupel und
+  Listen direkt über `FrameState::heap_top`/`heap_limit` per Bump-Allokation an:
+  `HeapStorage::absorb` übernimmt diese Wörter vor jeder Heap-Operation
+  (Reservierung, Zulassung, Bereinigung, Verifikation, Nutzungsabfragen) in den
+  `top` und `used_words_`, und `expose` zeigt die freien Wörter danach wieder.
+  Inline-Allokation erzeugt nie ein Fragment und bleibt unter einem
+  prozesseigenen Budget aus.
+- **Literalbereiche**. Die zusammengesetzten Literale jedes Moduls — Strings und
+  konstante Listen, Tupel aus Konstanten, Gleitkomma- und Bignum-Literale —
+  werden vom Compiler als Heap-Zellen in einer schreibgeschützten globalen
+  Variablen (`ModuleDescriptor::literals`) angelegt und bei der Registrierung
+  des Moduls runtime-weit registriert (`detail::LiteralAreas`, ein sperrfreier
+  sortierter Schnappschuss). Terme jedes Prozesses dürfen darauf zeigen: die
+  Zulassung und `TermAccess::object` lesen Zellen über
+  `HeapStorage::readable` (Heap, Fragmente, dann Literale); die
+  Speicherbereinigung lässt Literalwörter, wie sie sind (`owned` bleibt nur für
+  den Heap); Kopien zwischen Heaps und in Nachrichtenpuffer zeigen weiter darauf
+  (eine Literalwurzel braucht keine Kopie); der Verifizierer akzeptiert sie.
+  Literale halten nur Immediates (nur feste Atome) und Wörter anderer Literale.
 - **Fragmente.** Wenn eine Anforderung nicht passt und sich der Heap nicht
   bewegen darf, geht sie in das neueste Fragment, falls sie dort passt, sonst
   in ein neues, passend dimensioniertes Fragment (mindestens die minimale
@@ -118,7 +207,7 @@ jedes Prozess-Heaps liegt und per Referenzzählung geteilt wird (BEAM ProcBin un
   nächsten Safepoint oder zur nächsten Host-Bereinigung
   ([Bereinigung in erzeugtem Code](#collection-in-generated-code)).
 - **Stack.** Erzeugte Frames (BEAM-Y-Register) liegen auf einem flachen Stack
-  pro Prozess, getrennt vom Heap (`ProcessStack`, step 19). Jeder Frame ist ein
+  pro Prozess, getrennt vom Heap (`ProcessStack`). Jeder Frame ist ein
   Header aus vier Wörtern (Header-Offset des Aufrufers, Deskriptor,
   Fortsetzung, Handler), gefolgt von Termplätzen (ausgelagerte Terme
   eingeschlossen) und rohen Auslagerungsplätzen (spill slots); Frames sind über
@@ -145,10 +234,10 @@ jedes Prozess-Heaps liegt und per Referenzzählung geteilt wird (BEAM ProcBin un
   kopiert, die seine lebenden Daten brauchen (8H); scheitert die Allokation
   dieses Blocks, bleibt der größere erhalten. Keiner ist kleiner als
   `min_heap_words`. Beide Größen zählen die Wörter des Prozess-Stacks als
-  lebend (step 26), da ERTS den Stack innerhalb des Heap-Blocks hält.
+  lebend, da ERTS den Stack innerhalb des Heap-Blocks hält.
 - Mit gesetztem Budget (unten) enthält ein neuer Block höchstens seine
   lebenden Wörter plus die Hälfte des Budgets, das nach ihnen und den
-  Off-Heap-Puffern übrig bleibt (`block_limit`, step 27), nie weniger als
+  Off-Heap-Puffern übrig bleibt (`block_limit`), nie weniger als
   `min_heap_words`. Die andere Hälfte bleibt frei für Fragmente und neue
   Off-Heap-Puffer, sodass nach einer Bereinigung allozierter Müll den nächsten
   Safepoint als Auslöser erreicht, statt das Budget zu erschöpfen. Die erste
@@ -175,14 +264,14 @@ jedes Prozess-Heaps liegt und per Referenzzählung geteilt wird (BEAM ProcBin un
 - Ein optionales runtime-weites Limit, `RuntimeOptions::memory_limit_bytes`
   (Standard `UNLIMITED_HEAP_BYTES`; Programme setzen es mit `--max-memory`),
   begrenzt den Speicher aller Prozesse zusammen: Heap-Blöcke, Fragmente,
-  Off-Heap-Puffer und Stack-Kapazität (step 27A). OTP hat kein solches Limit;
+  Off-Heap-Puffer und Stack-Kapazität. OTP hat kein solches Limit;
   am nächsten kommt dem das Ausführen der VM unter einem Speicherlimit des
   Betriebssystems, aber hier scheitert ein Prozess statt des Knotens.
 - Ein Konto pro Runtime (`detail::RuntimeMemory`, geteilt von jedem
   Heap-Speicher und Stack) wird belastet, wenn ein Block, ein Fragment, ein
   Off-Heap-Puffer oder Stack-Kapazität erzeugt wird, und entlastet, wenn er
   verworfen wird; ein von mehreren Prozessen geteilter Puffer wird einmal
-  belastet und entlastet, wenn seine letzte Referenz stirbt (step 28). Der
+  belastet und entlastet, wenn seine letzte Referenz stirbt. Der
   Abbau gibt jede Belastung des Prozesses zurück. `Runtime::memory_bytes()`
   meldet die Summe.
 - Für jeden Prozess wirkt das Limit als Budget aus dem Speicher, den er
@@ -220,19 +309,21 @@ Objektanfang benennt.
 ## Wurzeln und Safepoints
 
 `ProcessContext::visit_roots` zählt jedes Wurzelwort für die
-Speicherbereinigung auf (step 23). An einem Safepoint hält nichts anderes
+Speicherbereinigung auf. An einem Safepoint hält nichts anderes
 Heap-Wörter des Prozesses:
 
 | Besitzer | Wurzelwörter | Anmerkungen |
 | --- | --- | --- |
-| Termplätze der Frames | Die ersten `roots` Plätze jedes Frames auf dem Stack (step 19) | Unterste Frames haben keine; Fortsetzungs- und Handler-Indizes sind Ganzzahlen |
+| Termplätze der Frames | Die ersten `roots` Plätze jedes Frames auf dem Stack | Unterste Frames haben keine; Fortsetzungs- und Handler-Indizes sind Ganzzahlen |
 | Rohe Frame-Plätze | Keine | Ausgelagerte native Werte; erzeugter Code hält dort an einem Safepoint kein Heap-Wort (Neuladeregel von step 24) |
-| Register | `x[0..live)` (`ProcessStack::keep_registers`) | Die Argumente eines suspendierten Eintritts (step 43); jedes Push und Pop leert `live` |
+| Register | `x[0..live)` (`ProcessStack::keep_registers`) | Die Argumente eines suspendierten Eintritts; jedes Push und Pop leert `live` |
 | Fehlerkanal | Fehler-Nutzdaten (BEAM `fvalue`), Argumentliste von `erlang:error/2,3`, Stacktrace-Term | Werden an Ort und Stelle neu gebunden; erfasste Trace-Frames sind Deskriptorzeiger in den Code |
-| Trap-Zustand | Die Termwörter des `TrapState` eines trappenden Builtins (step 43A) | Freigegeben, wenn das Builtin endet oder scheitert |
-| Mailbox | Jede Nachricht im Signal-Posteingang und in der Nachrichtenwarteschlange (step 45), einschließlich `'EXIT'`- und `'DOWN'`-Nachrichten | Bis ein receive sie entnimmt; an Ort und Stelle umgeschrieben, sodass der receive-Cursor (eine Listenposition) und die Timeout-Frist gültig bleiben |
+| Trap-Zustand | Die Termwörter des `TrapState` eines trappenden Builtins | Freigegeben, wenn das Builtin endet oder scheitert |
+| Prozess-Dictionary | Jeder Schlüssel und Wert | Bis zum Löschen oder Ende des Prozesses |
+| Mailbox | Jede Nachricht im Signal-Posteingang und in der Nachrichtenwarteschlange, einschließlich `'EXIT'`- und `'DOWN'`-Nachrichten | Bis ein receive sie entnimmt; an Ort und Stelle umgeschrieben, sodass der receive-Cursor (eine Listenposition) und die Timeout-Frist gültig bleiben |
 | Explizite Wurzeln | Der Bereich, den ein Host an `collect(roots)` übergibt (8E) | Nach dem Aufruf zurückgelesen |
 | Off-Heap-Liste | Keine | Verknüpfungen werden durchlaufen und neu eingehängt, nicht verfolgt |
+| Off-Heap-Maps | Keine direkt: die Schlüssel- und Wertwörter des Baums jedes Stubs, den die Bereinigung kopiert | Umgeschrieben, wenn der kopierte Stub durchsucht wird; die Liste wird wie die binary-Liste durchlaufen |
 
 Keine Heap-Zelle hält einen Pin. Atome sind Immediates, und die Atomtabelle wird
 nie bereinigt. Fun-Zellen benennen Code über ihre nicht verfolgte
@@ -262,9 +353,21 @@ Jede andere Anforderung liefert `unsafe_point` und ändert nichts, nicht einmal
 den Fehlerkanal eines laufenden erzeugten Aufrufs. Eine Allokation bewegt den
 Heap nie: eine Anforderung, die nicht passt, erzeugt ein Fragment.
 
+## Nachrichtenpuffer
+
+Ein `MessageBuffer`
+([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) hält einen Term
+außerhalb jedes Prozesses: `copy_of` kopiert den Graphen aus seinem
+Prozess-Heap in einen eigenen `HeapStorage` (eigenes Lebensdauer-Token, die
+Atome und das Speicherkonto der Runtime, Off-Heap-binaries geteilt und
+gehalten), mit derselben `GraphCopy`, die ein Senden verwendet; `copy_to`
+kopiert ihn in den Heap eines Empfängers. Immediates brauchen keinen Speicher.
+Der Puffer wird nie bereinigt und mit seinem letzten Besitzer freigegeben.
+Timer-Nachrichten verwenden ihn, sodass sie nie neu kodiert werden.
+
 ## Bereinigung in erzeugtem Code
 
-Entscheidung von Plan 11 step 24 (2026-10-06), umgesetzt in step 26
+Umgesetzt in step 26
 ([Implementierung](#implementation)). Erzeugter Code bereinigt nur an wenigen
 **Safepoints**, an denen jeder lebende Term bereits in einer Wurzel liegt.
 Alles andere, einschließlich jedes allozierenden Service, ist ein **kritischer
@@ -278,7 +381,7 @@ eine Prüfung.
 | Auslöser | Bedingung am Safepoint | Gegenstück in ERTS |
 | --- | --- | --- |
 | Heap voll | Es existiert ein Fragment: seit der letzten Bereinigung passte eine Allokation nicht in den Heap-Block | Heap-Top erreicht das Heap-Ende |
-| Druck durch Off-Heap-binaries | Off-Heap-Wörter erreichen das Limit des virtuellen Binary-Heaps: anfangs 46.422 Wörter, nach jeder Bereinigung das Doppelte der überlebenden Off-Heap-Wörter, nie weniger als dieses, aber höchstens die Überlebenden plus die Hälfte des nach dem Heap-Block frei verbleibenden Budgets (step 27) | `bin_vheap_sz` / virtueller Binary-Heap |
+| Druck durch Off-Heap-binaries | Off-Heap-Wörter erreichen das Limit des virtuellen Binary-Heaps: anfangs 46.422 Wörter, nach jeder Bereinigung das Doppelte der überlebenden Off-Heap-Wörter oder die Überlebenden plus die lebenden Heap-Wörter, je nachdem, was größer ist (nie weniger als 46.422; amortisierte binary-Bereinigungen), aber höchstens die Überlebenden plus die Hälfte des nach dem Heap-Block frei verbleibenden Budgets | `bin_vheap_sz` / virtueller Binary-Heap |
 | `erlang:garbage_collect/0` | Immer; kommt mit den Builtin-Familien (steps 36-37) als erzwungener Safepoint | Expliziter vollständiger Durchlauf |
 
 Der neue Block wird für die lebenden Wörter **plus die benutzten Stack-Wörter**
@@ -302,14 +405,13 @@ einzelne Service-Ergebnisse begrenzt ist.
 Keine Safepoints (kritische Abschnitte, die weiter in Fragmente allozieren):
 jeder andere Runtime-Service, einschließlich Allokations-, Konstruktions- und
 Matching-Services; `CLAUSE_return_v1`; Ausnahmeweitergabe; und später die
-Nachrichtenzustellung (step 45). Services dürfen daher während ihres gesamten
+Nachrichtenzustellung. Services dürfen daher während ihres gesamten
 Laufs rohe Heap-Wörter in C++ halten, und ihre Eingabearrays und Ausgaben
 müssen nicht neu geladen werden.
 
 ### Wartende und suspendierte Prozesse
 
-Plan step 51. Ein Prozess, der nicht läuft, wird nie bereinigt: er wartet in
-einem receive, ist nach einem Yield oder Trap eingereiht oder noch nicht
+Ein Prozess, der nicht läuft, wird nie bereinigt: er wartet in einem receive, ist nach einem Yield oder Trap eingereiht oder noch nicht
 gestartet, und alles, was er hält, ist bereits eine Wurzel (seine Frames, die
 Register des Eintritts oder der Fortsetzung, an dem bzw. der er fortfährt, der
 Trap-Zustand und seine Nachrichten). An ihn gesendete Nachrichten werden in
@@ -352,16 +454,16 @@ einen Safepoint hinweg, und kein nativer Zeiger überquert überhaupt einen
   weil eine Bereinigung Stack-Wörter an Ort und Stelle umschreibt und den Stack
   nie bewegt; jede Übergabe liest sie wie zuvor im Prolog des Rumpfes neu.
 - Die Optimierung läuft nach `lower_frames` und kann ein Neuladen nicht durch
-  den älteren SSA-Wert ersetzen: die Frame-Adresse stammt aus
-  `CLAUSE_frame_v1`, daher darf der Safepoint-Aufruf jeden Platz schreiben
-  (Prototyp unten).
+  den älteren SSA-Wert ersetzen: die Frame-Adresse wird aus dem `FrameState`
+  des Kontexts geladen, und der opake Safepoint-Aufruf darf darüber jeden Platz
+  schreiben (Prototyp unten).
 
 ### Fehlerverhalten
 
 - Eine Bereinigung an einem Safepoint verzeichnet nie einen Fehler. Kann ihr
   neuer Block nicht alloziert werden (`out_of_memory`), bleibt der Heap, wie er
   ist, und die Ausführung fährt mit Fragmenten fort.
-- **Speichererschöpfung** (step 27). Ohne Obergrenze geht der Speicher nur aus,
+- **Speichererschöpfung**. Ohne Obergrenze geht der Speicher nur aus,
   wenn der Host einen Heap-Block, ein Fragment, einen Off-Heap-Puffer oder
   Stack-Wachstum verweigert: `out_of_memory`. Mit gesetztem optionalem Budget
   oder [runtime-weitem Limit](#runtime-memory-limit) ist eine Anforderung
@@ -379,8 +481,6 @@ einen Safepoint hinweg, und kein nativer Zeiger überquert überhaupt einen
   zuerst bereinigt.
 
 ### Implementierung
-
-Step 26 (2026-10-06):
 
 - `ProcessStack::safepoint(live)` fragt `ProcessHeap::wants_collection()` (ein
   Fragment existiert, oder Off-Heap-Wörter haben `binary_limit_words_`
@@ -406,8 +506,6 @@ Step 26 (2026-10-06):
   Frames gefangen und durch eine lange allozierende Schleife hindurch gehalten
   werden.
 
-Step 27 (2026-10-06):
-
 - `collected_size` begrenzt den Block auf `block_limit(live)`; `shrink` läuft
   auch, wenn der Block das Limit der überlebenden Wörter überschreitet;
   `collect` begrenzt `binary_limit_words_` auf die Überlebenden plus die Hälfte
@@ -427,8 +525,6 @@ Step 27 (2026-10-06):
   Bytes (72 MB), während er pro Schritt vier verwirft, und gibt die Anzahl wie
   OTP aus. `runtime_collection` `near_budget` prüft beide Obergrenzen mit einem
   Budget von 10.000 Wörtern (Heap-Block und Off-Heap-Puffer).
-
-Step 27A (2026-10-06):
 
 - Runtime-weites Limit und `--max-heap`, `--max-stack`, `--max-memory`
   ([Runtime-Speicherlimit](#runtime-memory-limit)). Selbst verfasste
@@ -493,7 +589,7 @@ Off-Heap-Wörter.
 ## Kopieren zwischen Heaps
 
 `ProcessHeap::add(value)`, gleichbedeutend `value.copy_to(heap)`, liefert einen
-Term des Ziel-Heaps (step 28, BEAM `size_object` und `copy_struct`):
+Term des Ziel-Heaps (BEAM `size_object` und `copy_struct`):
 
 - Immediates und Atome derselben Runtime brauchen keinen Speicher, und ein Term
   des Ziel-Heaps behält seine Identität. Ein Graph eines anderen Prozesses
@@ -505,8 +601,9 @@ Term des Ziel-Heaps (step 28, BEAM `size_object` und `copy_struct`):
 - Ein Durchlauf mit explizitem Stack (ohne Rekursion) findet jedes vom Wert aus
   erreichbare verschiedene Objekt, nach Adresse geschlüsselt, sodass interne
   Teilung erhalten bleibt: `{T, T}` kopiert `T` einmal, anders als ERTS'
-  standardmäßiges `copy_struct`, das geteilte Strukturen abflacht. Die Kopie
-  ist eine Reservierung der Summe ihrer Wörter, im Heap-Block oder in einem
+  standardmäßiges `copy_struct`, das geteilte Strukturen abflacht. Die
+  Adressen kommen in eine Map mit offener Adressierung
+  (`boost::unordered_flat_map`). Die Kopie ist eine Reservierung der Summe ihrer Wörter, im Heap-Block oder in einem
   Fragment, gefüllt in Durchlaufreihenfolge mit auf die Kopien umgeschriebenen
   Zeigern.
 - Die Kopie eines Off-Heap-binarys ist eine neue Zelle, die den Puffer teilt;

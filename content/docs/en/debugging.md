@@ -1,6 +1,6 @@
 # Debugging executables
 
-`-g` emits Erlang source line tables (plan 11 step 60, backlog F30). They work
+`-g` emits Erlang source line tables (backlog F30). They work
 at every optimization level and with `--emit`, positional `-o` linking and
 project targets.
 
@@ -69,4 +69,4 @@ drop the helper with other unreferenced code.
   the helper prints their Erlang stacks. A debugger that does not start (an
   LLVM release's LLDB without its Python library) is passed over; exit 77
   (skipped) when none exists. Validated with LLDB on Windows x64 and GDB 16 on
-  Linux x86-64 ([step 63](../.agents/11-plan.md#step-63)).
+  Linux x86-64.
