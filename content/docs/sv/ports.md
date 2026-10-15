@@ -1,12 +1,12 @@
 ---
 source: docs/ports.md
-sourceCommit: 06042fa
-sourceSha256: ffc81af5614a310568c39bb585031013ebcf0a5b801da59a58e2b7fa8ef0fa3c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 60dc15d155f211fa34c0d05254cd2430ae96643f87d84d0c0ed2da0965711e49
+translatedAt: 2026-10-15
 ---
 # Portar
 
-Beslut i plan 11 step 57A (2026-10-08). Det ersätter beslutet från step 53
+Det ersätter beslutet från step 53
 (inga portar, [processer](processes.md#ports)): program får portar så som OTP
 definierar dem, och extern I/O går genom dem. Steps 57B–57F implementerar
 det; varje avsnitt anger sitt step. Detta kontrakt fastställer
@@ -15,24 +15,24 @@ representationen, drivrutinsmodellen och I/O-tråden innan någon källkod kan
 
 Implementerat: identiteter, porttabellen, portarnas inbyggda funktioner och
 meddelanden, länkar, monitorer, namn och exitsignaler för portar samt
-`fd`-portar som endast skriver utdata (step 57B,
-`runtime/src/scheduler/ports.cpp`, `runtime/src/builtins/ports.cpp`,
+`fd`-portar som endast skriver utdata
+(`runtime/src/scheduler/ports.cpp`, `runtime/src/builtins/erlang/ports.cpp`,
 `runtime/src/ports/`; OTP-referenstest (golden) `executables_port_identities`);
 I/O-tråden och indata till `fd`-portar med ström-, paket- och radindelning
-(step 57C, `runtime/src/ports/io*.cpp`; OTP-referenstest
+(`runtime/src/ports/io*.cpp`; OTP-referenstest
 `executables_port_input`); delprocessportar, `os:type/0`, `os:getenv/1` och
-`os:cmd/1` (step 57D, `runtime/src/ports/spawn*.cpp`,
+`os:cmd/1` (`runtime/src/ports/spawn*.cpp`,
 `library/stdlib/os.erl`; OTP-referenstest `executables_port_spawn`);
 fildrivrutinen, delmängden av biblioteksmodulen `file` och standard-indata
-genom `io:get_line`/`io:get_chars` (step 57E, `runtime/src/ports/file.cpp`,
+genom `io:get_line`/`io:get_chars` (`runtime/src/ports/file.cpp`,
 `library/stdlib/{file,io}.erl`; OTP-referenstest `executables_file_io`);
-socketar (step 57F, OTP-referenstest `executables_sockets`); en händelsestyrd
-I/O-tråd för alla sorters portar (step 57G1, `runtime/src/ports/reactor.cpp`;
+socketar (OTP-referenstest `executables_sockets`); en händelsestyrd
+I/O-tråd för alla sorters portar (`runtime/src/ports/reactor.cpp`;
 OTP-referenstest `executables_many_ports`, runtime-test `runtime_port_io`);
-portuppgifter på schemaläggarens arbetstrådar (step 57G2,
-`runtime/src/scheduler/ports.cpp`; OTP-referenstest
-`executables_port_fairness`); upptagna portar och begränsad indata (step
-57G3; OTP-referenstester `executables_busy_ports`, `executables_slow_owner`).
+portuppgifter på schemaläggarens arbetstrådar
+(`runtime/src/scheduler/ports.cpp`; OTP-referenstest
+`executables_port_fairness`); upptagna portar och begränsad indata
+(OTP-referenstester `executables_busy_ports`, `executables_slow_owner`).
 
 ## Identitet
 
@@ -149,8 +149,8 @@ protokoll `prim_inet`/`efile`.
 
 ## I/O-tråd
 
-En I/O-tråd per runtime (`detail::Reactor`, `runtime/src/ports/reactor.hpp`,
-step 57G1) kör en Boost.Asio-`io_context`: en I/O-kompletteringsport (I/O
+En I/O-tråd per runtime (`detail::Reactor`, `runtime/src/ports/reactor.hpp`)
+kör en Boost.Asio-`io_context`: en I/O-kompletteringsport (I/O
 completion port) på Windows, `epoll` på Linux, `kqueue` på macOS. Den första
 porten som behöver den startar den; den betjänar alla sorters portar, så en
 port kostar ingen egen tråd:
@@ -183,7 +183,7 @@ metoder lägger endast upp arbete på I/O-tråden, där allt I/O-tillstånd finn
 
 ## Portuppgifter
 
-Step 57G2. En port schemaläggs som en process: det som I/O-tråden lämnar
+En port schemaläggs som en process: det som I/O-tråden lämnar
 över väntar i porten, och porten väntar i exekutorns portkö tills en
 arbetstråd i schemaläggaren kör dess uppgift.
 
@@ -228,7 +228,7 @@ levererar inget mer.
 
 ## Upptagna portar
 
-Step 57G3. Utdata som en drivrutin köar för I/O-tråden (rör för startade
+Utdata som en drivrutin köar för I/O-tråden (rör för startade
 program) räknas mot portens gränser för upptagenhet, OTP:s
 `busy_limits_port` (standardvärden: hög 8 192 bytes, låg 4 096;
 `{busy_limits_port, {Low, High}}` eller `disabled` som ett alternativ till
@@ -265,7 +265,7 @@ En port begränsar även den indata den håller:
 
 ## Delprocesser
 
-Step 57D. `open_port({spawn, Command}, Options)` och
+`open_port({spawn, Command}, Options)` och
 `open_port({spawn_executable, File}, Options)` startar ett program vars stdin
 och stdout är portens rör:
 
@@ -301,8 +301,6 @@ och stdout är portens rör:
 
 ## Standard-I/O och filer
 
-Step 57E.
-
 - `io:format`, `io:put_chars` och `erlang:display` skriver fortfarande
   direkt till standard-utdata ([io](io.md)). Standard-indata läses av en
   serverprocess i biblioteket, registrerad som `clause_stdin` och startad vid
@@ -316,16 +314,64 @@ Step 57E.
   `{spawn_driver, "clause_file"}`, med `port_control/3`. Dess operationer
   (`ports/file.cpp`: open, read, write, position, read_line, close och
   sökvägsoperationerna read_file, write_file, delete, rename, list_dir,
-  make_dir, del_dir) är synkrona systemanrop på anroparens arbetstråd,
+  make_dir, del_dir och read_file_info, `ports/file_info.cpp`; get_cwd,
+  set_cwd, read_link, read_link_info, make_link och make_symlink,
+  `ports/file_paths.cpp`) är synkrona systemanrop på anroparens arbetstråd,
   utanför exekutorns mutex; deras svar börjar med en statusbyte (0 ok, 1 fel
   och dess POSIX-orsak, 2 filslut). Protokollet är Clauses eget.
 - `file:open/2` returnerar en I/O-servers pid som äger en filport och är
   länkad till den som öppnade (lägena `read`, `write`, `append`, `exclusive`,
   `binary`; andra lägen ignoreras, som OTP ignorerar alternativ den inte
-  använder). `read/2`, `read_line/1`, `write/2`, `position/2` och
+  använder; `write` trunkerar om inte även `append` anges).
+- `file:write_file/3` öppnar med sina lägen plus `binary` och `write`;
+  `file:read_file_info/1,2` returnerar OTP:s `#file_info{}` från sökvägens
+  status (länkar följs), med tider som lokalt eller universellt datum och tid
+  eller POSIX-sekunder (`{time, local | universal | posix}`; `raw` godtas). På
+  Windows är `inode`, `uid` och `gid` 0 och `major_device` är enhetsnumret, så
+  som OTP rapporterar dem.
+  `read/2`, `read_line/1`, `write/2`, `position/2` och
   `io:get_line/2`, `io:get_chars/3` på den är begäranden till den servern;
   efter `close/1` returnerar begäranden `{error, terminated}` och `close/1`
   förblir `ok`.
+- OTP:s I/O-protokoll: standard-indataservern och servern för varje öppen fil
+  besvarar `{io_request, From, ReplyAs, Request}` med
+  `{io_reply, ReplyAs, Reply}`, som `io:request/1,2` och `io:requests/1,2`
+  skickar (`standard_io` och `user` namnger standard-indataservern, en annan
+  atom en registrerad process; `{error, arguments}` när den inte är
+  registrerad, `{error, calling_self}` för anroparen själv). Begäranden:
+  `get_until` (`M:F(Cont, Chars | eof, Extra...)` från `Cont = []`, matad med
+  det som är buffrat eller filblock om 4 KiB tills `{done, Result, Rest}`;
+  `Rest` läses igen av nästa begäran: det behålls i bufferten, eller för en
+  fil flyttas positionen tillbaka över det), `get_line`, `get_chars`,
+  `put_chars` (tecken eller `M:F(A)`), de gamla formerna utan kodning
+  (latin1) och `{requests, List}` (i ordning, stannar vid första
+  `{error, _}`). Tecken är bytes, som ovan; en fil i binärläge returnerar ett
+  listresultat från `get_until` som en binary. Andra får
+  `{error, {request, Request}}`. En `get_until`- eller `put_chars`-funktion
+  som misslyckas får en fils server att svara `{error, Function}` och avsluta
+  med felet, som OTP:s gör; den som öppnade lever vidare (OTP:s filserver är
+  inte länkad till den). Indatabegäranden på standard-indata skriver sin
+  prompt.
+- Kataloger, länkar och kopior: `get_cwd/0` stavar den aktuella katalogen som
+  OTP gör (snedstreck framåt, liten enhetsbokstav), `get_cwd/1` tar en
+  Windows-enhet (`enotsup` på andra system); `set_cwd/1` ändrar den för hela
+  programmet; `read_link/1`, `read_link_all/1` (`einval` för en sökväg som
+  inte är en länk), `read_link_info/1,2` (en slutlig länks egen status: POSIX
+  `lstat`, på Windows målets fält med typen `symlink`), `make_link/2`,
+  `make_symlink/2` (kräver en behörighet på Windows: `eperm`, som OTP),
+  `list_dir_all/1`, `del_dir_r/1`, `copy/2,3` (namn, `{Name, Modes}` eller
+  öppna filer; `{ok, BytesCopied}`), `raw_read_file_info/1`, `read_file/2`,
+  `delete/2`, `native_name_encoding/0` (`utf8`). `del_dir/1` svarar `enoent`
+  för en saknad sökväg och `enotdir` för en fil. `consult/1` och familjen
+  `eval`/`script` förblir stubbar: de behöver OTP:s genererade parser.
+- Beslut om filer: Clauses `file` är fillagret; OTP:s `filelib` och
+  `filename` är vanlig Erlang som körs ovanpå det när ett programs sökväg
+  innehåller OTP:s källkod (`filelib:fold_files/5` behöver `re`);
+  `erl_prim_loader` tillhandahålls ovanpå `file` med OTP:s nakna
+  `error`-svar och en laddningssökväg `["."]` (`set_path/1`), dess laddnings-
+  och arkivfunktioner avböjs fram till step 71; `prim_file` och `prim_buffer`
+  saknas fortfarande, så OTP:s anropare av `raw_file_io*` kommer aldrig in i
+  ett program.
 - Fel följer OTP: `{error, enoent}`, `eexist`, `eisdir` (en katalog som
   öppnas eller läses som en fil), `einval` (en negativ position), `ebadf`
   (läsning av en fil som bara är skrivbar eller skrivning till en som bara är
@@ -384,6 +430,21 @@ Implementation (`runtime/src/ports/sockets.cpp`):
 - Socketportar schemaläggs som andra portar
   ([portuppgifter](#port-tasks)): en sockets meddelanden väntar i dess port
   tills portens uppgift levererar dem.
+- Adresser och värdar: `inet:parse_address/1,2`,
+  `parse_strict_address/1,2`, `parse_ipv4_address/1`,
+  `parse_ipv4strict_address/1`, `parse_ipv6_address/1`,
+  `parse_ipv6strict_address/1` (OTP:s tillåtande former: korta och oktala
+  eller hexadecimala IPv4-fält, `::`, IPv4-svansar, `%scope` för `fe80::` och
+  `ff02::`), `ntoa/1` (OTP:s stavning: hexadecimalt med gemener, den första
+  längsta nollsekvensen som `::`), `is_ipv4_address/1`, `is_ipv6_address/1`,
+  `is_ip_address/1` är Erlang; `gethostname/0` (en socketoperation),
+  `getaddr/2`, `getaddrs/2` (systemets resolver, `getaddrinfo`) och
+  `gethostbyname/1,2` (`h_name` är det efterfrågade namnet, inga alias) svarar
+  genom en socketport som öppnas för förfrågan.
+- Beslutat i 41R: Clauses `gen_tcp`, `gen_udp` och `inet` är nätverkslagret
+  och växer mot OTP:s exportlistor när program behöver det; OTP:s moduler
+  `socket` och `net` (socket-NIF-API:t) saknas, liksom `prim_socket`,
+  `prim_net`, `prim_inet` och `socket_registry`.
 
 ## Tillhandahålls inte
 

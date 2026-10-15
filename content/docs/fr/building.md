@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: 06042fa
-sourceSha256: de3570e747becc95b3596b8c17bf4d8bab1fa83db2aae32da918222afd413e6c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 588e40c653165e5d39e7f284cf3173a4f04d81079cba804e17b7444a1f40662d
+translatedAt: 2026-10-15
 ---
 # Construire le compilateur
 
@@ -82,13 +82,32 @@ développement et en ajoutant `%ProgramFiles%\LLVM\bin` au `PATH` quand
 générateur ou compilateur est reconfiguré à partir de zéro ; définir
 `CLAUSE_TOOLCHAIN=default` pour garder le choix propre de CMake (par exemple
 `cl` de MSVC dans un répertoire séparé). Les valeurs par défaut de compilation
-sont `BUILD_DIR=build/debug`, `BUILD_TYPE=Debug` et le parallélisme de l'outil
-de compilation natif (modifiable avec `JOBS=N`) ; les variables d'environnement
+sont `BUILD_DIR=build/debug` (tests), `TOOL_BUILD_DIR=build/tool` (`make build`,
+`make-build.bat`, `clau.bat`, `run-macos.sh` : tests désactivés, afin de ne
+jamais reconfigurer la compilation de test), `BUILD_TYPE=Debug` et le
+parallélisme de l'outil de compilation natif (modifiable avec `JOBS=N`) ; les variables d'environnement
 `CMAKE`, `CTEST`, `CMAKE_ARGS` et `CLANG_FORMAT` remplacent aussi les
 outils/options correspondants. `make-test.bat` configure avec les tests activés,
 compile toutes les cibles, puis lance CTest, comme `make test`, en propageant les
 échecs de configuration, de compilation ou de test. Le nettoyage supprime les
 répertoires `build/` et `cmake-build*/` locaux au dépôt.
+
+`make benchmark` et `make-benchmark.bat` lancent la comparaison manuelle des
+performances avec l'Erlang/OTP de l'hôte (compilation Release dans
+`build/bench`, jamais incluse dans les tests) ; voir
+[benchmarks](validation.md#benchmarks).
+
+`decompile-debug.bat <module>` et `decompile-release.bat <module>` recompilent
+un source C++ (nom sans chemin ni extension ; ajouter les répertoires parents
+en cas d'ambiguïté, par ex. `ast/attributes`) avec ses options Debug ou Release
+enregistrées et écrivent `<module>.debug.asm` / `<module>.release.asm` dans le
+répertoire courant. Ils enveloppent `tools/asm.py` (compilations clang-cl
+uniquement), qui prend la commande de compilation dans `build/tool`, puis
+`build/debug` (`--build-dir` la remplace). La sortie garde le code et les
+données avec des commentaires de lignes source et des noms démanglés, sans les
+directives d'informations de débogage, de déroulement de pile (unwinding) et de
+table des symboles. `--function TEXT` ne garde que les fonctions dont le nom
+démanglé contient `TEXT`, et `--raw` écrit le listing non filtré.
 
 Les contrôles de qualité et le formatage portent par défaut sur les fichiers
 modifiés : tout ce qui diffère de `HEAD` dans l'arbre de travail, plus les
@@ -153,7 +172,8 @@ un répertoire de compilation sans preset, utiliser
 `build/windows/bin/<Config>/clau.exe` et le runtime dans
 `build/windows/lib/<Config>/clause_runtime.lib`.
 
-Sinon, utiliser `make build` pour ne compiler que `clau` et ses dépendances, ou
+Sinon, utiliser `make build` pour ne compiler que `clau` et ses dépendances
+dans `build/tool`, ou
 `make test` pour compiler et exécuter toute la suite de tests. Pour une autre
 configuration :
 
@@ -169,6 +189,7 @@ par défaut :
 |---------------------------------------------|---------------------------------------------------------------|
 | `-DCLAUSE_BOOST_ROOT=/path/to/boost`    | Choisit une installation de Boost ou un arbre source complet |
 | `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Choisit la dépendance TOML épinglée |
+| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Choisit l'amalgamation SQLite épinglée (cache de compilation) |
 | `-DCLAUSE_OTP_AUDITS=ON` | Active les audits optionnels en direct OTP/de référence ; OFF par défaut |
 | `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | Choisit OTP 29+ pour les audits optionnels ; inutilisé par les tests normaux |
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Choisit un exécutable Clang installé sous Windows |

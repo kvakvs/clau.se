@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 06042fa
-sourceSha256: a6c1ea20b3bdb7055c6080cff72a2a86c4cdce87eb6bd8944ffce5c709e98d66
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 117cb0d9a710183b84c1f3474a4ae07fa185ffa3bdb502b383d297027e183aff
+translatedAt: 2026-10-15
 ---
 # Representación de términos
 
@@ -29,7 +29,9 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   ([raíces](runtime-heap.md#roots-and-safe-points)); no fija el almacenamiento
   del heap. Tras el desmontaje del contexto, el acceso devuelve
   `expired_context`; tras una recolección posterior, `stale_term`. Destruir
-  términos siempre es seguro.
+  términos siempre es seguro. La comprobación de desmontaje lee el testigo de
+  vida del contexto sin bloquearlo: un contexto y sus términos los usa un solo
+  hilo a la vez.
 - La construcción valida los hijos, reserva, inicializa y luego publica en un
   solo paso; un fallo revierte el almacenamiento y los contadores.
 - `Term::from_word(word)` admite solo inmediatos independientes del propietario;
@@ -55,10 +57,31 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
 - Los contenidos provienen de un contador global del proceso del sistema, de
   modo que la palabra de átomo de otro runtime es detectable. Los
   procesos de 32 bits tienen 2^26 identidades en total durante su vida.
+- Admitir una palabra de átomo lee un índice sin bloqueos por número de átomo
+  (los átomos fijos directamente, después bloques de 4.096 entradas publicados
+  una sola vez bajo el bloqueo de internado); los números más allá de 2^24
+  recurren a la tabla con bloqueo.
 - Los `Term` de átomo del anfitrión fijan la grafía y sobreviven al desmontaje
   del runtime. Mover un átomo entre runtimes significa
   internar `atom_utf8()` en el destino.
-- Los booleanos son los átomos `true`/`false`.
+- Los booleanos son los átomos `true`/`false`. Los átomos fijos `false`,
+  `true`, `undefined`, `ok` y `error` (`abi::v1::fixed_atom_spellings`) tienen
+  las palabras de los números de átomo 0–4 en todos los runtimes, se registran
+  junto con el almacenamiento, se encuentran sin el bloqueo y no cuentan ni en
+  `size()` ni para `max_atoms`; el código generado los usa como constantes.
+  Cualquier otra palabra de átomo es privada del runtime.
+- Los literales compuestos de constantes (cadenas, listas y tuplas de
+  inmediatos y otros literales, flotantes, bignums) son celdas del área de
+  literales del módulo, construidas en tiempo de compilación y compartidas
+  ([áreas de literales](runtime-heap.md#areas)); los literales enteros del
+  rango pequeño son inmediatos.
+- Los demás literales átomo se cargan desde la caché de átomos del módulo
+  (`ModuleDescriptor::atom_cache`: la identidad del runtime que la reclama y
+  después una palabra por ranura), que rellena el primer runtime que registra
+  el módulo; un contexto cuyo `FrameState::runtime` coincide con la
+  reclamación la lee sin llamada, cualquier otro llama a `CLAUSE_atom_v3`. La
+  reclamación se devuelve cuando el servidor de código del runtime libera el
+  módulo.
 - El internado y la búsqueda son seguros desde workers concurrentes
   del planificador ([hilos](runtime.md#threads)); una grafía conserva una única
   palabra.
@@ -69,9 +92,15 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   inmediatos; los mayores son celdas inmutables de signo/magnitud. El cero y los
   valores pequeños siempre se normalizan a inmediatos. No hay estrechamiento de
   literales al ancho del anfitrión.
+- En `-O2`, los operandos que la inferencia demuestra pequeños omiten sus
+  comprobaciones de etiqueta, y un rango de resultado demostrado omite también
+  la comprobación de desbordamiento y la ruta alternativa
+  ([demostraciones](specialization.md#proofs)).
 - Los `+`, `-`, `*` generados prueban una vía rápida en línea sobre dos
   inmediatos (cálculo de doble ancho con límites explícitos); si no, llaman al
-  servicio del runtime.
+  servicio del runtime; lo mismo hacen `band`, `bor`, `bxor`, `bsr`, `div`,
+  `rem` y las comparaciones de dos enteros pequeños
+  ([formas en línea](abi.md#runtime-services)).
 - `div` trunca hacia cero; `rem` toma el signo del dividendo; las operaciones
   bit a bit usan complemento a dos infinito; los desplazamientos negativos
   invierten la dirección; los desplazamientos a la derecha enormes se saturan a
@@ -119,11 +148,12 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
 - Tablas inmutables ordenadas por el orden exacto de claves. Las claves
   duplicadas en la construcción conservan el último valor. La construcción
   ordena las claves (O(n log n) comparaciones; las claves ya ascendentes solo se
-  comprueban); las actualizaciones insertan por búsqueda binaria. No hay límite
-  de tamaño ni de trabajo más allá de la memoria, como en OTP; en destinos de 32
-  bits el recuento de palabras de la cabecera limita un map a 2^24 - 1 entradas
-  (`resource_limit`). Las claves enteras y flotantes difieren (también `0.0`
-  frente a `-0.0`, también anidadas).
+  comprueban). Hasta 32 entradas un map es una sola celda del heap y una
+  actualización inserta por búsqueda binaria en una copia; por encima, es un
+  árbol B+ fuera del heap que se actualiza copiando la ruta en O(log n)
+  ([maps fuera del heap](runtime-heap.md#off-heap-maps)). No hay límite de
+  tamaño ni de trabajo más allá de la memoria, como en OTP. Las claves enteras
+  y flotantes difieren (también `0.0` frente a `-0.0`, también anidadas).
 - Las actualizaciones `K := V` requieren la clave; `K => V` inserta o
   reemplaza. Las actualizaciones preparan una tabla nueva y la publican una
   sola vez.
@@ -144,7 +174,28 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   un entero tan ancho como el segmento.
 - La construcción prepara todos los segmentos antes de publicar. Los segmentos
   enteros se truncan; el orden de bytes nativo proviene de la disposición de
-  datos del destino.
+  datos del destino. Un segmento entero de un valor pequeño y un ancho de como
+  máximo 64 bits se escribe desde su palabra de máquina (bytes completos de una
+  vez en un límite de byte); los demás toman la ruta de precisión múltiple. En
+  destinos de 64 bits, el código generado escribe un binary de segmentos
+  enteros de bytes completos y anchos constantes (como máximo 64 bytes)
+  directamente en el bloque del heap como binary en línea cuando todos los
+  valores son enteros pequeños y el heap tiene espacio; si no, lo construye el
+  servicio de bits, que lee los segmentos de enteros pequeños de sus palabras
+  de argumento.
+- Anexiones (como los binaries escribibles de OTP): una construcción que
+  empieza con un binary completo (`<<Acc/binary, ...>>`) construye su resultado
+  en un búfer con espacio libre (el doble de su tamaño, al menos 256 bytes)
+  cuya celda fuera del heap en el proceso creador registra sus bits en uso y su
+  capacidad (cero en todas las demás celdas, copias incluidas). Una anexión
+  posterior cuya vista del acumulador termina exactamente allí escribe los
+  bytes nuevos en el espacio libre, que ninguna vista cubre, y devuelve una
+  vista más larga del mismo búfer: un sub-binary de la propia celda fuera del
+  heap del búfer, que puede ir más allá de los bits de esa celda. El código
+  generado lo hace en línea para segmentos enteros de bytes completos y ancho
+  constante con valores pequeños; cualquier otro acumulador (una vista
+  anterior, la de otro proceso, una no alineada, un búfer lleno) se copia en un
+  nuevo búfer duplicado. Las demás vistas del búfer nunca cambian.
 - Segmentos flotantes: anchos 16/32/64; la construcción puede codificar
   infinito, pero el encaje rechaza campos infinitos/NaN. Los encajes de
   flotantes de ancho cero extraen `0.0`.
@@ -188,8 +239,8 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
 
 ## Pids y referencias
 
-Plan 11 step 42. `self/0` devuelve el pid del proceso que llama, `make_ref/0`
-una referencia nueva; `pid_to_list/1` y `ref_to_list/1` devuelven su texto.
+`self/0` devuelve el pid del proceso que llama, `make_ref/0` una referencia
+nueva; `pid_to_list/1` y `ref_to_list/1` devuelven su texto.
 
 - Un pid es una palabra inmediata (cuatro bits bajos `0x3`) que contiene el
   número del proceso. Los números provienen de una única secuencia global del
@@ -200,7 +251,7 @@ una referencia nueva; `pid_to_list/1` y `ref_to_list/1` devuelven su texto.
   como en OTP. Los destinos de 32 bits tienen 2^28 números por ejecución del
   programa, los de 64 bits 2^60; crear un proceso más allá falla con
   `resource_limit`.
-- Un puerto (plan step 57B) es una palabra inmediata (cuatro bits bajos `0x7`)
+- Un puerto es una palabra inmediata (cuatro bits bajos `0x7`)
   que contiene su número de una secuencia propia que nunca se reutiliza, y se
   admite como un pid; se imprime como `#Port<0.N>` y se ordena entre los funs y
   los pids ([puertos](ports.md#identity)).
@@ -210,6 +261,10 @@ una referencia nueva; `pid_to_list/1` y `ref_to_list/1` devuelven su texto.
   anfitrión, copiada por valor entre procesos. Los números provienen de un
   contador global del proceso del sistema, por lo que cada referencia de una
   ejecución del programa es única.
+- Una referencia de manejador (handle reference; una referencia mágica de OTP)
+  es una celda de referencia que además contiene un búfer fuera del heap; es la
+  misma referencia para todos los servicios y comparte su búfer con todas las
+  copias ([referencias de manejador](runtime-heap.md#handle-references)).
 - La impresión sigue las identidades locales de OTP: un pid como `<0.N.S>` (N
   los 28 bits bajos de su número, S el resto), una referencia como
   `#Ref<0.A.B.C>` (C los 18 bits bajos de su número, B los 32 siguientes, A el
@@ -227,7 +282,9 @@ byte comparan bytes completos de una vez. Orden: números < átomos < referencia
 (los [funs](funs.md#comparison-and-printing) se ordenan entre sí). Los átomos
 se comparan por su grafía UTF-8 (orden de puntos de código); las tuplas por
 aridad y después por campos; los maps por tamaño, luego por claves y luego por
-valores; los bitstrings por sus bits lógicos.
+valores; los bitstrings por sus bits lógicos. Dos enteros pequeños, dos
+flotantes o dos binaries de bytes completos se ordenan directamente a partir
+de sus palabras o celdas (`detail::word_order`), sin admisión de términos.
 
 ## Impresión
 

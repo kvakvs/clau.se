@@ -1,12 +1,12 @@
 ---
 source: docs/io.md
-sourceCommit: 06042fa
-sourceSha256: d2fab91a793f6b40763a4bd16c2c85b45ce198ce2d3b6110aa9cfe117278f20d
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
+translatedAt: 2026-10-15
 ---
 # Saída para a consola (`io`)
 
-Plano 11, step 40 (2026-10-07): `io:format/1,2` e `io:put_chars/1` escrevem
+`io:format/1,2` e `io:put_chars/1` escrevem
 na saída padrão. São builtins do runtime do módulo `io` no catálogo da ponte
 ([builtins](builtins.md)); o runtime implementa as regras de `io_lib_format` e
 `io_lib_pretty` do OTP em C++ ([io_format.cpp](../runtime/src/builtins/io_format.cpp),
@@ -15,6 +15,17 @@ na saída padrão. São builtins do runtime do módulo `io` no catálogo da pont
 ## Chamadas
 
 - `io:format(Format)` equivale a `io:format(Format, [])`. Ambas devolvem `ok`.
+  `io:fwrite/1,2,3` são iguais a `io:format/1,2,3`; `io:nl/0,1` escrevem uma
+  quebra de linha.
+- Dispositivos de `io:format/3`, `io:fwrite/3`, `io:put_chars/2`
+  e `io:nl/1`: `standard_io` e `user` são a saída padrão, `standard_error` é
+  o erro padrão (a saída padrão é despejada primeiro, para que as duas
+  mantenham a sua ordem). Um pid, ou um átomo registado para um, é um servidor
+  de I/O: o texto é-lhe enviado em UTF-8 através de `file:write/2` (um
+  ficheiro aberto do módulo `file` do Clause) e a chamada devolve o que essa
+  devolver. Um átomo não registado é `badarg`, um pid morto
+  `error:terminated`, o próprio chamador `error:calling_self` e qualquer outro
+  termo `function_clause`, como no OTP.
 - `io:put_chars(Chardata)` escreve chardata: carateres Unicode, binaries
   UTF-8 e listas aninhadas terminadas em `[]` ou num binary. Qualquer outra
   coisa (um átomo, um surrogate, UTF-8 inválido, um bitstring) lança `badarg`.

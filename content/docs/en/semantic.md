@@ -24,7 +24,7 @@ macro/include origins, and later inputs are still diagnosed.
 
 ## Behaviours
 
-Plan 11 step 65A, following OTP's
+Following OTP's
 [behaviours](https://www.erlang.org/doc/system/design_principles.html#behaviours),
 `erl_internal:add_predefined_functions` and `erl_lint`'s `check_behaviour`.
 
@@ -64,7 +64,7 @@ Plan 11 step 65A, following OTP's
 
 ## Imports
 
-Plan 11 step 65C, following `erl_lint`'s import rules.
+Following `erl_lint`'s import rules.
 
 - `-import(Module, [F/A, ...])` makes a local call `F(...)` the remote call
   `Module:F(...)`: the module must be in the batch (a library module joins it
@@ -83,7 +83,7 @@ Plan 11 step 65C, following `erl_lint`'s import rules.
 
 ## Predefined functions
 
-Plan 11 step 65B, following OTP's
+Following OTP's
 [modules](https://www.erlang.org/doc/system/modules.html) and
 `erl_internal:add_predefined_functions`. The frontend appends
 `module_info/0,1` to every compiled module (after a generated
@@ -173,7 +173,12 @@ context. Analysis is deterministic.
   (`Function::fun_names`); it is never captured. The variables of
   `fun M:F/A` are reads of the fun expression (`Function::fun_operands`).
 
-Walks are iterative with a module budget of 1,000,000 work units. Exhaustion or
+Walks are iterative with a module budget of 1,000,000 work units, or 32 per
+expression when that is more: generated parsers need about 10 per expression
+(OTP's `erl_parse`, 139,093 expressions, takes 1,290,198). Service resolution
+has a budget of the same size; it scans the module's `-compile` and `-import`
+forms for a name's auto-import state once per name, not once per call (each of
+`erl_parse`'s thousands of clauses calls `hd/1`). Exhaustion or
 any semantic error clears the module's binding and normalization tables.
 
 ## Types and specifications
@@ -210,13 +215,13 @@ Inference is separate from declared types and never trusts specs.
 - Exported inputs, and inputs of functions that `fun F/A` names, are
   arbitrary terms. A function entered only by direct calls of the batch
   (neither exported nor named by a fun) takes the join of its call sites'
-  argument facts as inputs (step 58F, `semantic/types/inference_inputs`),
+  argument facts as inputs (`semantic/types/inference_inputs`),
   matched by each clause's head patterns; recursive calls count too. Inputs
   start at `none()` (a function nothing calls never runs and infers
   `none()`) and grow over passes of the batch: 8 passes join, later ones
   widen like recursive results; inputs that have not settled after 16 passes
   become `term()` (reported as widened).
-- Literals have exact facts (step 58B):
+- Literals have exact facts:
   integers of any size and characters are singletons, atoms singleton atoms,
   floats `float()`, strings nonempty lists of their characters (`[]` for
   `""`), and `-`/`+` of a literal number keep its fact. Tuples keep their
@@ -229,7 +234,7 @@ Inference is separate from declared types and never trusts specs.
   segment by its value's fact or any multiple of its unit
   (`<<1, Rest/binary>>` is `nonempty_binary()`). An operand that never
   produces a value (`none()`) makes the construction `none()`.
-- Operators and builtins (step 58C, `semantic/types/inference_operators`)
+- Operators and builtins (`semantic/types/inference_operators`)
   compute their result from their operands' facts. Integer singletons fold
   exactly up to 4,096 bits per operand and result (bignums included; a larger one is
   `integer()`); other integers use interval arithmetic for `+`, `-`, `*` of
@@ -256,7 +261,7 @@ Inference is separate from declared types and never trusts specs.
   that always raises infers `none()`.
 - Identity/projection functions keep exact argument relations, propagated
   through nested local and remote calls with fresh variables per call.
-- Containers (step 58D, `semantic/types/inference_containers`): a list
+- Containers (`semantic/types/inference_containers`): a list
   `[E1, ..., En | T]` joins its elements in front of the tail's fact (a
   proper list when the tail is one, `nonempty_improper_list(H, T)` when it
   is no list, `nonempty_maybe_improper_list()` when it is unknown or may be
@@ -270,12 +275,12 @@ Inference is separate from declared types and never trusts specs.
   field's index. A list comprehension is a possibly empty list of its
   templates' facts, a binary comprehension any number of copies of its
   template's size, a map comprehension `map()`.
-- Funs (step 58E, `semantic/types/inference_funs`): `fun F/A` is a fun of
+- Funs (`semantic/types/inference_funs`): `fun F/A` is a fun of
   its arity returning the function's inferred result (a builtin's, or with a
   variable arity, `fun()`), `fun M:F/A` one returning `term()`, and an
   anonymous fun one returning its clauses' joined results, captured values
   included. A call of a value joins the results of its funs of that arity
-  that its arguments select (step 58L; `term()` for an unknown fun, `none()`
+  that its arguments select (`term()` for an unknown fun, `none()`
   when no member can be called so).
   An anonymous fun bound whole to a variable and called through it is
   evaluated again for that call with its patterns matching the arguments'
@@ -299,7 +304,7 @@ Inference is separate from declared types and never trusts specs.
   matches, `case` clauses (from the scrutinee), a `try`'s `of` clauses (from
   its body's value) and generators (from their input's elements or map keys
   and values). Unproved values stay `term()` without relations.
-- Narrowing (step 58G, `semantic/types/inference_narrowing`,
+- Narrowing (`semantic/types/inference_narrowing`,
   `inference_scopes`, `meet`): inside a function, `case`, `receive` or fun
   clause, each pattern meets the value it matches (a literal, tuple, list,
   tuple-record, map or bitstring shape; a bound variable's fact), a
@@ -315,7 +320,7 @@ Inference is separate from declared types and never trusts specs.
   range, the bounds of one test accumulating (`10 >= X, X >= 0` is `0..10`);
   two proven integers compared narrow each other by their bounds (`X > Y`
   with `Y` in `0..5` makes `X` at least 1), and `/=`, `=/=` with a constant
-  move a range bound equal to it inward (step 58H1). A value that may be a
+  move a range bound equal to it inward. A value that may be a
   float or another term is not narrowed. A conjunction applies
   each test in turn, a disjunction joins what each alternative proves, `not`
   and false tests prove nothing. A clause after one whose patterns are all
@@ -330,10 +335,10 @@ Inference is separate from declared types and never trusts specs.
   operand; `catch`, the right operand of `orelse` and every clause restore
   the facts from before them. After a `case`, `if`, `receive`, `try` or
   `maybe`, a variable's fact is the join of its facts at the end of each
-  clause that completes (step 58H), so `case X of forever -> ...; N when
+  clause that completes, so `case X of forever -> ...; N when
   is_integer(N), N >= 0 -> ... end` leaves `X` as
   `non_neg_integer() | forever`.
-- `try` and `maybe` (step 58J1): a `try` is the join of its `of` clauses'
+- `try` and `maybe`: a `try` is the join of its `of` clauses'
   values (its body's without `of`) and its catch clauses' values; the
   `after` body adds nothing. `of` clauses start from the facts at the end of
   the body and match its value like `case` clauses (an impossible clause
@@ -350,7 +355,7 @@ Inference is separate from declared types and never trusts specs.
   after a `try` join those at the end of its body (without `of`) and of
   each completing clause; after a `maybe`, those at the end of its body, of
   each completing `else` clause and, without `else`, those before it.
-- Uses (step 58H, `semantic/types/inference_uses`): an operation that raises
+- Uses (`semantic/types/inference_uses`): an operation that raises
   unless an operand has a type proves that type for the variable it read,
   after the operation returns: arithmetic and unary `-`/`+` a `number()`,
   `div`, `rem`, bit operators and `bnot` an `integer()`, `and`/`or`/`xor`,
@@ -367,8 +372,7 @@ Inference is separate from declared types and never trusts specs.
   together.
 - Entry and success domains: each argument's entry domain is the join over
   the possible function clauses of its fact after the head and guard (a
-  plain variable's narrowed fact, else the pattern's); its success domain
-  (step 58H) the join over the clauses that complete of its fact at their
+  plain variable's narrowed fact, else the pattern's); its success domain the join over the clauses that complete of its fact at their
   normal return. `--print-types` shows the success domain as the inputs
   (`bounded(1..10) -> 1..10`, `inc(X) -> X + 1` as
   `inc(number()) -> number()`), or the entry domain of a function that never
@@ -377,7 +381,7 @@ Inference is separate from declared types and never trusts specs.
 - Clause results join conservatively: a projection survives only if every
   clause returns the same argument. A `case` or `if` joins its clause results
   the same way; a binding defined by several of its clauses stays `term()`.
-- Function types (step 58K, `semantic/types/function_types`): beside the
+- Function types (`semantic/types/function_types`): beside the
   union summary above, a function keeps one function type per possible
   clause, like the overloads of a `-spec`: the arguments' facts after the
   head and guard (a plain variable's narrowed fact, else the pattern's) and
@@ -397,7 +401,7 @@ Inference is separate from declared types and never trusts specs.
   their joined results with any inputs (meeting a fun of any inputs, as the
   use `F(A)` does, keeps them). Specialization, domains and specification
   checks read the union summary.
-- Calls select function types (step 58L): a call of a function with
+- Calls select function types: a call of a function with
   function types reads, in order, each type whose inputs every argument fact
   meets, and stops after an exact one (patterns of new variables used once,
   literal atoms and integers, `[]` and tuples of them; no guard or only
@@ -415,7 +419,7 @@ Inference is separate from declared types and never trusts specs.
   and leaves its clauses like a `case`, so a clause its arguments cannot
   match adds nothing (`F = fun(1) -> one; (_) -> other end, F(2)` is
   `other`). Recursive components converge on results and function types.
-- Calls evaluate their callee again (step 58M): when a call's argument facts
+- Calls evaluate their callee again: when a call's argument facts
   are within the callee's inputs and narrower in one, the callee's body is
   evaluated again with them as its inputs, like a bound anonymous fun, and
   the call's result is the selected function types' result met with that
@@ -434,14 +438,30 @@ Inference is separate from declared types and never trusts specs.
   previous one (widens it after the first 8 rounds,
   [inference domain](#inference-domain)), and a pending recursive call adds
   nothing to a join. A function that can never return stays `none()`. A
-  component that has not converged after 8 rounds plus 4 per member widens
-  every member to `term()` (reported as widened, like budget exhaustion) and a
+  component that has not converged after 8 rounds plus 4 per member, or whose
+  rounds have spent more than an eighth of the pass budget, widens every
+  member to `term()` (reported as widened, like budget exhaustion) and a
   final round recomputes the expression facts; earlier rounds' expression
   facts are discarded, so only facts from the final assumptions remain.
+  Such a component is remembered: later passes give its members
+  `term()` at once and run only that final round, instead of iterating to
+  the cap again. The pass that widens every input to `term()` forgets the
+  remembered components, so each gets one more solve with those inputs.
+- Rounds never shrink a member's summary: its function types join
+  with the previous round's type by type (results join, changed inputs join
+  and the type is no longer exact), or, when the number of types changed,
+  both rounds' types merge. As a safety net each member keeps its last 4
+  summaries, and one that returns to any of them is `term()` without
+  function types for the rest of the solve, which lets the other members
+  converge.
+- A round walks only members that read a summary changed since their last
+  walk: each walk notes the summaries it reads (calls, call
+  results, `fun F/A`), a changed summary marks its readers, and a member not
+  marked keeps its expression facts. The first round walks every member, so
+  with every member marked a round is the full round of earlier steps.
 - A shared work budget bounds inference; exhaustion loses precision and falls
   back to generic code, never rejects a program.
-- Specifications that contradict inference are diagnosed (step 58I,
-  `semantic/types/contracts`): a contradicted argument entry domain is an
+- Specifications that contradict inference are diagnosed (  `semantic/types/contracts`): a contradicted argument entry domain is an
   error; a contradicted result, and a call whose argument facts every
   overload rejects, are warnings (the call may sit on a path that never
   runs). Specifications
@@ -466,7 +486,7 @@ Inference is separate from declared types and never trusts specs.
 
 ### Dependent facts
 
-Steps 58N1–58N3 (`semantic/types/dependent`). A `case`, `if` or
+Source: `semantic/types/dependent`. A `case`, `if` or
 `try ... of` behaves like a fun of the variables its clauses narrow, applied
 to them: its value is a dependent fact, one function type per possible
 clause.
@@ -509,7 +529,7 @@ clause.
   variable's own narrowed fact, and the read's fact is the join of their
   values (`Y = case X of 1 -> one; _ -> other end, case X of 1 -> Y end`
   reads `one`).
-- A variable every clause of a `case` or `if` binds (step 58N2) is the join
+- A variable every clause of a `case` or `if` binds is the join
   of its facts at the end of the clauses that complete, dependent on the
   construct's parameters like its value:
   `case X of 1 -> Y = 5; _ -> Y = 6 end, Y` infers `(1) -> 5; (_) -> 6`.
@@ -519,7 +539,7 @@ clause.
   of batch functions (their function types selected as in 58L, the
   arguments not narrowed again) with dependent operands are evaluated once
   per combination of the operands' clauses, with those clauses' values in
-  place of the operands' facts and their inputs met (step 58N2): reads of
+  place of the operands' facts and their inputs met: reads of
   one variable take the same clause, other operands combine, at most 16
   combinations (past that the use is the plain join). `R + 1` with
   `R = case X of a -> 1; b -> 2 end` infers `(a) -> 2; (b) -> 3`.
@@ -542,7 +562,7 @@ clause.
 
 ### Inference domain
 
-Decision of plan 11 step 58A (`semantic/types/lattice`). A fact is a set of
+Source: `semantic/types/lattice`. A fact is a set of
 values a variable or result can have. Facts join where control flow meets
 (clauses, branches) and widen between the rounds of a recursive component;
 every budget below widens soundly to a larger set, never rejects a program.
@@ -559,9 +579,9 @@ Facts print as Erlang types, categories by their built-in names.
 | Numbers | `number()` | A range or category of integers joined with `float()` | Singleton integers with `float()` stay `1 \| float()` |
 | Atoms | `ok`, `error \| ok`, `boolean()` | Union of singletons; exactly `false` and `true` print `boolean()` | More than 8 singletons become `atom()` |
 | Identifiers | `pid()`, `port()`, `reference()` | — | — |
-| Tuples | `{ok, 1}`, `tuple()`, `#point{x :: 0, y :: _}` | Tuples of the same size whose first elements are not two different atoms (their tag) join element by element; others stay separate members | More than 16 elements become `tuple()` unless every element is known; more than 8 separate shapes become `tuple()`. A tuple of a visible tuple record's name and size prints as the record (step 58J) |
-| Lists | `[]`, `[T]`, `[T, ...]`, `nonempty_improper_list(H, T)`, `[1, a]`, `[a, b \| T]` | Elements join; `[]` with a nonempty list gives a possibly empty one; improper lists join heads and tails. Lists of two or more known elements keep their positions (step 58J; a Clause notation, the type language has none, elements printed with `\|` in parentheses): positional lists of one length join position by position, otherwise they join as plain lists | A list of `0..1114111` (`char()`) prints `string()` or `nonempty_string()`; a possibly empty list of `_` prints `list()` |
-| Maps | `#{}`, `#{a := 1}`, `#{1..17 => a}`, `map()` | Maps with the same keys join value by value; maps of other keys join into one association of their joined keys and values (`=>`: any key may be missing, step 58J) | More than 16 keys join into one association |
+| Tuples | `{ok, 1}`, `tuple()`, `#point{x :: 0, y :: _}` | Tuples of the same size whose first elements are not two different atoms (their tag) join element by element; others stay separate members | More than 16 elements become `tuple()` unless every element is known; more than 8 separate shapes become `tuple()`. A tuple of a visible tuple record's name and size prints as the record |
+| Lists | `[]`, `[T]`, `[T, ...]`, `nonempty_improper_list(H, T)`, `[1, a]`, `[a, b \| T]` | Elements join; `[]` with a nonempty list gives a possibly empty one; improper lists join heads and tails. Lists of two or more known elements keep their positions (a Clause notation, the type language has none, elements printed with `\|` in parentheses): positional lists of one length join position by position, otherwise they join as plain lists | A list of `0..1114111` (`char()`) prints `string()` or `nonempty_string()`; a possibly empty list of `_` prints `list()` |
+| Maps | `#{}`, `#{a := 1}`, `#{1..17 => a}`, `map()` | Maps with the same keys join value by value; maps of other keys join into one association of their joined keys and values (`=>`: any key may be missing) | More than 16 keys join into one association |
 | Funs | `fun((term()) -> 1)`, `fun()` | Funs of one arity join their results; other arities give `fun()` | — |
 | Bitstrings | `<<_:16>>`, `<<_:3, _:_*2>>`, `binary()` | The shorter size plus every difference of sizes as a unit | Base and unit 0/8, 8/8, 0/1, 1/1 print `binary()`, `nonempty_binary()`, `bitstring()`, `nonempty_bitstring()` |
 
@@ -570,11 +590,15 @@ Facts print as Erlang types, categories by their built-in names.
   `[]`, lists, bitstrings, then declared named types; more than 8 members
   become `term()`.
 - Containers nest at most 4 levels; a fact deeper inside becomes `term()`.
+- A union drops an exact tuple member that another exact tuple of its size
+  holds (of two that hold each other, the earlier stays), so one set of
+  values has one union; without it, recursions over trees reached
+  the same values in alternating shapes and their rounds never settled.
 - A recursive component joins results for 8 rounds (cycles of up to 8
   functions converge exactly), then widens them. A component that has not
   converged after 4 further rounds per member widens every member to `term()`
   and is reported as widened, like an exhausted budget.
-- Narrowing (plan steps 58G, 58H, `Lattice::meet`) is the meet of facts, the
+- Narrowing (58H, `Lattice::meet`) is the meet of facts, the
   values both hold (or more, but `none()` only when they share none):
   patterns and guards (type tests such as `is_integer/1` narrow their argument
   to the category) narrow within their clause and set a function's entry
@@ -589,6 +613,42 @@ caller-joined arguments and of expressions remove tag, shape and service checks
 those proven reads. Each fallible service result is loaded only on its success
 path, and shape checks dominate extraction. Specialization policy:
 [specialization.md](specialization.md).
+
+### Inference cache
+
+Modules in the directories of the [inference cache](projects.md#inference-cache)
+may start a compile with the results an earlier compile kept: summaries, local inputs and expression facts of their
+functions. `infer` keeps them fixed in every pass, never walks a component
+whose members all reuse them, and walks every other function as usual,
+reading the kept summaries like any other.
+
+- **What a module's facts depend on.** Exported functions and functions a
+  `fun F/A` names start from `term()`; every other function's inputs come from
+  its callers, which are in the same module; a fact names a function of
+  another module only through an atom: a remote call, `fun M:F/A`, or
+  `apply/2,3` on an atom fact (and reads another module's record layout only
+  through a native record it qualifies or imports), and every atom fact comes from an atom the
+  module spells or from a fact of a module it reaches. So a module's facts
+  depend only on its own code and on the code of the batch modules its atoms
+  name, transitively. The key of its kept results covers exactly that:
+  `clau`'s identity, the module's fingerprint (its source, every file it
+  includes, preprocessing options and a parse transform reply), predefined
+  forms, escript and library status, and the same of every batch module its
+  atoms reach. A module reached that way which has no fingerprint makes the
+  module uncacheable.
+- **Liveness.** Export liveness only removes functions, and a removed caller
+  only narrows the inputs of the functions it called: facts computed with more
+  live functions still hold. Kept results are reused when they hold every
+  function live now (`results do not fit` otherwise); functions left out get
+  nothing.
+- **Mixing.** Kept and fresh results may meet in one batch: each module's
+  facts hold for every run of the program, whatever another module's facts
+  say, so a fresh module reading a kept summary (or the reverse) stays sound.
+  A recursive component with both kinds of members is walked whole.
+- **Precision.** Reused results are the ones of the compile that kept them. A
+  fresh module's results may still differ from a compile without the cache:
+  the pass budget no longer pays for reused modules, and graph identities, by
+  which a few union members are ordered, are numbered differently.
 
 ## `--print-types`
 
@@ -686,17 +746,16 @@ sum() -> 1 + 2.
   built-in type is checked to resolve, and its body produces such a value.
   Categories are expected under their built-in names, bounded integer sets as
   ranges. Every function reaches its expected type.
-- `clauses.erl` covers function types (step 58K): type tests and literal
+- `clauses.erl` covers function types: type tests and literal
   patterns per clause, merged equal inputs, a clause callers never enter,
   more clauses than the budget, a recursive function, a single clause, a
   `case` and an `if` ending the body, a nested `case` and a `case` that is
   not last, multi-clause anonymous funs, `fun F/A`, joins of equal and of
-  different funs, and a clause that always raises; and call selection (step
-  58L): a type test, a first exact branch, unknown arguments, no admitted
+  different funs, and a clause that always raises; and call selection: a type test, a first exact branch, unknown arguments, no admitted
   type, narrowing after the call, a literal argument, a range over two
   clauses, nested calls, a local with several callers, a recursive callee,
   and multi-clause funs bound, in a tuple, passed to a local and called with
-  an unknown argument; and evaluation per call (step 58M): per-call
+  an unknown argument; and evaluation per call: per-call
   results, nesting up to and past the depth budget, a callee past the size
   budget, a recursive callee and unknown arguments.
 

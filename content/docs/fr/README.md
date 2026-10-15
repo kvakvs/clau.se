@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: 06042fa
-sourceSha256: f48733b2827bbf09b77162c249d6b913411b1f3a60e76cf52b281ba68666f65b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 42d519fef371b8ba151942ea3a92a7ab67b3f1f6aaae2cf1f40c9cc18b5df542
+translatedAt: 2026-10-15
 ---
 # Documentation de Clause
 
@@ -17,6 +17,9 @@ l'historique des étapes se trouvent dans `.agents/`.
 | Projets TOML et sélection de la cible | [projects.md](projects.md) |
 | CLI du compilateur, artefacts, SDK LLVM, exemple | [compile.md](compile.md) |
 | Point d'entrée des exécutables, arguments, code de sortie, flux de sortie, édition de liens | [executables.md](executables.md) |
+| Informations de débogage (`-g`), débogueurs et pile d'appels Erlang | [debugging.md](debugging.md) |
+| Profilage optionnel (`--profile FILE`) : entrées et temps propre par fonction et par processus | [profiling.md](profiling.md) |
+| Parse transforms : chargeur OTP de l'hôte, échange au format abstrait, recherche des transformations | [transforms.md](transforms.md) |
 | Analyse sémantique, types, inférence, liaisons | [semantic.md](semantic.md) |
 | Politique de spécialisation par type | [specialization.md](specialization.md) |
 | ABI du code généré : termes, symboles, enregistrement, échecs, racines | [abi.md](abi.md) |

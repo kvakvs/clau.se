@@ -1,17 +1,16 @@
 ---
 source: docs/processes.md
-sourceCommit: 06042fa
-sourceSha256: 9add4b7c491f5fe2b819ab08fada089a098afd08cd71b803a8c87cab16f57892
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 44df8f9eb19f91eec3e5363c50556ce2b7dbcbee643890fa7ddf4afaefb055c9
+translatedAt: 2026-10-15
 ---
 # Processer
 
-Plan 11 step 43 (2026-10-08): startade processer på en kooperativ exekutor;
-step 44: exitorsaker och felrapporter; step 45: sändning av meddelanden;
-step 46: selektiv receive; step 47: tidsgränser för receive; step 48: länkar
-och exitsignaler; step 49: monitorer; step 50: registrerade namn; step 53:
-portar (inga); step 56: schemaläggarens arbetstrådar; step 57: väckningar
-mellan arbetstrådar och nedstängning.
+Startade processer på en kooperativ exekutor;
+exitorsaker och felrapporter; sändning av meddelanden; selektiv receive;
+tidsgränser för receive; länkar och exitsignaler; monitorer; registrerade
+namn; portar (inga); schemaläggarens arbetstrådar; väckningar mellan
+arbetstrådar och nedstängning.
 
 ## Exekutor
 
@@ -20,10 +19,10 @@ En runtime kör sina processer på sina schemaläggares arbetstrådar
 uppstart görs anropet av ingångsfunktionen till den första processen,
 huvudprocessen, och exekutorn körs tills den avslutas:
 
-- Körbara processer väntar i en enda först in, först ut-kö. En arbetstråd
-  kör den första under en tidsskiva på 4 000 reduktioner (OTP:s
-  `CONTEXT_REDS`) och lägger sedan tillbaka den sist i kön, om den inte har
-  avslutats.
+- Körbara processer väntar i sin arbetstråds först in, först ut-kö
+  ([arbetstrådar](#workers)). En arbetstråd kör den första under en tidsskiva
+  på 4 000 reduktioner (OTP:s `CONTEXT_REDS`) och lägger sedan tillbaka den
+  sist i sin kö, om den inte har avslutats.
 - Varje funktionsingång förbrukar en reduktion: anrop, svansanrop, fun- och
   dynamiska anrop samt inbyggda funktioner. När inga reduktioner återstår
   sker ingången inte: processen registrerar funktionen den var på väg in i,
@@ -61,36 +60,52 @@ huvudprocessen, och exekutorn körs tills den avslutas:
 
 ## Arbetstrådar
 
-Plan step 56 (2026-10-08). Exekutorn kör processer på
+Exekutorn kör processer på
 `RuntimeOptions::schedulers` arbetstrådar: tråden som startade programmet och
 ytterligare en tråd per extra arbetstråd. Program tar antalet från
 `--schedulers N` (1 till 1 024,
 [runtime-alternativ](executables.md#runtime-options)); standardvärdet är en
 arbetstråd per logisk processor, som OTP:s `+S`.
 
-- Varje arbetstråd tar den första processen ur den enda delade kön (det
-  dokumenterade alternativet till köer per arbetstråd med arbetsstöld (work
-  stealing): en kö behåller OTP:s först in, först ut-ordning och behöver
-  ingen stöld). Lediga arbetstrådar sover tills en process köas eller den
-  tidigaste tidsgränsen för receive löper ut.
+- Varje arbetstråd har sin egen körkö, liksom varje ERTS-schemaläggare: en
+  process stannar hos den arbetstråd den senast kördes på, så att dess heap
+  stannar i den kärnans cacheminnen. En startad process börjar på sin förälders
+  arbetstråd. Lediga arbetstrådar sover tills en process köas åt dem eller det
+  finns arbete att stjäla; timertråden köar processer vars tidsgräns för
+  receive löper ut ([tidsgränser för receive](#receive-timeouts)).
+- Processer migrerar som i ERTS, som balanserar sina körköer periodiskt:
+  var fjärde tidsskiva jämför en arbetstråd sin kö med grannens och tar en
+  process från den när grannen har minst två fler. En arbetstråd med tom kö
+  stjäl en process från den längsta kön som har minst två, eller den enda
+  processen hos en sovande arbetstråd, som den kör innan den arbetstråden
+  vaknar.
+- Väckningar är lata, liksom ERTS håller processer som pratar med varandra på
+  en schemaläggare: en körande process som väcker en process hos en sovande,
+  tom arbetstråd köar den på sin egen arbetstråd, som tar den när dess
+  tidsskiva tar slut; en annan arbetstråd väcks endast när en kö då har mer än
+  en process. Timer- och I/O-trådarna, portuppgifter och arbetstrådar mellan
+  tidsskivor köar en process åt dess egen arbetstråd, eller åt en ledig
+  arbetstråd när dess egen är upptagen.
 - En exekutormutex skyddar kön, de väntande processerna, timrarna, de
   registrerade namnen, varje process länkar och monitorer samt varje process
   som inte körs. En körande process heap, stack, brevlåda och felkanal
   tillhör enbart dess arbetstråd; Erlang-kod körs utan låset.
 - Länkar, monitorer och namn ändras under låset direkt, även för en process
-  som körs någon annanstans. En sändning, eller en exitsignal från `exit/2`
-  eller `exit_signal/2`, till en process som körs på en annan arbetstråd kan
-  inte röra dess heap: den inbyggda funktionen gör ingenting och dess process
-  avslutar sin tidsskiva (`builtins::Blocked`); den väntar tills målets
-  tidsskiva tar slut, körs sedan först och upprepar den inbyggda funktionen
-  med samma argument. Målet hålls kvar till dess, så att den upprepade
-  inbyggda funktionen inte kan hitta det körande igen. En process som
-  avslutas med länkar eller monitorer vars processer körs någon annanstans
-  slutförs på samma sätt när deras tidsskivor tar slut.
-- Därför får meddelanden och exitsignaler fortfarande verkan när de skickas:
-  en sändning returnerar efter att meddelandet ligger i mottagarens brevlåda,
-  och `is_process_alive/1` efter `exit(Pid, kill)` är false, som OTP utlovar
-  för signaler från anroparen.
+  som körs någon annanstans. Ett meddelande till en process som körs på en
+  annan arbetstråd kan inte läggas i dess heap än: det kopieras till en egen
+  buffert och levereras, efter tidigare buffrade, när mottagarens tidsskiva
+  tar slut. En exitsignal från `exit/2` eller `exit_signal/2` till en sådan
+  process gör ingenting och dess process avslutar sin tidsskiva
+  (`builtins::Blocked`); den väntar tills målets tidsskiva tar slut, körs
+  sedan först och upprepar den inbyggda funktionen med samma argument. Målet
+  hålls kvar till dess, så att den upprepade inbyggda funktionen inte kan
+  hitta det körande igen. En process som avslutas med länkar eller monitorer
+  vars processer körs någon annanstans slutförs på samma sätt när deras
+  tidsskivor tar slut.
+- Därför behåller signaler sin ordning: ett meddelande som buffrats före en
+  blockerad exitsignal från samma avsändare når mottagaren först, och
+  `is_process_alive/1` efter `exit(Pid, kill)` är false, som OTP utlovar för
+  signaler från anroparen.
 - En spawn länkar eller övervakar den nya processen (`spawn_link`,
   `spawn_monitor`) innan någon arbetstråd kan köra den. En startad process kan
   köras innan dess förälder fortsätter, så ett program som övervakar eller
@@ -105,7 +120,7 @@ arbetstråd per logisk processor, som OTP:s `+S`.
   sker. Varje anrop av `io:format` och `erlang:display` skriver sin text
   direkt.
 
-Väckningar och nedstängning (plan step 57) behöver ingen ytterligare
+Väckningar och nedstängning behöver ingen ytterligare
 mekanism, eftersom varje ändring av en process schemaläggningstillstånd sker
 under exekutorns mutex:
 
@@ -115,10 +130,9 @@ under exekutorns mutex:
   få något meddelande då (dess avsändare väntar på att tidsskivan ska ta
   slut), så leveransen hittar den alltid parkerad.
 - En arbetstråd som inte hittar någon körbar process sover tills en annan
-  arbetstråd köar en, den tidigaste tidsgränsen för receive, eller programmets
-  slut; att parkera en process med en tidsgräns väcker varje ledig arbetstråd
-  så att de väntar på den nya tidsfristen. Upptagna arbetstrådar kontrollerar
-  timrarna före varje tidsskiva.
+  arbetstråd, en sändning eller timertråden köar en, eller programmet
+  avslutas. Arbetstrådar läser aldrig klockan för timrar; att parkera en
+  process med en tidsgräns tidigare än alla andra väcker endast timertråden.
 - Ett meddelande och en tidsgräns som löper ut för samma receive kan
   kapplöpa: det som kommer först köar processen och avbryter det andra, och
   receive tar ett meddelande som anlände innan den återupptogs, som OTP:s
@@ -136,6 +150,39 @@ under exekutorns mutex:
   processer som avslutas medan deras bevakare vaknar, ett program som
   avslutas medan processer snurrar, väntar och översvämmar varandra, samt en
   halt i en annan process.
+
+### Tidsgränser för receive
+
+Plan step 62B ersatte step 47:s ordnade map av tidsfrister, som lästes före
+varje tidsskiva, med ett hierarkiskt hashat timerhjul, så som ERTS håller sina
+timrar (`scheduler/timer_wheel`):
+
+- Tick är millisekunder sedan exekutorn startade. Sex nivåer med 64 platser
+  täcker 2^36 tick, mer än den längsta tidsgränsen (4 294 967 295 ms). En timer
+  ligger på platsen för den högsta 6-bitarssiffra där dess tick skiljer sig
+  från hjulets aktuella tick; upptagna platser är bitmappar per nivå.
+- Att aktivera (en väntande process parkeras) och avbryta (ett meddelande, en
+  exitsignal eller processens slut kommer först) länkar ur eller in en
+  intrusiv listnod som hålls tillsammans med processens
+  schemaläggningstillstånd: konstant tid. En tidsfrist blir tick vid eller
+  efter den, så ingen tidsgräns utlöses för tidigt.
+- En timertråd per körning sover till nästa upptagna plats (den första
+  upptagna platsen efter den aktuella på någon nivå), läser klockan en gång
+  när den vaknar och flyttar fram hjulet till det ticket: platser på högre
+  nivåer som nås vid sin början flyttar ned sina timrar, och platsen på nivå 0
+  utlöses. Endast platser vars tid har kommit konsulteras; väntande processer
+  genomsöks aldrig. Processer som löpt ut köas i tickordning.
+- Hjulet delas av arbetstrådarna under exekutorns mutex. `after 0` väntar
+  aldrig och `infinity` aktiverar aldrig en timer, som tidigare.
+- Mätt på referenstestet `wakeups`: 64 klockavläsningar för 2 046 tidsskivor
+  (68 för 1 745 med en arbetstråd), där den gamla exekutorn läste klockan före
+  varje tidsskiva; `--profile` rapporterar båda antalen
+  ([profilering](profiling.md)). Timrar utlöses fortfarande bara så exakt som
+  värdens tidsbegränsade väntan (på Windows standardupplösningen för timrar).
+- `runtime_timer_wheel` aktiverar 20 000 timrar över alla nivåer, avbryter 90 %
+  och flyttar fram i ojämna steg: varje kvarvarande timer utlöses en gång, i
+  den första framflyttning som når dess tick, i tickordning; ingen avbruten
+  utlöses.
 
 ## Avslut
 
@@ -169,7 +216,7 @@ Huvudprocessen skriver ingen: dess ofångade undantag är programmets
 
 ## Meddelanden
 
-`Dest ! Msg` och `erlang:send(Dest, Msg)` (plan step 45) evaluerar `Dest`
+`Dest ! Msg` och `erlang:send(Dest, Msg)` evaluerar `Dest`
 först och returnerar `Msg`.
 
 | `Dest` | Effekt |
@@ -195,7 +242,7 @@ först och returnerar `Msg`.
 
 ## Receive
 
-`receive` (plan steps 46–47) väljer bland sina klausuler som `case`, över
+`receive` väljer bland sina klausuler som `case`, över
 meddelandena i brevlådan:
 
 - Genomsökningen av brevlådan börjar vid det äldsta meddelandet. Varje
@@ -217,8 +264,9 @@ meddelandena i brevlådan:
   konstant stack.
 - `after T -> Body`: `T` evalueras först, före genomsökningen. När receive
   skulle vänta måste `T` vara `infinity` eller ett heltal i
-  0..4294967295 (millisekunder), annars `error:timeout_value`; ett
-  meddelande som matchar direkt kontrollerar det aldrig, som i OTP.
+  0..4294967295 (millisekunder), annars `error:timeout_value`, varefter nästa
+  receive söker från det äldsta meddelandet; ett meddelande som matchar
+  direkt kontrollerar det aldrig, som i OTP.
   `after 0` kör `Body` så snart varje meddelande har undersökts. En ändlig
   tidsgräns startar när receive först väntar och startas inte om av
   meddelanden som inte matchar någon klausul; när den löper ut körs `Body`
@@ -231,10 +279,10 @@ meddelandena i brevlådan:
   omatchat (`skip`) och loopar; när inga meddelanden återstår går loopen in i
   väntan med tidsgränsen, som svarar `true` (sök igen) eller `false`
   (tidsgränsen löpte ut: `restart`, sedan `after`-kroppen).
-- Exekutorn har en timer per väntande process med en ändlig tidsgräns: en
-  timer som löpt ut lägger tillbaka processen i kön, och när ingen process
-  kan köras sover exekutorn tills den tidigaste timern. Tidsgränser mäts med
-  en monoton klocka i millisekunder och utlöses aldrig för tidigt.
+- Exekutorn har en timer per väntande process med en ändlig tidsgräns i ett
+  timerhjul ([nedan](#receive-timeouts)): en timer som löpt ut lägger
+  tillbaka processen i kön. Tidsgränser mäts med en monoton klocka i
+  millisekunder och utlöses aldrig för tidigt.
 - När varje process väntar utan tidsgräns på ett meddelande som ingenting kan
   skicka, väntar programmet för evigt, som OTP:s gör. Ett värdanrop
   (`CLAUSE_invoke_v1`) som skulle vänta misslyckas i stället med `busy`:
@@ -242,7 +290,7 @@ meddelandena i brevlådan:
 
 ## Länkar
 
-Plan step 48. En länk förbinder två processer i båda riktningarna (`Signals`
+En länk förbinder två processer i båda riktningarna (`Signals`
 i varje kontext: de länkade pid:arna i länkordning och flaggan `trap_exit`).
 
 - `link(Pid)` länkar anroparen till en levande process och returnerar
@@ -259,7 +307,7 @@ i varje kontext: de länkade pid:arna i länkordning och flaggan `trap_exit`).
 
 ## Monitorer
 
-Plan step 49. En monitor är enkelriktad: den övervakande processen håller
+En monitor är enkelriktad: den övervakande processen håller
 den (via referens, i `Signals`) och den övervakade processen behåller
 referensen och den övervakande pid:en, så att den kan skicka meddelandet när
 den avslutas.
@@ -289,7 +337,7 @@ den avslutas.
 
 ## Registrerade namn
 
-Plan step 50. Exekutorn har en tabell från namn (atomer) till pid:ar, och
+Exekutorn har en tabell från namn (atomer) till pid:ar, och
 varje process sitt eget namn (`Signals::name`).
 
 - `register(Name, Pid)` namnger en levande process: `badarg` för `undefined`,
@@ -302,6 +350,119 @@ varje process sitt eget namn (`Signals::name`).
 - En process namn frigörs när den avslutas, innan dess länkar och monitorer
   signaleras, så att en mottagare av `'DOWN'` eller `'EXIT'` kan registrera
   namnet igen, som i OTP.
+
+## Processlexikon
+
+`put/2`, `get/0,1`, `get_keys/0,1` och `erase/0,1` beter sig som OTP:s:
+`put/2` och `erase/1` returnerar det tidigare värdet eller `undefined`,
+`erase/0` returnerar varje `{Key, Value}` och tömmer lexikonet, nycklar
+matchas med exakt likhet (`1` och `1.0` är två nycklar).
+
+- Varje process har sitt eget lexikon; en startad process börjar tom.
+- Poster är ord på processens heap som hålls i `ProcessDictionary`
+  ([process_dictionary.hpp](../runtime/include/process_dictionary.hpp)) och
+  besöks som rötter för skräpsamlingen ([rötter](runtime-heap.md#roots-and-safe-points));
+  de frigörs med processen.
+- Ordningen för `get/0` och `get_keys/0,1` är ospecificerad, som i OTP.
+  Uppslagning söker linjärt igenom posterna; omedelbara nycklar jämförs per
+  ord. `put/2`, `get/1` och `erase/1` tar och returnerar postorden som de är,
+  utan att godta någon term.
+
+## Timrar
+
+Källa: `builtins/erlang/timers.cpp`, `scheduler/timers.cpp`. `start_timer/3,4`
+och `send_after/3,4` aktiverar en timer i exekutorns hjul (det som
+[tidsgränser för receive](#receive-timeouts) använder) som skickar `Msg`, eller
+`{timeout, TimerRef, Msg}`, till en pid eller ett registrerat namn när den
+utlöses.
+
+- Meddelandet kopieras när timern startar till en `MessageBuffer`
+  ([meddelandebuffertar](runtime-heap.md#message-buffers)), ett eget heapblock
+  för timern, och kopieras igen till mottagarens heap när den utlöses, så som
+  en sändning kopierar: vilken term som helst, även lokala funs, färdas
+  oförändrad.
+- En mottagare som körs på en arbetstråd får meddelandet när dess tidsskiva
+  tar slut. Ett registrerat namn slås upp när timern utlöses; ett namn som
+  ingen har, eller en pid för en avslutad process, gör att meddelandet
+  kastas. Timrar som skickas till en pid frigörs när den processen avslutas.
+- Tid är relativa millisekunder i 0..2^49-1, eller med `{abs, true}` en
+  absolut `erlang:monotonic_time(millisecond)`; allt annat ger `badarg`. En
+  tidsfrist bortom hjulets räckvidd aktiveras igen när den platsen kommer.
+- `cancel_timer/1,2` och `read_timer/1,2` returnerar återstående millisekunder
+  eller `false`; `{async, true}` returnerar `ok` och skickar
+  `{cancel_timer, Ref, Left}` (`{read_timer, ...}`), `{info, false}`
+  returnerar `ok` utan resultat.
+
+## Introspektion
+
+Källa: `builtins/erlang/introspection.cpp`, `scheduler/introspection.cpp`.
+`process_info/1,2` läser en annan process under exekutorns lås och kopierar
+dess termer (meddelanden, lexikon) till anroparens heap; en process som körs
+på en annan arbetstråd läses när dess tidsskiva tar slut. En pid utan levande
+process ger `undefined`.
+
+- Poster: `registered_name` (`[]` ensam när processen inte är registrerad),
+  `status` (`running`, `runnable`, `waiting`), `message_queue_len`,
+  `messages`, `links`, `monitors`, `monitored_by`, `dictionary`, `trap_exit`,
+  `group_leader`, `heap_size`, `total_heap_size`, `stack_size`, `memory`
+  (ord för heapen, dess fragment och binärer utanför heapen, samt stacken),
+  `reductions` (0), `priority` (`normal`), `error_handler`,
+  `garbage_collection`. `process_info/1` listar dem från `status` till
+  `garbage_collection`.
+- OTP-poster som Clause inte håller (`current_function`, `initial_call`,
+  `current_stacktrace`, ...) ger `error:{notsup, Item}`; okända poster ger
+  `badarg`.
+- `processes/0` listar levande pids i skapandeordning. En startad process
+  ärver sin förälders group leader; den första processen leder sig själv.
+  `group_leader/2` för en pid utan levande process ger `badarg`.
+- `garbage_collect/0,1,2` begär en skräpsamling vid målets nästa safepoint och
+  returnerar `true` (`false` när ingen levande process finns); med
+  `{async, RequestId}` returnerar den `async` och skickar
+  `{garbage_collect, RequestId, Result}`. `yield/0` avslutar tidsskivan vid
+  nästa funktionsingång.
+
+## Spawn-alternativ
+
+Källa: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
+
+- `spawn_opt/2..5` tar `link`, `monitor`, `{monitor, MonitorOptions}` och
+  inställningsalternativen `{priority, P}`, `{fullsweep_after, N}`,
+  `{min_heap_size, N}`, `{min_bin_vheap_size, N}`, `{max_heap_size, S}`,
+  `{message_queue_data, M}`, `{async_dist, B}`; inställningsalternativ
+  kontrolleras och godtas, men tillämpas inte. En annan nod än
+  `nonode@nohost` ger `badarg`.
+- `spawn_request/1..5` startar direkt och skickar `{Tag, ReqId, ok, Pid}`
+  (`{Tag, ReqId, error, Reason}` vid fel, `badopt` för ett ogiltigt
+  alternativ) så som `{reply_tag, Tag}` och
+  `{reply, yes | no | error_only | success_only}` begär; med `monitor` är
+  begärans id monitorreferensen. `spawn_request_abandon/1` returnerar
+  `false`: svaret är redan skickat.
+- `hibernate(M, F, A)` väntar tills brevlådan innehåller ett meddelande och
+  anropar sedan `M:F(A...)` i stället för anropet; stacken behålls, så
+  resultatet returneras till anroparen.
+
+## Alias
+
+Ett alias är en referens som meddelanden kan skickas till (`Alias ! Msg`):
+`alias/0,1` (`explicit_unalias`, eller `reply` för ett meddelande), eller en
+monitor skapad med `{alias, explicit_unalias | demonitor | reply_demonitor}`
+till `monitor/3` (`demonitor` upphör med monitorn, `reply_demonitor` avslutar
+också monitorn vid dess första meddelande). `unalias/1` avslutar ett alias hos
+anroparen. En sändning till en referens som inte är ett aktivt alias, eller
+vars ägare har avslutats, kastas. Ett svarsalias förbrukas först när dess
+meddelande levereras, efter eventuell väntan på en upptagen ägare.
+`{tag, Tag}` till `monitor/3` ersätter `'DOWN'` i monitormeddelandet;
+portmonitorer tar inga alternativ.
+
+## Noder
+
+Källa: `builtins/erlang/node.cpp`. Ett Clause-program är en nod som inte är
+distribuerad, `nonode@nohost`, och svarar som en sådan OTP-nod: `nodes/0` är
+`[]`, `nodes(this | known)` `[nonode@nohost]`, andra typer `[]`; `nodes/2`
+ger `{nonode@nohost, #{connection_id => undefined,
+node_type => this}}` för de efterfrågade nycklarna. `is_alive/0` är `false`,
+`monitor_node/2,3` ger `error:notalive` och `disconnect_node/1` returnerar
+`ignored`.
 
 ## Exitsignaler
 
@@ -339,7 +500,7 @@ kedja avslutas process för process utan rekursion.
 
 ## Portar
 
-Portar (plan steps 57A–57F) specificeras i [portar](ports.md): en port är
+Portar specificeras i [portar](ports.md): en port är
 länkad till den som öppnade den, deltar i länkar, monitorer, exitsignaler
 och registrerade namn som en process och kommunicerar med sin anslutna
 process via meddelanden. Step 57B tillhandahåller identiteter, porttabellen,

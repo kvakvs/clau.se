@@ -1,12 +1,12 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 06042fa
-sourceSha256: 4496f092872f90d6a3fb46c26f67950a76fa663502d4f2c80d8be45d55c8a599
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
+translatedAt: 2026-10-15
 ---
 # Modelo de execução: frames e continuações
 
-Decisão do plano 11, step 17 (2026-10-05). Define a forma como as funções
+Define a forma como as funções
 Erlang geradas chamam, retornam, se suspendem e falham, a partir do momento em
 que chegam a recursão, as chamadas de cauda e os processos. O step 19 implementou as
 chamadas, os retornos, as chamadas de cauda e os frames
@@ -91,8 +91,8 @@ capturada.
   `resume_at` e regressa ao escalonador em vez de fazer push de um frame; os
   argumentos ficam em `x[0..arity)`, que passam a ser os únicos registos do
   processo a enraizar. Retomar repõe o orçamento e transfere para
-  `resume_at`, que repete a entrada. As esperas posteriores (`receive`,
-  step 46) guardam um índice de continuação do corpo em vez de uma entrada.
+  `resume_at`, que repete a entrada. As esperas posteriores (`receive`)
+  guardam um índice de continuação do corpo em vez de uma entrada.
 - **Saída.** Retornar para o frame de fundo regista uma saída normal;
   desenrolar até ele regista uma exceção não capturada. Em ambos os casos, o
   código regressa ao escalonador.
@@ -186,10 +186,35 @@ O step 19 (2026-10-05) implementa o modelo com estas escolhas e lacunas:
   tipos e os pontos de teste trabalham sobre a forma nativa; o backend executa
   `lower_frames` antes da inspeção do IR e `optimize` executa-o se ainda for
   necessário.
-- **Entrada e corpo.** Não existe uma função de entrada separada: o chamador
-  chama `CLAUSE_enter_v1(context, callee.frame)`, que faz push do frame,
-  copia os argumentos e devolve o corpo da função chamada. Uma chamada de cauda usa
-  `CLAUSE_tail_v1`, que primeiro liberta o frame do chamador.
+- **Entrada e corpo.** Não existe uma função de entrada separada. A tabela de
+  estado do processo acima é `abi::v1::FrameState`, no início de cada
+  contexto, pelo que o código gerado faz as transferências inline (revisão 9
+  da ABI): uma entrada gasta uma redução, faz push do frame zerado, copia os
+  argumentos dos registos e transfere para o corpo da função chamada; uma
+  entrada de cauda reutiliza primeiro o lugar do chamador; um retorno faz pop
+  e transfere para o corpo do chamador. Cada caminho recorre a
+  `CLAUSE_enter_v1`, `CLAUSE_tail_v1` ou `CLAUSE_return_v1` quando o heap
+  pede uma recolha, o processo está em perfilagem, não resta nenhuma redução,
+  a pilha tem de crescer ou atinge o seu limite, ou a função chamada é um
+  builtin. A verificação de falha após uma chamada lê a palavra `failed` do
+  estado. Uma chamada de cauda a si própria mantém o seu frame onde está:
+  gasta uma redução, repõe as palavras de retoma e de handler do frame e a
+  contagem de vivos e copia os argumentos para além dos registos, sem
+  reescrever o cabeçalho nem zerar os slots (cada um contém zero ou uma
+  palavra de termo que as recolhas reescrevem, e o corpo escreve um slot antes
+  de o ler).
+- **Parâmetros em registos** (revisão 10 da ABI). O código é
+  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: cada transferência
+  passa os três primeiros registos X como parâmetros C, pelo que os primeiros
+  argumentos de uma chamada e o resultado de um retorno ficam em registos da
+  máquina. Um corpo lê os seus primeiros argumentos dos parâmetros quando
+  começa e o resultado da chamada de `x0` quando é retomado; `lower_frames`
+  só faz spill de qualquer deles para um slot quando está vivo através de uma
+  chamada ou de um safepoint. Os caminhos de serviço guardam os parâmetros no
+  array de registos antes do serviço e recarregam-nos depois. Com todos os
+  corpos a partilhar um único protótipo, o LLVM transforma num ciclo uma
+  chamada de cauda a si própria cujo push inline conduz de volta ao mesmo
+  corpo.
 - **Posições de cauda** são a última expressão do corpo de uma cláusula,
   seguida através de blocos, parênteses e corpos de cláusulas `case` e `if`.
   As chamadas em operandos de `catch`, `try`, `maybe` e `andalso`/`orelse` não
@@ -202,18 +227,19 @@ O step 19 (2026-10-05) implementa o modelo com estas escolhas e lacunas:
   corpo. Os seus cursores e o acumulador residem em slots de termos, pelo que
   nenhum valor SSA é transportado à volta de um ciclo e um ponto de retoma
   dentro dele não precisa de nada além dos spills habituais.
-- **Yields** (step 43, [processos](processes.md)). `CLAUSE_enter_v1` e
-  `CLAUSE_tail_v1` gastam uma das reduções do processo; quando não resta
-  nenhuma, registam a função em que se entrou (`ProcessStack::resume_`, o
+- **Yields** ([processos](processes.md)). Cada entrada, inline ou
+  através de `CLAUSE_enter_v1` e `CLAUSE_tail_v1`, gasta uma das reduções do
+  processo; quando não resta nenhuma, os serviços assumem o controlo:
+  registam a função em que se entrou (`ProcessStack::resume_`, o
   `resume_at` do modelo), mantêm os seus argumentos como raízes de registos e
   devolvem código que termina a fatia de tempo, pelo que a pilha nativa se
   desenrola até ao executor, que mais tarde repete a entrada. As cabeças de
   ciclo não fazem yield. O recoletor enumera os slots de termos dos frames, os
   registos que uma suspensão mantém vivos (`ProcessStack::keep_registers`) e o
-  canal de falhas (step 23, [raízes](runtime-heap.md#roots-and-safe-points)).
+  canal de falhas ([raízes](runtime-heap.md#roots-and-safe-points)).
   As entradas de funções e as cabeças de ciclo das comprehensions são
-  safepoints que fazem a recolha quando o heap o pede (step 26,
-  [recolha no código gerado](runtime-heap.md#collection-in-generated-code));
+  safepoints que fazem a recolha quando o heap o pede
+  ([recolha no código gerado](runtime-heap.md#collection-in-generated-code));
   os slots de spill em bruto nunca contêm termos.
 - **Sem limite.** A pilha cresce até o sistema anfitrião recusar memória, o
   que falha com `out_of_memory` (código de saída 70,

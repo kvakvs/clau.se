@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: 06042fa
-sourceSha256: f48733b2827bbf09b77162c249d6b913411b1f3a60e76cf52b281ba68666f65b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 42d519fef371b8ba151942ea3a92a7ab67b3f1f6aaae2cf1f40c9cc18b5df542
+translatedAt: 2026-10-15
 ---
 # Documentación de Clause
 
@@ -17,6 +17,9 @@ pasos se encuentran en `.agents/`.
 | Proyectos TOML y selección de objetivos | [projects.md](projects.md) |
 | CLI del compilador, artefactos, SDK de LLVM, ejemplo | [compile.md](compile.md) |
 | Punto de entrada del ejecutable, argumentos, código de salida, flujos de salida, enlazado | [executables.md](executables.md) |
+| Información de depuración (`-g`), depuradores y la pila de llamadas de Erlang | [debugging.md](debugging.md) |
+| Perfilado opcional (`--profile FILE`): entradas y tiempo propio por función y proceso | [profiling.md](profiling.md) |
+| Parse transforms: cargador OTP del host, intercambio del formato abstracto, búsqueda de transformaciones | [transforms.md](transforms.md) |
 | Análisis semántico, tipos, inferencia, vinculaciones | [semantic.md](semantic.md) |
 | Política de especialización por tipos | [specialization.md](specialization.md) |
 | ABI del código generado: términos, símbolos, registro, fallos, raíces | [abi.md](abi.md) |

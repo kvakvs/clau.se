@@ -1,10 +1,10 @@
 ---
 source: docs/abi.md
-sourceCommit: 06042fa
-sourceSha256: f8f56cfac2333ccc8481b962036e323d397415d2505365d432a3e26b811a54b6
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 28bc0f8706b31345a108f5bf8b8e9cc549766717aa19b28e456f94ce2b1d2009
+translatedAt: 2026-10-15
 ---
-# ABI för genererad kod (revision 4)
+# ABI för genererad kod (revision 21)
 
 Privat kontrakt mellan kompilatorns utdata och runtime. Det är projektintern
 C++23, inte BEAM-kompatibelt och inte ett allmänt FFI. Objekt och runtime måste
@@ -27,7 +27,8 @@ använder målets bredder.
   Större värden är bignums på heapen.
 - Atomer: de sex lägsta bitarna `0x0b`, nyttolast som aldrig återanvänds och
   gäller i hela processen. ID:n serialiseras aldrig och används aldrig för
-  ordning.
+  ordning. `false`, `true`, `undefined`, `ok` och `error` är fasta:
+  nyttolasterna 0–4 i varje runtime (revision 11 och 13).
 - Tom tupel exakt `0x2b` och nil exakt `0x3b`; andra nyttolastbitar är
   ogiltiga.
 - Lokala pids: de fyra lägsta bitarna `0x3`, nyttolasten är processnumret,
@@ -35,6 +36,14 @@ använder målets bredder.
   ([pids och referenser](terms.md#pids-and-references)).
 - Boxade ord och listord pekar in i den ägande processens heap och godtas
   endast efter att runtime har bevisat ägarskapet (se [termer](terms.md)).
+- Primära taggar: lista `0x1`, boxad `0x2`. Ett huvud har sin sort från bit 2
+  och antalet efterföljande ord från bit 7 (`header_count_shift`); en tupels
+  sort är 0. Genererad kod läser tupelelement och cons-celler inline endast
+  efter att inferens eller ett dominerande formtest har bevisat cellen
+  ([bevis](specialization.md#proofs)); matchningsplaner testar tupel- och
+  cons-former inline på varje optimeringsnivå (en boxad tagg, sedan huvudet),
+  och exakt likhet jämför ord först och anropar `CLAUSE_exact_v1` endast för två
+  olika list- eller boxade ord. Runtime kontrollerar dessa konstanter.
 
 ## Funktioner och symboler
 
@@ -86,9 +95,10 @@ i den begränsade tabellen).
 ## Felkanal (revision 2)
 
 Fel kodas inte i termbitar. Efter varje genererat anrop som inte är ett
-svansanrop kontrollerar anroparen `CLAUSE_call_failed_v2(context)` innan
-resultatet används eller nästa argument evalueras. Vid fel returnerar den
-anropade ett ogiltigt nollord.
+svansanrop kontrollerar anroparen kanalen innan resultatet används eller nästa
+argument evalueras: den läser ordet `failed` i kontextens `FrameState`, som
+runtime håller lika med `CLAUSE_call_failed_v2(context)`. Vid fel returnerar
+den anropade ett ogiltigt nollord.
 
 | Utfall | Transport |
 | --- | --- |
@@ -149,13 +159,21 @@ rotade) värdet. Utan `else` är det värdet resultatet; annars väljer
 
 Comprehensions använder de befintliga tjänsterna med några få operationer: de
 ackumulerade elementen vänds av konstruktionen `reverse`
-(`ContainerConstruction::reverse = 2`, värden `{List, Tail}`); en binary
-comprehension sammanfogar sina delar med `BitOperation::concat` (`{List}`) och
-en map comprehension bygger sin map med `MapOperation::from_list` (`{Pairs}`,
-senare nycklar vinner). Map-generatorer läser `MapOperation::key_at`/`value_at`
-(`{Map, Position}` i kanonisk nyckelordning) och visar en zips återstående
-indata med `MapOperation::iterator`, OTP:s kedja `{K, V, Next}` som slutar i
-`none`. Bitstring-generatorer använder vanlig mönsterextraktion plus ett
+(`ContainerConstruction::reverse = 2`, värden `{List, Tail}`), som bygger
+resultatet i en enda heapreservation; listgeneratorer testar och läser
+cons-celler inline; en binary comprehension sammanfogar sina delar med
+`BitOperation::concat` (`{List}`) och en map comprehension bygger sin map med
+`MapOperation::from_list` (`{Pairs}`, senare nycklar vinner). Map-generatorer
+tar `MapOperation::entries` (11, `{Map}`) en gång: en cell med nycklarna och
+värdena på orden `1 + 2i` och `2 + 2i` i kanonisk nyckelordning (en klassisk
+map själv, eller en tupelformad kopia av posterna i en map utanför heapen som
+endast genererad kod läser) och läser varje post inline; `key_at`/`value_at`
+(`{Map, Position}`) finns kvar för andra anropare. En zips återstående indata
+visas med `MapOperation::iterator`, OTP:s kedja `{K, V, Next}` som slutar i
+`none`. `MapOperation::update_owned` (10) tar operanderna till `update` för en
+map-uppdatering vars källa kompilatorn har bevisat inte läses efteråt: en
+källmap utanför heapen uppdateras på plats och dess stubbe lämnas förbrukad
+(tom). Bitstring-generatorer använder vanlig mönsterextraktion plus ett
 avslutande `binary`/`all`-segment för resten.
 
 `try ... after A end` lägger till ett andra skydd runt kroppen och alla `of`-
@@ -194,9 +212,9 @@ Skillnader mot OTP, alla synliga endast i stacktermen:
 - Ingen ram namnger en misslyckad BIF eller operator (OTP lägger till
   `{erlang, '+', Args, [{error_info, ...}]}`), och ingenting under
   ingångsfunktionen visas.
-- Ett svansanrop frigör anroparens ram (step 19), så, som i OTP, saknas en
-  anropare som avslutades med ett svansanrop i spåret. OTP gör också anrop till
-  funktioner som aldrig returnerar till svansanrop; det gör inte Clause.
+- Ett svansanrop frigör anroparens ram, så, som i OTP, saknas en anropare som
+  avslutades med ett svansanrop i spåret. OTP gör också anrop till funktioner
+  som aldrig returnerar till svansanrop; det gör inte Clause.
 - Stackposter av formen `{Fun, Args}` till `erlang:raise/3` avvisas fortfarande.
 
 ## Ramar och överföringar
@@ -207,22 +225,97 @@ Genererade funktioner körs på explicita ramar
 `<symbol>.frame`-deskriptor (`FrameDescriptor`: moduldeskriptor, platser för
 modul- och funktionsatomer, aritet, kroppskod, antal platser, antal termplatser;
 extern för exporterade funktioner) och en intern `<symbol>.body` av typen
-`void(void *context)`. En exporterad `<symbol>` behåller signaturen
-`TermWord(Context *, const TermWord *)` som värdingång som anropar
+`abi::v1::Code`, `void(void *context, TermWord x0, TermWord x1, TermWord x2)`
+(revision 10); med en runtime byggd med Clang på x86-64 och AArch64 använder
+kropparna och varje överföring konventionen `preserve_none`, liksom
+`abi::v1::Code` gör där (revision 16): kroppar returnerar aldrig normalt, så de
+sparar inga register som den anropade ska bevara; registreringen avvisar en
+modul vars `code_convention` (0 ingen, 1 C, 2 `preserve_none`) inte är
+runtimens. En exporterad `<symbol>` behåller signaturen `TermWord(Context *,
+const TermWord *)` som värdingång som anropar
 `CLAUSE_invoke_v1(context, frame, arguments)`.
 
-- En kropp läser sitt ramhuvud (`CLAUSE_frame_v1`) och registren
-  (`CLAUSE_registers_v1`) vid ingång och väljer gren efter huvudets
-  återupptagningsord. Den lämnar endast genom `musttail`-anrop av den kod som
+- Varje kontext börjar med en `abi::v1::FrameState` (revision 9):
+  stackblock, topp, push-gräns, aktuell ramförskjutning, återstående
+  reduktioner, registerpekare, antal levande register, långsamma bitar, ordet
+  för fel och (revision 12) heapblockets fria ord `[heap_top, heap_limit)`,
+  ett målord vardera. En kropp läser sitt ramhuvud (`stack + frame`) och
+  registren från den vid ingång och väljer gren efter huvudets
+  återupptagningsord.
+- Binära mönster (64-bitarsmål): starttestet, sluttestet och heltalssegment
+  med en konstant bredd i hela byte upp till 56 bitar på en byte-justerad
+  position läser cellen inline (`abi::v1::heap_binary_*_word`,
+  `refc_*_word`: `data_` i en vy utanför heapen är dess buffertens första
+  byte); andra segment och ojusterade positioner anropar `CLAUSE_bits_v1`. Ett
+  `sub_binary`-subjekt (`sub_*_word`) läses via sitt original. En avslutande
+  `Rest/binary` eller `Rest/bits` med enhet 1 bump-allokeras inline som en
+  `sub_binary`-cell på 4 ord av originalet.
+- En binärkonstruktion vars varje byte är känd vid kompileringstid (små
+  heltalskonstanter och strängliteraler med konstanta bredder i hela byte, högst
+  64 byte) är en inline binärcell i modulens literalområde, liksom andra
+  sammansatta literaler.
+- `Left ++ Right` där `Left` är skriven som en korrekt lista (en
+  strängliteral, eller en lista utan svans) byggs som `[E1, ..., En | Right]`,
+  som OTP:s kompilator gör, utan att anropa `erlang:'++'/2`.
+- `erlang:make_tuple(N, V)` med ett litet `N` i 1..64 bump-allokerar tupeln och
+  fyller den med `llvm.experimental.memset.pattern` där heapen har plats;
+  annars körs den inbyggda funktionen.
+- Binärkonstruktioner (64-bitarsmål) vars segment alla är heltal med konstanta
+  bredder i hela byte upp till 64 bitar, högst 64 byte totalt, bump-allokeras
+  inline som `heap_binary`-celler (huvud, bitlängd, nollställda dataord, sedan
+  varje segments byte) när varje värde är ett litet heltal och heapen har
+  plats; annars bygger `CLAUSE_bits_v1` dem. Samma segment efter en
+  ackumulator av en hel binär (`<<Acc/binary, ...>>`) skrivs in i
+  ackumulatorns buffert när den är en `refc_binary` (eller en `sub_binary` av
+  en sådan) som slutar, byte-justerad, vid cellens `refc_append_end_word` med
+  plats under `refc_append_limit_word`: byten hamnar efter slutet, slutet
+  flyttas fram och resultatet är en `sub_binary` på 4 ord av den cellen.
+- `+ - * /` (64-bitarsmål) med en flyttalsoperand, och `/` av två godtyckliga
+  tal, läser varje operand som en double (ett litet heltal konverteras, värdet
+  i en flyttalscell läses via ett val mellan dess cell och en konstant
+  ersättningscell, så att ingen laddning beror på en gren), räknar i register
+  och bump-allokerar flyttalscellen på 2 ord när resultatet är ändligt,
+  divisorn nollskild och heapen har plats; annars kastar `CLAUSE_immediate_v1`
+  `badarith` eller befordrar.
+- Map-uttryck utan bas vars nycklar är atom- eller små heltalsliteraler (högst
+  32 olika) skrivs inline som klassiska map-celler, med nycklarna sorterade vid
+  kompileringstid i exakt termordning och det sista värdet för en upprepad
+  nyckel behållet; annars bygger `CLAUSE_map_v1` dem.
+- Tupler och listor på högst 64 ord bump-allokeras inline i
+  `[heap_top, heap_limit)` (huvud eller cons-celler skrivs på plats, `heap_top`
+  flyttas fram), annars byggs de av `CLAUSE_construct_v1`; resultatet rotas som
+  en tjänsts utdata. Runtime räknar in inline-orden i sin bokföring före varje
+  heapoperation och återställer båda fälten efter en; de är null medan inget
+  heapblock finns eller en heapbudget per process gäller, så att varje
+  allokering då når tjänsten ([heap](runtime-heap.md#areas)).
+  `CLAUSE_frame_v1` och `CLAUSE_registers_v1` finns kvar för andra användare.
+- En kropp lämnar endast genom `musttail`-anrop. Anrop, svansanrop och returer
+  körs inline när de kan: en ingång förbrukar en reduktion, pushar den
+  nollställda ramen och kopierar argumenten själv, om inte heapen vill ha en
+  skräpsamling, processen profileras, ingen reduktion återstår, pushen skulle
+  passera gränsen eller den anropade är en inbyggd funktion (null-kropp); en
+  retur poppar inline om inte processen profileras. Annars kommer koden från
   `CLAUSE_enter_v1` (anrop), `CLAUSE_tail_v1` (svansanrop) eller
-  `CLAUSE_return_v1` (retur) ger tillbaka.
-- Argumenten upptar ramens första platser; varje evaluerat värde lagras i en
-  termplats före nästa uttryck eller anrop. Misslyckade kandidater rensar sina
-  platser. Värden som en kropp fortfarande behöver efter ett anrop eller en
-  safepoint i ett loophuvud spills: termer till termplatser (räknade i
-  deskriptorns `roots`), andra ord till råa platser efter dem; råa platser är
-  inte rötter.
-- Ett resultat skickas i register 0; felnyttolaster är rotord i kanalen (BEAM:s
+  `CLAUSE_return_v1` (retur), som håller tillståndet aktuellt.
+- Varje överföring skickar de första `abi::v1::register_arguments` (6 sedan
+  revision 17) X-registren som C-parametrar efter kontexten: ett anrops
+  inledande argument, en returs resultat (som `x0` i anroparens kropp), noll
+  för oanvända. Ytterligare argument färdas i registerarrayen. Runt varje
+  överföringstjänst lagrar den genererade koden parametrarna i arrayen
+  (tjänsterna och skräpsamlaren läser dem där) och laddar tillbaka dem efteråt.
+  Runtime anropar kod på samma sätt (`ProcessStack::run_code`), och dess kropp
+  för bottenramen lagrar `x0` i det första registret åt värden.
+- En ingång nollställer ramen och kopierar endast argumenten efter parametrarna
+  till sina platser; en kropp behåller ett parameterargument i sin plats endast
+  där `lower_frames` spiller det över ett anrop eller en safepoint. Evaluerade
+  värden lagras inte ivrigt: sänkningen markerar beräknade termer
+  (`clause.term`-metadata) och `lower_frames` ger en termplats endast åt ett
+  värde som korsar ett anrop eller en safepoint; argumentarrayer till tjänster
+  går fortfarande via rotplatser. Misslyckade kandidater rensar sina platser.
+  Värden som en kropp fortfarande behöver efter ett anrop eller en safepoint i
+  ett loophuvud spills: termer till termplatser (räknade i deskriptorns
+  `roots`), andra ord till råa platser efter dem; råa platser är inte rötter.
+- Ett resultat skickas som `x0`; felnyttolaster är rotord i kanalen (BEAM:s
   `fvalue`). Ett fel returnerar till anroparen som ett resultat och varje
   anropare kontrollerar kanalen efter anropet; huvudets hanterarord förblir 0.
 - Stacken har inget tak som standard; en push som värden inte kan allokera
@@ -233,17 +326,23 @@ extern för exporterade funktioner) och en intern `<symbol>.body` av typen
   värden efter dem, i registren; `CLAUSE_apply_v1` returnerar den
   `FrameDescriptor` som överföringen går in i ([funs](funs.md#representation)).
 - Safepoints: `CLAUSE_enter_v1`/`CLAUSE_tail_v1` samlar skräp innan den anropade
-  funktionens ram pushas (dess argument är registerrötter), och
-  `CLAUSE_safepoint_v1(context)` vid varje loophuvud i en comprehension samlar
-  på plats när heapen begär det. Varje annan tjänst är en kritisk sektion som
-  aldrig flyttar heapen
+  funktionens ram pushas (dess argument är registerrötter); heapen sätter
+  biten `slow_collect` närhelst den vill ha en skräpsamling, så inline-ingångar
+  hoppar aldrig över en. Och `CLAUSE_safepoint_v1(context)` vid varje
+  loophuvud i en comprehension samlar på plats; huvudet anropar den endast
+  medan `FrameState::slow` har `slow_collect`, förbrukar sedan en reduktion
+  och går, när ingen återstår, in i `erlang:self/0` (ingången suspenderar
+  processen), så att långa loopar utan anrop delar på schemaläggaren. Varje
+  annan tjänst är en kritisk sektion som aldrig flyttar heapen
   ([skräpsamling i genererad kod](runtime-heap.md#collection-in-generated-code)).
 
 ## Runtime-tjänster
 
 Genererad kod anropar kontrollerade C++-tjänster: `CLAUSE_exact_v1` (exakt
 likhet), `CLAUSE_immediate_v1` (predikat/frågor för omedelbara värden),
-`CLAUSE_construct_v1`, `CLAUSE_inspect_v1`, `CLAUSE_integer_v1`,
+`CLAUSE_construct_v1`, `CLAUSE_inspect_v1` (anropas inte längre av genererad
+kod: tupel- och cons-former och fält testas och läses inline),
+`CLAUSE_integer_v1`,
 `CLAUSE_float_v1`, `CLAUSE_map_v1`, `CLAUSE_bits_v1`,
 `CLAUSE_record_v1` (make/get/update/match/test för native records under en
 `RecordCheck`; utfall `bad_record`, `bad_field`, `no_match`),
@@ -256,6 +355,21 @@ infrastrukturfel och skriver utdata endast vid framgång. `CLAUSE_display_v1`
 (`CallError::halted` med slutstatusen) eller `badarg`, så att anroparen
 avvecklar. Länkarens stavningar följer målets Itanium- eller
 Microsoft-C++-mangling.
+
+Inline-former (`codegen/lowering_inline.cpp`): typtester (`is_atom`,
+`is_integer`, `is_number`, `is_boolean`, `is_tuple`, `is_list`, `is_bitstring`,
+`is_float`, `is_map`, `is_pid`, `is_port`, `is_reference`, `is_function/1`,
+native `is_record/1`, `is_binary/1` via bitlängdsordet) läser taggar och, efter
+ett test av boxad tagg, huvudets sort (`abi::v1::HeaderKind`); de anropar
+aldrig en tjänst. Jämförelser av två omedelbara värden (`==`, `/=`) eller två
+små heltal (`<`, `=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `hd/1`,
+`tl/1`, de booleska operatorerna, `band`, `bor`, `bxor`, `bsr`, `bsl` (så länge
+resultatet förblir litet) och små `div`/`rem` körs inline; `self/0` läser
+`FrameState::self`. De körs inline där operanderna tillåter det och anropar
+annars `CLAUSE_immediate_v1`, som behåller varje fel- och bignum-fall.
+`setelement/3` med ett litet index inom en boxad tupel kopierar tupeln till
+heapblockets fria ord och ersätter platsen inline; annars, eller utan plats,
+går den in i den inbyggda bryggfunktionen.
 
 `CLAUSE_builtin_frame_v1(context, builtin)`
 ([builtins.hpp](../abi/include/clause/abi/builtins.hpp)) returnerar
@@ -301,3 +415,16 @@ värden via modul-/funktionsbyte, argumentarray och aritet, och returnerar en
 | 6 | Deskriptorer för native records i moduldeskriptorer, `CLAUSE_record_v1` |
 | 7 | Fun-deskriptorer i moduldeskriptorer, `CLAUSE_make_fun_v1`, `CLAUSE_apply_v1` |
 | 8 | Exportdeskriptorer namnger sin `FrameDescriptor`; tjänster för dynamiska anrop `CLAUSE_call_v1`, `CLAUSE_apply_list_v1`, `CLAUSE_call_list_v1`, `CLAUSE_make_external_fun_v1` |
+| 9 | Varje kontext börjar med `abi::v1::FrameState`; inline-överföringar |
+| 10 | Inledande X-register skickas som kodparametrar |
+| 11 | Fasta ord för `false` och `true` |
+| 12 | Inline-heapfälten `heap_top`/`heap_limit` i `FrameState` |
+| 13 | Fasta `undefined`, `ok`, `error`; `ModuleDescriptor::atom_cache` och `FrameState::runtime` |
+| 14 | Literalområden för moduler: `ModuleDescriptor::literals`, `literal_words` |
+| 15 | `FrameState::self`, kontextens pid-ord |
+| 16 | `Code` använder `preserve_none` på x86-64 och AArch64 med en runtime byggd med Clang; `ModuleDescriptor::code_convention` |
+| 17 | Sex X-register som parametrar till `Code` (`register_arguments`) |
+| 18 | `sub_binary`-celler (`HeaderKind::sub_binary`, `sub_*_word`) och inline-extraktion av `Rest` |
+| 19 | Slut- och gränsord i `refc_binary`-celler (`refc_append_*_word`, 8 nyttolastord) och inline-tillägg |
+| 20 | `MapOperation::entries` och inline map-generatorer |
+| 21 | `ModuleDescriptor::fun_cache` och inline-closures |

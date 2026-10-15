@@ -131,18 +131,20 @@ in `printing.hpp`; `compiler/src/printing/source_*`) is reusable:
 | `-o PATH` / `--output PATH` | Link an executable ([linking](executables.md#linking)); conflicts with `--emit` |
 | `--linker PATH`, `--runtime-library PATH` | Clang driver and runtime archive for `-o` |
 | `--no-cache` | Neither read nor write [build caches](projects.md#build-caches) |
+| `--cache-inference-in-dirs PATTERN` | Repeatable: modules in matching directories keep their inference results in the build cache, besides the implicit OTP application directories ([inference cache](projects.md#inference-cache)) |
 | `--build-dir DIR` | Where Clause keeps temporary files (below `DIR/tmp`); replaces every selected project target's `build_dir`; positional inputs have none without it ([build directory](projects.md#build-directory)) |
-| `--entry MODULE[:FUNCTION]` | Executable entry function/1; validated in every compiling mode and adds the `clausev1_start` startup artifact ([executables](executables.md#startup-object)) |
+| `--entry MODULE[:FUNCTION]` | Executable entry function/1; validated in every compiling mode and adds the `clausev1_start` startup artifact ([executables](executables.md#startup-object)); IR and assembly inspections then leave out what it cannot reach ([export liveness](executables.md#export-liveness)) |
 | `--target-triple TRIPLE` | Target machine; `--target` is project target selection |
 | `-O0` / `-O2` / `-Os` | Default generic code + LLVM O0 / bounded specialization + LLVM O2 / LLVM Os, no specialization, one section per symbol and linker dead-stripping of unreferenced code and data |
 | `--no-type-specialization` | Disable variants regardless of option order |
 | `--lto` | Link the modules as bitcode with LLD link-time optimization (Windows MSVC and ELF targets; needs `-o` or a linking project build) ([linking](executables.md#linking)) |
-| `--keep-exports` | Keep every export of an executable callable instead of leaving out those it cannot reach; needs `-o` or a linking project build ([export liveness](executables.md#export-liveness)) |
+| `--keep-exports` | Keep every export of an executable callable instead of leaving out those it cannot reach; needs `-o`, a linking project build or an IR/assembly inspection ([export liveness](executables.md#export-liveness)) |
 | `-g` | Erlang line tables in objects and linked executables (CodeView/PDB on MSVC targets, DWARF elsewhere) ([debugging](debugging.md)) |
 | `--print-ir` / `--print-optimized-ir` | Verified IR before/after LLVM passes, with Erlang source lines as comments |
+| `--print-asm` | Each module's target assembly after the selected pipeline, every run of machine code commented with the IR instruction and Erlang line it came from ([assembly listings](#assembly-listings)) |
 | `--print-types` | Each module as Erlang source annotated with inferred types ([semantic](semantic.md#--print-types)); stops before LLVM |
 | `--verbose` | `[pp]`, `[parse]` and `[comp]` phase events on stderr, then the [directory index](projects.md#directory-index) summary `[index] ...` |
-| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` on stderr: `plan` per project manifest (loading it and expanding every selected target's patterns), `preprocess`, `parse` and `transform` (modules with parse transforms) per source file, `compile` per batch (module count, project target), `link` per executable; ` (cached)` follows a stage that reused a [cached](projects.md#build-caches) result. Before a batch's `compile` total come its phases with the same subject: `index`, `calls`, `declared-types`, `inference`, `contracts`, `lower`, `optimize`, `emit` (those that ran). After `inference`: `inference pass N` lines with the pass's work steps out of the inference work budget (`N of BUDGET work steps`) and how it ended (`inputs changed`, `fun results changed`, `settled`, or the final pass after unsettled passes), naming the function running when the budget ran out; then `inference slowest <module>:<function>/<arity>` for the 10 functions (recursive groups name one member `and N more`) that took longest over all passes, with their work steps and that work's share of the budget of the passes that ran them (`877450 work steps, 43.9% of 10 passes of 200000 budget`), and `widened to term()` when a budget widened one of their facts. A cached compile prints no phases |
+| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` on stderr: `plan` per project manifest (loading it and expanding every selected target's patterns), `preprocess`, `parse` and `transform` (modules with parse transforms) per source file, `compile` per batch (module count, project target), `link` per executable; ` (cached)` follows a stage that reused a [cached](projects.md#build-caches) result. Before a batch's `compile` total come its phases with the same subject: `index`, `calls`, `liveness` (executables and inspections with an entry), `declared-types`, `inference-cache` (with `N of M covered modules reused`, [inference cache](projects.md#inference-cache)), `inference`, `inference-store`, `contracts`, `lower`, `optimize`, `emit` (those that ran). After `inference`: `inference pass N` lines with the pass's work steps out of the inference work budget (`N of BUDGET work steps`) and how it ended (`inputs changed`, `fun results changed`, `settled`, or the final pass after unsettled passes), naming the function running when the budget ran out; then `inference slowest <module>:<function>/<arity>` for the 10 functions (recursive groups name one member `and N more`) that took longest over all passes, with their work steps and that work's share of the budget of the passes that ran them (`877450 work steps, 43.9% of 10 passes of 200000 budget`), and `widened to term()` when a budget widened one of their facts; then `inference rounds <module>:<function>/<arity> and N more` for the 10 slowest recursive groups: solves over all passes, rounds run against the per-solve cap (8 + 4 per member), solves that reached the cap or spent their eighth of the pass budget (every member widened to `term()`), solves that gave up at once because an earlier pass did (`remembered`) or ended with the pass budget spent, member walks (and those skipped because nothing they read changed) and the share that changed a summary (grown, function-type inputs changed, or flipped back to one of the member's last 4 summaries), and the members changed per round of the last solve in ten groups of rounds. A cached compile prints no phases |
 | `--print-env` | Print the resolved compile environment as TOML on stdout and exit without processing sources ([environment report](#environment-report)) |
 | `--print-inputs` | Preprocess and parse the inputs, add the modules they name as compilation does, then list every source of the batch on stdout and stop before compilation ([projects](projects.md#cli-and-target-selection)) |
 
@@ -161,6 +163,37 @@ in `printing.hpp`; `compiler/src/printing/source_*`) is reusable:
   comment headers and are not one parseable module. Use `--emit llvm-ir` for
   tool input. Source-line comments show original text (unexpanded macros) and
   survive optimization through debug locations.
+
+## Assembly listings
+
+`--print-asm` runs the selected pipeline (as `--print-optimized-ir` does), then
+prints each input module's assembly from the same target machine that writes
+objects, one module at a time. Comments use the target's marker (`#` on x86,
+`//` on AArch64 ELF, `;` on Apple, `@` on ARM):
+
+```
+# erlang answer.erl:3: value() -> 42.
+#     ir store i64 687, ptr %frame.slots, align 8
+	movq	$687, 32(%r15,%r12,8)
+#     ir br i1 %4, label %return.inline, label %return.service
+```
+
+- An `ir` comment opens each run of instructions selected from one IR
+  instruction, spelled as `--print-optimized-ir` prints it (same value
+  numbering, `switch` folded onto one line, no `!dbg`). Code moved or merged
+  across instructions repeats or skips comments as the line table says.
+- An `erlang` comment names the physical file, line and text, like IR source
+  comments, when the line changes within a function. Instructions lowering
+  located nowhere (wrappers, frame setup) have none.
+- The listing compiles a copy whose line table numbers IR instructions instead
+  of Erlang lines; that line table's directives, debug sections and labels
+  are left out. Reassembled, it gives the object `--emit obj` writes.
+- With other inspections, each module prints `before`, `after` and
+  `assembly` in turn, each after a header (`stage=assembly`). Like IR
+  inspection it rejects `--emit`, `--artifact-dir`, `--output` and
+  `--print-types`. x86 listings use AT&T syntax.
+- With `--entry`, IR and assembly inspections leave out the functions the
+  entry cannot reach, as the executable does (`--keep-exports` keeps them).
 
 ## Environment report
 
@@ -206,7 +239,7 @@ artifact_dir = "/work/build/aot"
 (Arrays print one item per line.) `actions` lists the frontend actions
 (`print-pp`, `parse-check`, `print-ast`, `print-source`, `print-abstr`, else
 `preprocess-check`; `print-inputs` alone replaces them), else the inspections
-(`print-types`, `print-ir`, `print-optimized-ir`), else `emit`, `link` (`-o`) or
+(`print-types`, `print-ir`, `print-optimized-ir`, `print-asm`), else `emit`, `link` (`-o`) or
 `compile`. In a project build, targets with an `output` link too. Modules found
 later by name (through `source_search_paths` or the library) are not listed:
 finding them needs parsing (`--print-inputs` does that). `--print-env` cannot be combined with
@@ -216,13 +249,13 @@ finding them needs parsing (`--print-inputs` does that). `--print-env` cannot be
 
 A batch with a build directory (every project target, positional inputs with
 `--build-dir`) keeps its compile outcome in the
-[build cache](projects.md#build-caches) (plan 11 step 62D4): the diagnostics in
+[build cache](projects.md#build-caches): the diagnostics in
 order, failure, and, when an executable or `--emit` needs them, the objects
 (or bitcode) of every module and the startup module. A later build of the same
 batch with the same options replays the diagnostics and links or publishes the
 kept objects exactly like fresh ones; `--print-stage-times` then shows
-`[time] compile ... (cached)`. `--print-ir`, `--print-optimized-ir` and
-`--print-types` always recompute, and `--no-cache` neither reads nor writes.
+`[time] compile ... (cached)`. `--print-ir`, `--print-optimized-ir`,
+`--print-asm` and `--print-types` always recompute, and `--no-cache` neither reads nor writes.
 
 - **Reuse unit: the whole batch.** Analysis, type inference, specialization
   budgets (per target), export liveness and the startup module span every
@@ -230,6 +263,9 @@ kept objects exactly like fresh ones; `--print-stage-times` then shows
   records, behaviours, which functions stay live). Those facts have no
   canonical form to hash per module today, so a per-module key could not be
   proven sound; any change to any module of the batch recompiles the batch.
+  Inference results alone are kept per module for covered library
+  directories ([inference cache](projects.md#inference-cache)), so such a
+  recompile reuses them.
 - **Key.** The `clau` version and executable identity; every input's path and
   fingerprint (each file the frontend read for it, path and bytes, in order:
   the source, its includes and `include_lib` files, and the reply of its parse
@@ -239,7 +275,7 @@ kept objects exactly like fresh ones; `--print-stage-times` then shows
   `--keep-exports`, whether an executable is linked, the entry selection and
   the project target. Entries of one target with other options are kept side
   by side.
-- **Storage.** Each output is a part of its own (step 62D5), so an object
+- **Storage.** Each output is a part of its own, so an object
   larger than the store's inline limit becomes a content-addressed blob file,
   shared when two option sets produce identical objects.
 
@@ -279,6 +315,51 @@ settings; an explicit `LLVM_DIR` does not, and the link probe then fails.
 
 Historical macOS reference: Homebrew `llvm` 23.1.1_1 (arm64, shared
 `libLLVM.23.1.dylib`, assertions off) with AppleClang 21.
+
+## PCRE2
+
+The runtime's `re` builtins use PCRE2 **10.47**, the release
+OTP 29 bundles (`erts/emulator/pcre/vendor.info`), so pattern syntax, options and
+captures behave as OTP's: 8-bit code units, Unicode support, no JIT, stock
+`pcre2_match` (OTP's yielding patch is not carried over). PCRE2 is BSD-3-Clause
+licensed with the PCRE2 exception for compiled binaries; no PCRE2 file is
+committed. CMake (`cmake/Pcre2Dependencies.cmake`) resolves it in this order:
+
+1. `-DCLAUSE_PCRE2_ROOT=<source directory>` takes precedence (no download); the
+   version in its `configure.ac` must be 10.47.
+2. An installed PCRE2 of at least 10.47 (`CLAUSE_PCRE2_SYSTEM=ON`, the default):
+   the CMake package (`find_package(pcre2 CONFIG COMPONENTS 8BIT)`, static
+   libraries preferred), else pkg-config `libpcre2-8`, a static `libpcre2-8.a`
+   preferred over the shared library.
+3. The pinned release, downloaded into `thirdparty/pcre2-10.47` and verified
+   (`pcre2-10.47.tar.bz2`, SHA-256
+   `47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7`);
+   `-DCLAUSE_DOWNLOAD_PCRE2=OFF` disables the download.
+
+A source directory (1 or 3) builds the object library `clause_pcre2` from the
+listed `.c` files with the distributed `config.h.generic`, `pcre2.h.generic`
+and `pcre2_chartables.c.dist` copied into the build tree (no generation step,
+no project warning flags, outside clang-tidy and Lizard), and its objects are
+added to `clause_runtime` itself: the archive is self-contained and every
+consumer (`clau` links, nested test programs, `runtime_link`,
+`examples/compile`) gets PCRE2 with it. An installed library instead becomes
+an extra linker input recorded in `clause_runtime.link` beside the archive
+(one input per line), which `clau` adds to every link; a shared library makes
+the executables depend on it at run time. Per platform: Windows uses the
+download (no system PCRE2 is searched for in practice); Linux and macOS use an
+installed PCRE2 10.47 or newer when present, else the download. Always linked
+into the runtime for now (decided 2026-10-14); linking it only into programs
+that call `re`, or a dynamically loaded library, is deferred.
+
+## zlib
+
+The runtime's zlib module and compressed external terms use zlib **1.3.2**, the release OTP 29
+bundles (`erts/emulator/zlib/vendor.info`), so compressed bytes equal OTP's. CMake compiles its library sources
+(`cmake/ZlibDependencies.cmake`, `clause_add_runtime_zlib`) into the object library `clause_runtime_zlib`, whose
+objects join `clause_runtime` as PCRE2's do; `-DCLAUSE_RUNTIME_ZLIB_ROOT=<source directory>` takes precedence,
+otherwise the release is downloaded into `thirdparty/zlib-1.3.2` and verified (SHA-256
+`bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16`) on every host. zlib's license is the zlib
+license. The compiler's LLVM keeps its own zlib; the two never meet in one binary.
 
 Other prerequisites: CMake ≥ 3.28, a C++23 compiler, Boost ≥ 1.90, toml++
 3.4.0 and the quality tools. OTP is needed only for opt-in audits and fixture

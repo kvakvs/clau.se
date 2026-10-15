@@ -1,12 +1,12 @@
 ---
 source: docs/io.md
-sourceCommit: 06042fa
-sourceSha256: d2fab91a793f6b40763a4bd16c2c85b45ce198ce2d3b6110aa9cfe117278f20d
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
+translatedAt: 2026-10-15
 ---
 # Konsolutdata (`io`)
 
-Plan 11 step 40 (2026-10-07): `io:format/1,2` och `io:put_chars/1` skriver
+`io:format/1,2` och `io:put_chars/1` skriver
 till standard-utdata. De är inbyggda funktioner i runtimen för modulen `io` i
 bryggans katalog ([inbyggda funktioner](builtins.md)); runtimen implementerar
 OTP:s regler för `io_lib_format` och `io_lib_pretty` i C++
@@ -16,6 +16,16 @@ OTP:s regler för `io_lib_format` och `io_lib_pretty` i C++
 ## Anrop
 
 - `io:format(Format)` är `io:format(Format, [])`. Båda returnerar `ok`.
+  `io:fwrite/1,2,3` är desamma som `io:format/1,2,3`; `io:nl/0,1` skriver en
+  radbrytning.
+- Enheter för `io:format/3`, `io:fwrite/3`, `io:put_chars/2`
+  och `io:nl/1`: `standard_io` och `user` är standard-utdata,
+  `standard_error` är standard-fel (standard-utdata töms först, så att de två
+  behåller sin ordning). En pid, eller en atom registrerad till en, är en
+  I/O-server: texten går till den som UTF-8 via `file:write/2` (en öppen fil i
+  Clauses modul `file`), och anropet returnerar det som den returnerar. En
+  oregistrerad atom ger `badarg`, en död pid `error:terminated`, anroparen
+  själv `error:calling_self`, varje annan term `function_clause`, som i OTP.
 - `io:put_chars(Chardata)` skriver chardata: Unicode-tecken, UTF-8-binaries
   och nästlade listor som slutar med `[]` eller en binary. Allt annat (en
   atom, ett surrogat, ogiltig UTF-8, en bitstring) kastar `badarg`.

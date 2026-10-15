@@ -1,12 +1,12 @@
 ---
 source: docs/native-records.md
-sourceCommit: 06042fa
-sourceSha256: 0e98c21bafd3e6c9a4cfb352c5e877f3046dc42e7d5ccd0a1e348eb3a81ed695
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 5383c5a0c72bed06730432be7a2605262122d7580d5a4e6124e01661d7e93086
+translatedAt: 2026-10-15
 ---
 # Native records
 
-Рішення плану 11, step 31A (2026-10-07). Воно окреслює форми record з OTP 29,
+Воно окреслює форми record з OTP 29,
 що виходять за межі звичайних кортежних record, і фіксує їхнє подання, операції
 та помилки. Step 31B реалізував комірки runtime і `CLAUSE_record_v1`; 31C
 компілює локальні native records, 31D — кваліфіковані та імпортовані форми з

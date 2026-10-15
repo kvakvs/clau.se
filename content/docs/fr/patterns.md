@@ -1,8 +1,8 @@
 ---
 source: docs/patterns.md
-sourceCommit: 06042fa
-sourceSha256: 5d4fa604cd009ece1e93b35b9f94ebc0ecf7f468356ccdc6e96a4d84c9280a97
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: ef7903895b7901a6980a3cd181783486ae8672876229d35fae120e802392e989
+translatedAt: 2026-10-15
 ---
 # Motifs, clauses et correspondances dans les corps
 
@@ -153,8 +153,9 @@ sans taille qui ne sont pas en dernière position.
 
 ## Limites
 
-La normalisation des motifs partage le budget sémantique de 1 000 000 unités du
-module (un entier coûte environ son nombre de chiffres décimaux) ; une constante
+La normalisation des motifs partage le budget sémantique du module (1 000 000
+unités, ou 32 par expression pour les modules plus grands)
+(un entier coûte environ son nombre de chiffres décimaux) ; une constante
 au-delà de la limite des entiers de 4 194 240 bits est un `illegal pattern`,
 comme dans OTP ([termes](terms.md#integers)).
 Chaque plan de correspondance a un plafond de 100 000 unités de travail.

@@ -1,10 +1,9 @@
 # Processes
 
-Plan 11 step 43 (2026-10-08): spawned processes on a cooperative executor;
-step 44: exit reasons and error reports; step 45: sending messages; step 46:
-selective receive; step 47: receive timeouts; step 48: links and exit
-signals; step 49: monitors; step 50: registered names; step 53: ports
-(none); step 56: scheduler workers; step 57: cross-worker wakeups and
+Spawned processes on a cooperative executor;
+exit reasons and error reports; sending messages; selective receive; receive timeouts; links and exit
+signals; monitors; registered names; ports
+(none); scheduler workers; cross-worker wakeups and
 shutdown.
 
 ## Executor
@@ -14,9 +13,10 @@ One runtime runs its processes on its scheduler workers ([workers](#workers),
 call the first process, the main process, and runs the executor until it
 ends:
 
-- Runnable processes wait in one first-in, first-out queue. A worker runs
-  the first one for a time slice of 4,000 reductions (OTP's `CONTEXT_REDS`),
-  then puts it back at the end of the queue, unless it ended.
+- Runnable processes wait in their worker's first-in, first-out run queue
+  ([workers](#workers)). A worker runs the first one for a time slice of 4,000
+  reductions (OTP's `CONTEXT_REDS`), then puts it back at the end of its
+  queue, unless it ended.
 - Every function entry spends one reduction: calls, tail calls, fun and
   dynamic calls, and builtins. With none left, the entry does not happen:
   the process records the function it was entering, keeps its arguments in
@@ -50,35 +50,50 @@ ends:
 
 ## Workers
 
-Plan step 56 (2026-10-08). The executor runs processes on
+The executor runs processes on
 `RuntimeOptions::schedulers` worker threads: the thread that started the
 program and one more thread per further worker. Programs take the count from
 `--schedulers N` (1 to 1,024, [runtime options](executables.md#runtime-options));
 the default is one worker per logical processor, as OTP's `+S`.
 
-- Every worker takes the first process of the one shared queue (the
-  documented alternative to per-worker queues with work stealing: one queue
-  keeps OTP's first-in, first-out order and needs no stealing). Idle workers
-  sleep until a process is queued; the timer thread queues processes whose
-  receive timeout expires ([receive timeouts](#receive-timeouts)).
+- Each worker has its own run queue, as each ERTS scheduler does: a
+  process stays with the worker it last ran on, so its heap stays in that
+  core's caches. A spawned process starts on its parent's worker. Idle workers
+  sleep until a process is queued for them or there is work to steal; the
+  timer thread queues processes whose receive timeout expires
+  ([receive timeouts](#receive-timeouts)).
+- Processes migrate as on ERTS, which balances its run queues periodically:
+  every 4 slices a worker compares its queue with its neighbor's and takes
+  one process from it when the neighbor holds at least two more. A worker
+  with an empty queue steals one process from the longest queue holding at
+  least two, or the only process of a sleeping worker, which it runs before
+  that worker wakes.
+- Wakeups are lazy, as ERTS keeps processes that talk to each other
+  on one scheduler: a running process that wakes a process of a sleeping,
+  empty worker queues it on its own worker, which takes it when its slice
+  ends; another worker is woken only when a queue then holds more than one
+  process. The timer and I/O threads, port tasks and workers between slices
+  queue a process for its own worker, or for an idle worker when its own one
+  is busy.
 - One executor mutex guards the queue, the waiting processes, the timers, the
   registered names, the links and monitors of every process, and every
   process that is not running. A running process's heap, stack, mailbox and
   failure channel belong to its worker alone; Erlang code runs without the
   lock.
 - Links, monitors and names change under the lock at once, also for a process
-  running elsewhere. A send, or an exit signal of `exit/2` or
-  `exit_signal/2`, to a process running on another worker cannot touch its
-  heap: the builtin does nothing and its process ends its slice
-  (`builtins::Blocked`); it waits until the target's slice ends, then runs
-  first and repeats the builtin with the same arguments. The target is held
-  until then, so the repeated builtin cannot find it running again. A process
-  that ends with links or monitors whose processes run elsewhere is finished
-  likewise once their slices end.
-- So messages and exit signals still take effect when they are sent: a send
-  returns after the message is in the receiver's mailbox, and
-  `is_process_alive/1` after `exit(Pid, kill)` is false, as OTP promises
-  for signals from the caller.
+  running elsewhere. A message to a process running on another worker cannot
+  go into its heap yet: it is copied into a buffer of its own and delivered,
+  after earlier buffered ones, when the receiver's slice ends. An
+  exit signal of `exit/2` or `exit_signal/2` to such a process does nothing
+  and its process ends its slice (`builtins::Blocked`); it waits until the
+  target's slice ends, then runs first and repeats the builtin with the same
+  arguments. The target is held until then, so the repeated builtin cannot
+  find it running again. A process that ends with links or monitors whose
+  processes run elsewhere is finished likewise once their slices end.
+- So signals keep their order: a message buffered before a blocked exit signal
+  of the same sender reaches the receiver first, and `is_process_alive/1`
+  after `exit(Pid, kill)` is false, as OTP promises for signals from the
+  caller.
 - A spawn links or monitors the new process (`spawn_link`, `spawn_monitor`)
   before any worker can run it. A spawned process may run before its parent
   goes on, so a program that monitors or links to a short-lived process after
@@ -91,7 +106,7 @@ the default is one worker per logical processor, as OTP's `+S`.
 - Output of different processes interleaves in the order their writes happen.
   Each `io:format` and `erlang:display` call writes its text at once.
 
-Wakeups and shutdown (plan step 57) need no further mechanism, because every
+Wakeups and shutdown need no further mechanism, because every
 change of a process's scheduling state happens under the executor mutex:
 
 - A message, `'EXIT'` or `'DOWN'` for a waiting process queues it in the same
@@ -180,7 +195,7 @@ process does not write one: its uncaught exception is the program's
 
 ## Messages
 
-`Dest ! Msg` and `erlang:send(Dest, Msg)` (plan step 45) evaluate `Dest`
+`Dest ! Msg` and `erlang:send(Dest, Msg)` evaluate `Dest`
 first and return `Msg`.
 
 | `Dest` | Effect |
@@ -206,7 +221,7 @@ first and return `Msg`.
 
 ## Receive
 
-`receive` (plan steps 46–47) selects among its clauses like `case`, over the
+`receive` selects among its clauses like `case`, over the
 messages of the mailbox:
 
 - The mailbox scan starts at the oldest message. Each message is matched
@@ -226,7 +241,8 @@ messages of the mailbox:
   stack.
 - `after T -> Body`: `T` is evaluated first, before the scan. When the
   receive would wait, `T` must be `infinity` or an integer in
-  0..4294967295 (milliseconds), else `error:timeout_value`; a message that
+  0..4294967295 (milliseconds), else `error:timeout_value`, after which the
+  next receive scans from the oldest message; a message that
   matches at once never checks it, as in OTP. `after 0` runs `Body` as soon as
   every message has been examined. A finite timeout starts when the receive
   first waits and is not restarted by messages that match no clause; when it
@@ -250,7 +266,7 @@ messages of the mailbox:
 
 ## Links
 
-Plan step 48. A link connects two processes both ways (`Signals` in each
+A link connects two processes both ways (`Signals` in each
 context: the linked pids in link order and the `trap_exit` flag).
 
 - `link(Pid)` links the caller to a live process and returns `true`; linking
@@ -266,7 +282,7 @@ context: the linked pids in link order and the `trap_exit` flag).
 
 ## Monitors
 
-Plan step 49. A monitor is one-way: the monitoring process holds it (by
+A monitor is one-way: the monitoring process holds it (by
 reference, in `Signals`) and the monitored process keeps the reference and
 the monitoring pid, so it can send the message when it ends.
 
@@ -295,7 +311,7 @@ the monitoring pid, so it can send the message when it ends.
 
 ## Registered names
 
-Plan step 50. The executor keeps one table of names (atoms) to pids, and each
+The executor keeps one table of names (atoms) to pids, and each
 process its own name (`Signals::name`).
 
 - `register(Name, Pid)` names a live process: `badarg` for `undefined`, a
@@ -310,7 +326,7 @@ process its own name (`Signals::name`).
 
 ## Process dictionary
 
-Plan 11 step 41C. `put/2`, `get/0,1`, `get_keys/0,1` and `erase/0,1`
+`put/2`, `get/0,1`, `get_keys/0,1` and `erase/0,1`
 behave as OTP's: `put/2` and `erase/1` return the previous value or
 `undefined`, `erase/0` returns every `{Key, Value}` and empties the
 dictionary, keys match with exact equality (`1` and `1.0` are two keys).
@@ -322,11 +338,12 @@ dictionary, keys match with exact equality (`1` and `1.0` are two keys).
   they are released with the process.
 - The order of `get/0` and `get_keys/0,1` is unspecified, as in OTP.
   Lookup scans the entries linearly; immediate keys compare by word.
+  `put/2`, `get/1` and `erase/1` take and return the entry words as they
+  are, admitting no term.
 
 ## Timers
 
-Plan 11 step 41F (`builtins/erlang/timers.cpp`, `scheduler/timers.cpp`).
-`start_timer/3,4` and `send_after/3,4` arm a timer in the executor's wheel
+Source: `builtins/erlang/timers.cpp`, `scheduler/timers.cpp`. `start_timer/3,4` and `send_after/3,4` arm a timer in the executor's wheel
 (the one [receive timeouts](#receive-timeouts) use) that sends `Msg`, or
 `{timeout, TimerRef, Msg}`, to a pid or registered name when it fires.
 
@@ -347,8 +364,7 @@ Plan 11 step 41F (`builtins/erlang/timers.cpp`, `scheduler/timers.cpp`).
 
 ## Introspection
 
-Plan 11 step 41G1 (`builtins/erlang/introspection.cpp`,
-`scheduler/introspection.cpp`). `process_info/1,2` reads another process
+Source: `builtins/erlang/introspection.cpp`, `scheduler/introspection.cpp`. `process_info/1,2` reads another process
 under the executor's lock and copies its terms (messages, dictionary) into the
 caller's heap; a process running on another worker is read once its slice
 ends. A pid of no live process gives `undefined`.
@@ -375,7 +391,7 @@ ends. A pid of no live process gives `undefined`.
 
 ## Spawn options
 
-Plan 11 step 41G2 (`builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`).
+Source: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
 
 - `spawn_opt/2..5` take `link`, `monitor`, `{monitor, MonitorOptions}` and
   the tuning options `{priority, P}`, `{fullsweep_after, N}`,
@@ -405,7 +421,7 @@ message; port monitors take no options.
 
 ## Nodes
 
-Plan 11 step 41H (`builtins/erlang/node.cpp`). A Clause program is one node
+Source: `builtins/erlang/node.cpp`. A Clause program is one node
 that is not distributed, `nonode@nohost`, and answers as such an OTP node:
 `nodes/0` is `[]`, `nodes(this | known)` `[nonode@nohost]`, other types
 `[]`; `nodes/2` gives `{nonode@nohost, #{connection_id => undefined,
@@ -448,7 +464,7 @@ recursion.
 
 ## Ports
 
-Ports (plan steps 57A–57F) are specified in [ports](ports.md): a port is
+Ports are specified in [ports](ports.md): a port is
 linked to its opener, takes part in links, monitors, exit signals and
 registered names like a process, and talks to its connected process with
 messages. Step 57B provides identities, the port table, the port builtins

@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "sync-docs": "node scripts/sync-docs.mjs",
+    "sync-benchmarks": "node scripts/sync-benchmarks.mjs",
     "docs-status": "node scripts/docs-status.ts",
     "docs-stamp": "node scripts/docs-stamp.ts"
   },

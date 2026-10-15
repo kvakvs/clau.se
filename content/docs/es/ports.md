@@ -1,12 +1,12 @@
 ---
 source: docs/ports.md
-sourceCommit: 06042fa
-sourceSha256: ffc81af5614a310568c39bb585031013ebcf0a5b801da59a58e2b7fa8ef0fa3c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 60dc15d155f211fa34c0d05254cd2430ae96643f87d84d0c0ed2da0965711e49
+translatedAt: 2026-10-15
 ---
 # Puertos
 
-Decisión del plan 11 step 57A (2026-10-08). Sustituye la decisión del step 53
+Sustituye la decisión del step 53
 (sin puertos, [procesos](processes.md#ports)): los programas obtienen puertos
 tal como los define OTP, y la E/S externa pasa por ellos. Los steps 57B–57F
 la implementan; cada sección nombra su step. Este contrato fija la
@@ -15,24 +15,24 @@ código fuente pueda abrir un puerto.
 
 Implementado: las identidades, la tabla de puertos, los builtins y mensajes
 de puertos, los enlaces, monitores, nombres y señales de salida de los
-puertos, y los puertos `fd` de solo salida (step 57B,
-`runtime/src/scheduler/ports.cpp`, `runtime/src/builtins/ports.cpp`,
+puertos, y los puertos `fd` de solo salida
+(`runtime/src/scheduler/ports.cpp`, `runtime/src/builtins/erlang/ports.cpp`,
 `runtime/src/ports/`; golden de OTP `executables_port_identities`); el hilo
 de E/S y la entrada de puertos `fd` con delimitación por flujo, por paquetes y
-por líneas (step 57C, `runtime/src/ports/io*.cpp`; golden de OTP
+por líneas (`runtime/src/ports/io*.cpp`; golden de OTP
 `executables_port_input`); los puertos de subprocesos, `os:type/0`,
-`os:getenv/1` y `os:cmd/1` (step 57D, `runtime/src/ports/spawn*.cpp`,
+`os:getenv/1` y `os:cmd/1` (`runtime/src/ports/spawn*.cpp`,
 `library/stdlib/os.erl`; golden de OTP `executables_port_spawn`); el driver
 de archivos, el subconjunto `file` de la biblioteca y la entrada estándar
-mediante `io:get_line`/`io:get_chars` (step 57E, `runtime/src/ports/file.cpp`,
+mediante `io:get_line`/`io:get_chars` (`runtime/src/ports/file.cpp`,
 `library/stdlib/{file,io}.erl`; golden de OTP `executables_file_io`); los
-sockets (step 57F, golden de OTP `executables_sockets`); un único hilo de E/S
-dirigido por eventos para todos los tipos de puerto (step 57G1,
-`runtime/src/ports/reactor.cpp`; golden de OTP `executables_many_ports`,
+sockets (golden de OTP `executables_sockets`); un único hilo de E/S
+dirigido por eventos para todos los tipos de puerto
+(`runtime/src/ports/reactor.cpp`; golden de OTP `executables_many_ports`,
 prueba del runtime `runtime_port_io`); las tareas de puerto en los workers
-del planificador (step 57G2, `runtime/src/scheduler/ports.cpp`; golden de OTP
-`executables_port_fairness`); los puertos ocupados y la entrada acotada (step
-57G3; goldens de OTP `executables_busy_ports`, `executables_slow_owner`).
+del planificador (`runtime/src/scheduler/ports.cpp`; golden de OTP
+`executables_port_fairness`); los puertos ocupados y la entrada acotada
+(goldens de OTP `executables_busy_ports`, `executables_slow_owner`).
 
 ## Identidad
 
@@ -153,7 +153,7 @@ de la biblioteca, no los protocolos `prim_inet`/`efile` de OTP.
 ## Hilo de E/S
 
 Un hilo de E/S por runtime (`detail::Reactor`,
-`runtime/src/ports/reactor.hpp`, step 57G1) ejecuta un `io_context` de
+`runtime/src/ports/reactor.hpp`) ejecuta un `io_context` de
 Boost.Asio: un puerto de finalización de E/S (I/O completion port) en
 Windows, `epoll` en Linux, `kqueue` en macOS. El primer puerto que lo
 necesita lo arranca; sirve a todos los tipos de puerto, así que un puerto no
@@ -190,7 +190,7 @@ E/S.
 
 ## Tareas de puerto
 
-Step 57G2. Un puerto se planifica como un proceso: lo que entrega el hilo de
+Un puerto se planifica como un proceso: lo que entrega el hilo de
 E/S espera en el puerto, y el puerto espera en la cola de puertos del
 ejecutor hasta que un worker del planificador ejecuta su tarea.
 
@@ -237,7 +237,7 @@ puede cancelar se desacopla y ya no entrega nada más.
 
 ## Puertos ocupados
 
-Step 57G3. La salida que un driver encola para el hilo de E/S (las tuberías
+La salida que un driver encola para el hilo de E/S (las tuberías
 de los programas lanzados) cuenta para los límites de ocupación del puerto,
 el `busy_limits_port` de OTP (por defecto: alto 8.192 bytes, bajo 4.096;
 `{busy_limits_port, {Low, High}}` o `disabled` como opción de `open_port/2`,
@@ -275,7 +275,7 @@ Un puerto también acota la entrada que retiene:
 
 ## Subprocesos
 
-Step 57D. `open_port({spawn, Command}, Options)` y
+`open_port({spawn, Command}, Options)` y
 `open_port({spawn_executable, File}, Options)` arrancan un programa cuyos
 stdin y stdout son tuberías del puerto:
 
@@ -312,8 +312,6 @@ stdin y stdout son tuberías del puerto:
 
 ## E/S estándar y archivos
 
-Step 57E.
-
 - `io:format`, `io:put_chars` y `erlang:display` siguen escribiendo
   directamente en la salida estándar ([io](io.md)). La entrada estándar la
   lee un único proceso servidor de la biblioteca, registrado como
@@ -328,17 +326,68 @@ Step 57E.
   runtime, `{spawn_driver, "clause_file"}`, con `port_control/3`. Sus
   operaciones (`ports/file.cpp`: open, read, write, position, read_line,
   close, y las operaciones sobre rutas read_file, write_file, delete, rename,
-  list_dir, make_dir, del_dir) son llamadas síncronas al sistema en el worker
+  list_dir, make_dir, del_dir y read_file_info, `ports/file_info.cpp`;
+  get_cwd, set_cwd, read_link, read_link_info, make_link y make_symlink,
+  `ports/file_paths.cpp`) son llamadas síncronas al sistema en el worker
   del llamante, fuera del mutex del ejecutor; sus respuestas empiezan con un
   byte de estado (0 ok, 1 error y su razón POSIX, 2 fin de archivo). El
   protocolo es propio de Clause.
 - `file:open/2` devuelve el pid de un servidor de E/S que posee un puerto de
   archivo y está enlazado con quien lo abre (modos `read`, `write`, `append`,
   `exclusive`, `binary`; los demás modos se ignoran, como OTP ignora las
-  opciones que no usa). `read/2`, `read_line/1`, `write/2`, `position/2` e
+  opciones que no usa; `write` trunca salvo que también se indique `append`).
+- `file:write_file/3` abre con sus modos más `binary` y `write`;
+  `file:read_file_info/1,2` devuelven el `#file_info{}` de OTP a partir del
+  estado de la ruta (siguiendo los enlaces), con las horas como fecha y hora
+  local o universal o como segundos POSIX (`{time, local | universal | posix}`;
+  se acepta `raw`). En Windows, `inode`, `uid` y `gid` son 0 y `major_device`
+  es el número de unidad, como los informa OTP.
+  `read/2`, `read_line/1`, `write/2`, `position/2` e
   `io:get_line/2`, `io:get_chars/3` sobre él son peticiones a ese servidor;
   después de `close/1` las peticiones devuelven `{error, terminated}` y
   `close/1` sigue devolviendo `ok`.
+- El protocolo de E/S de OTP: el servidor de la entrada estándar y el
+  servidor de cada archivo abierto responden a
+  `{io_request, From, ReplyAs, Request}` con `{io_reply, ReplyAs, Reply}`, que
+  envían `io:request/1,2` e `io:requests/1,2` (`standard_io` y `user` designan
+  el servidor de la entrada estándar, otro átomo un proceso registrado;
+  `{error, arguments}` cuando no está registrado, `{error, calling_self}` para
+  el propio llamante). Peticiones: `get_until`
+  (`M:F(Cont, Chars | eof, Extra...)` desde `Cont = []`, alimentada con lo que
+  hay en el búfer o con bloques de 4 KiB del archivo hasta
+  `{done, Result, Rest}`; `Rest` lo vuelve a leer la siguiente petición: se
+  conserva en el búfer o, para un archivo, la posición retrocede sobre él),
+  `get_line`, `get_chars`, `put_chars` (caracteres o `M:F(A)`), las formas
+  antiguas sin codificación (latin1) y `{requests, List}` (en orden,
+  deteniéndose en el primer `{error, _}`). Los caracteres son bytes, como
+  arriba; un archivo en modo binario devuelve como binary un resultado de lista
+  de `get_until`. Las demás reciben `{error, {request, Request}}`. Una función
+  de `get_until` o `put_chars` que falla hace que el servidor del archivo
+  responda `{error, Function}` y termine con el fallo, como hace el de OTP;
+  quien abrió el archivo sigue vivo (el servidor de archivos de OTP no está
+  enlazado con él). Las peticiones de entrada sobre la entrada estándar
+  escriben su indicador.
+- Directorios, enlaces y copias: `get_cwd/0` escribe el directorio actual como
+  lo hace OTP (barras normales, letra de unidad en minúscula), `get_cwd/1`
+  toma una unidad de Windows (`enotsup` en otros sistemas); `set_cwd/1` lo
+  cambia para todo el programa; `read_link/1`, `read_link_all/1` (`einval`
+  para una ruta que no es un enlace), `read_link_info/1,2` (el estado propio
+  de un enlace final: `lstat` de POSIX, en Windows los campos del destino con
+  tipo `symlink`), `make_link/2`, `make_symlink/2` (en Windows necesita un
+  privilegio: `eperm`, como OTP), `list_dir_all/1`, `del_dir_r/1`,
+  `copy/2,3` (nombres, `{Name, Modes}` o archivos abiertos;
+  `{ok, BytesCopied}`), `raw_read_file_info/1`, `read_file/2`, `delete/2`,
+  `native_name_encoding/0` (`utf8`). `del_dir/1` responde `enoent` para una
+  ruta inexistente y `enotdir` para un archivo. `consult/1` y la familia
+  `eval`/`script` siguen siendo stubs: necesitan el analizador generado de OTP.
+- Archivos, decidido: el `file` de Clause es la capa de archivos; `filelib` y
+  `filename` de OTP son Erlang puro que se ejecuta sobre ella cuando la ruta de
+  búsqueda de un programa contiene los fuentes de OTP
+  (`filelib:fold_files/5` necesita `re`); `erl_prim_loader` se proporciona
+  sobre `file` con las respuestas `error` escuetas de OTP y una ruta de carga
+  `["."]` (`set_path/1`), y sus funciones de carga y de archivos comprimidos se
+  rechazan hasta el step 71; `prim_file` y `prim_buffer` siguen ausentes, por
+  lo que los llamantes de `raw_file_io*` de OTP nunca entran en un programa.
 - Los errores siguen a OTP: `{error, enoent}`, `eexist`, `eisdir` (un
   directorio abierto o leído como archivo), `einval` (una posición negativa),
   `ebadf` (leer un archivo de solo escritura o escribir uno de solo lectura),
@@ -399,6 +448,22 @@ Implementación (`runtime/src/ports/sockets.cpp`):
 - Los puertos de socket se planifican como los demás puertos
   ([tareas de puerto](#port-tasks)): los mensajes de un socket esperan en su
   puerto hasta que la tarea del puerto los entrega.
+- Direcciones y hosts: `inet:parse_address/1,2`,
+  `parse_strict_address/1,2`, `parse_ipv4_address/1`,
+  `parse_ipv4strict_address/1`, `parse_ipv6_address/1`,
+  `parse_ipv6strict_address/1` (las formas relajadas de OTP: campos IPv4
+  cortos y octales o hexadecimales, `::`, colas IPv4, `%scope` de `fe80::` y
+  `ff02::`), `ntoa/1` (la grafía de OTP: hexadecimal en minúsculas, la primera
+  secuencia de ceros más larga como `::`), `is_ipv4_address/1`,
+  `is_ipv6_address/1`, `is_ip_address/1` son Erlang; `gethostname/0` (una
+  operación de socket), `getaddr/2`, `getaddrs/2` (el resolutor del sistema,
+  `getaddrinfo`) y `gethostbyname/1,2` (`h_name` es el nombre consultado, sin
+  alias) responden mediante un puerto de socket abierto para la consulta.
+- Decidido en 41R: `gen_tcp`, `gen_udp` e `inet` de Clause son la capa de red
+  y crecen hacia las listas de exportaciones de OTP según lo necesiten los
+  programas; los módulos `socket` y `net` de OTP (la API NIF de sockets) no
+  existen, como tampoco `prim_socket`, `prim_net`, `prim_inet` ni
+  `socket_registry`.
 
 ## No proporcionado
 

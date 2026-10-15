@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 06042fa
-sourceSha256: a6c1ea20b3bdb7055c6080cff72a2a86c4cdce87eb6bd8944ffce5c709e98d66
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 117cb0d9a710183b84c1f3474a4ae07fa185ffa3bdb502b383d297027e183aff
+translatedAt: 2026-10-15
 ---
 # Représentation des termes
 
@@ -28,6 +28,9 @@ mots se trouvent dans [abi.md](abi.md#terms).
   il n'épingle pas le stockage du tas. Après la destruction du contexte, l'accès
   renvoie `expired_context` ; après un ramassage ultérieur, `stale_term`. Les
   termes peuvent toujours être détruits sans risque.
+  La vérification de destruction lit le jeton de durée de vie du contexte sans
+  le verrouiller : un contexte et ses termes ne sont utilisés que par un seul
+  thread à la fois.
 - La construction valide les enfants, réserve, initialise, puis publie en une
   seule étape ; un échec annule le stockage et les compteurs.
 - `Term::from_word(word)` n'admet que les immédiats indépendants du propriétaire ;
@@ -51,10 +54,31 @@ mots se trouvent dans [abi.md](abi.md#terms).
 - Les charges utiles proviennent d'un compteur global au processus, de sorte
   qu'un mot d'atome d'un runtime étranger est détectable. Les processus 32 bits
   disposent de 2^26 identités au total sur toute leur durée de vie.
+- L'admission d'un mot d'atome lit un index sans verrou par numéro d'atome
+  (directement les atomes fixes, puis des blocs de 4 096 entrées publiés une
+  seule fois sous le verrou d'internement) ; les numéros au-delà de 2^24
+  se replient sur la table verrouillée.
 - Les Terms d'atomes hôtes épinglent l'orthographe et survivent à la destruction
   du runtime. Déplacer un atome entre runtimes signifie interner `atom_utf8()`
   dans la destination.
-- Les booléens sont les atomes `true`/`false`.
+- Les booléens sont les atomes `true`/`false`. Les atomes fixes `false`,
+  `true`, `undefined`, `ok` et `error` (`abi::v1::fixed_atom_spellings`) ont
+  les mots des numéros d'atome 0–4 dans chaque runtime, inscrits avec le
+  stockage, trouvés sans le verrou et comptés ni par `size()` ni dans
+  `max_atoms` ; le code généré les utilise comme constantes. Tout autre mot
+  d'atome est privé au runtime.
+- Les littéraux composés de constantes (chaînes, listes et tuples
+  d'immédiats et d'autres littéraux, flottants, bignums) sont des cellules de
+  la zone de littéraux du module, construites à la compilation et partagées
+  ([zones de littéraux](runtime-heap.md#areas)) ; les littéraux entiers de la
+  petite plage sont des immédiats.
+- Les autres littéraux atomes se chargent depuis le cache d'atomes du module
+  (`ModuleDescriptor::atom_cache` : l'identité du runtime qui le revendique,
+  puis un mot par emplacement), que remplit le premier runtime qui enregistre
+  le module ; un contexte dont le `FrameState::runtime` correspond à la
+  revendication le lit sans appel, tout autre appelle `CLAUSE_atom_v3`. La
+  revendication est rendue lorsque le serveur de code du runtime libère le
+  module.
 - L'internement et la recherche sont sûrs depuis des threads de travail
   d'ordonnanceur concurrents ([threads](runtime.md#threads)) ; une orthographe
   garde un seul mot.
@@ -65,9 +89,14 @@ mots se trouvent dans [abi.md](abi.md#terms).
   immédiats ; les plus grandes sont des cellules signe/magnitude immuables. Zéro
   et les petites valeurs sont toujours normalisés en immédiats. Pas de
   rétrécissement des littéraux à la largeur de l'hôte.
+- En `-O2`, les opérandes que l'inférence prouve petits sautent leurs tests
+  d'étiquette, et une plage de résultat prouvée saute aussi la vérification de
+  dépassement et le repli ([preuves](specialization.md#proofs)).
 - Les `+`, `-`, `*` générés tentent un chemin rapide en ligne sur deux immédiats
   (calcul en double largeur avec bornes explicites), sinon appellent le service
-  du runtime.
+  du runtime ; de même pour `band`, `bor`, `bxor`, `bsr`, `div`, `rem` et les
+  comparaisons de deux petits entiers
+  ([formes inline](abi.md#runtime-services)).
 - `div` tronque vers zéro ; `rem` prend le signe du dividende ; les opérations
   bit à bit utilisent un complément à deux infini ; un décalage négatif inverse
   le sens ; les très grands décalages à droite saturent à 0 ou -1.
@@ -112,11 +141,12 @@ mots se trouvent dans [abi.md](abi.md#terms).
 
 - Tables immuables triées selon l'ordre exact des clés. Les clés de construction
   en double gardent la dernière valeur. La construction trie les clés
-  (O(n log n) comparaisons ; des clés déjà croissantes sont seulement vérifiées) ;
-  les mises à jour insèrent par recherche dichotomique. Pas de plafond de taille
-  ni de travail hormis la mémoire, comme dans OTP ; sur les cibles 32 bits, le
-  nombre de mots de l'en-tête limite une map à 2^24 - 1 entrées
-  (`resource_limit`). Les clés entières et flottantes diffèrent (y compris `0.0`
+  (O(n log n) comparaisons ; des clés déjà croissantes sont seulement
+  vérifiées). Jusqu'à 32 entrées, une map est une seule cellule du tas et une
+  mise à jour insère par recherche dichotomique dans une copie ; au-delà, c'est
+  un arbre B+ hors tas mis à jour par copie de chemin en O(log n)
+  ([maps hors tas](runtime-heap.md#off-heap-maps)). Pas de plafond de taille
+  ni de travail hormis la mémoire, comme dans OTP. Les clés entières et flottantes diffèrent (y compris `0.0`
   et `-0.0`, y compris imbriquées).
 - Les mises à jour `K := V` exigent la clé ; `K => V` insère ou remplace. Les
   mises à jour préparent une nouvelle table et la publient une seule fois.
@@ -137,7 +167,29 @@ mots se trouvent dans [abi.md](abi.md#terms).
   large que le segment.
 - La construction prépare tous les segments avant de publier. Les segments
   entiers sont tronqués ; l'endianness native vient de la disposition des
-  données de la cible.
+  données de la cible. Un segment entier d'une petite valeur et d'une largeur
+  d'au plus 64 bits est écrit depuis son mot machine (octets entiers d'un coup
+  sur une frontière d'octet) ; les autres prennent le chemin multiprécision. Sur
+  les cibles 64 bits, le code généré écrit un binary de segments entiers
+  d'octets entiers de largeurs constantes (au plus 64 octets) directement dans
+  le bloc de tas, sous forme de binary en ligne, lorsque chaque valeur est un
+  petit entier et que le tas a de la place ; sinon le service de bits le
+  construit, en lisant les segments de petits entiers depuis leurs mots
+  d'argument.
+- Ajouts (comme les binaries inscriptibles d'OTP) : une construction qui
+  commence par un binary entier (`<<Acc/binary, ...>>`) construit son résultat
+  dans un tampon avec de la place libre (deux fois sa taille, au moins
+  256 octets) dont la cellule hors tas dans le processus créateur enregistre
+  ses bits utilisés et sa capacité (zéro dans toute autre cellule, copies
+  comprises). Un ajout ultérieur dont la vue de l'accumulateur se termine
+  exactement là écrit les nouveaux octets dans la place libre, qu'aucune vue
+  ne couvre, et renvoie une vue plus longue du même tampon : un sous-binary de
+  la propre cellule hors tas du tampon, qui peut aller au-delà des bits de
+  cette cellule. Le code généré fait cela en ligne pour les segments entiers
+  d'octets entiers de largeur constante de petites valeurs ; tout autre
+  accumulateur (une vue plus ancienne, celle d'un autre processus, une vue non
+  alignée, un tampon plein) est copié dans un nouveau tampon doublé. Les autres
+  vues du tampon ne changent jamais.
 - Segments flottants : largeurs 16/32/64 ; la construction peut encoder l'infini,
   mais le filtrage rejette les champs infinis/NaN. Les correspondances de
   flottants de largeur nulle extraient `0.0`.
@@ -180,7 +232,7 @@ mots se trouvent dans [abi.md](abi.md#terms).
 
 ## Pids et références
 
-Plan 11 step 42. `self/0` renvoie le pid du processus appelant, `make_ref/0` une
+`self/0` renvoie le pid du processus appelant, `make_ref/0` une
 nouvelle référence ; `pid_to_list/1` et `ref_to_list/1` renvoient leur texte.
 
 - Un pid est un mot immédiat (quatre bits de poids faible `0x3`) contenant le
@@ -191,7 +243,7 @@ nouvelle référence ; `pid_to_list/1` et `ref_to_list/1` renvoient leur texte.
   un terme valide, comme dans OTP. Les cibles 32 bits disposent de 2^28 numéros
   par exécution du programme, les cibles 64 bits de 2^60 ; créer un processus
   au-delà échoue avec `resource_limit`.
-- Un port (plan step 57B) est un mot immédiat (quatre bits de poids faible
+- Un port est un mot immédiat (quatre bits de poids faible
   `0x7`) contenant son numéro issu de sa propre séquence jamais réutilisée,
   admis comme un pid ; il s'affiche sous la forme `#Port<0.N>` et se range entre
   les funs et les pids ([ports](ports.md#identity)).
@@ -200,6 +252,10 @@ nouvelle référence ; `pid_to_list/1` et `ref_to_list/1` renvoient leur texte.
   processus, périmée après un ramassage pour un `Term` hôte, copiée par valeur
   entre processus. Les numéros proviennent d'un seul compteur global au
   processus, donc chaque référence d'une exécution du programme est unique.
+- Une référence handle (une référence magique d'OTP) est une cellule de
+  référence qui contient aussi un tampon hors tas ; c'est la même référence
+  pour chaque service et elle partage son tampon avec chaque copie
+  ([références handle](runtime-heap.md#handle-references)).
 - L'affichage suit les identités locales d'OTP : un pid sous la forme `<0.N.S>`
   (N les 28 bits de poids faible de son numéro, S le reste), une référence sous
   la forme `#Ref<0.A.B.C>` (C les 18 bits de poids faible de son numéro, B les
@@ -218,6 +274,9 @@ funs < pids < tuples < native records < maps < nil < listes < bitstrings
 se comparent selon leur orthographe UTF-8 (ordre des points de code) ; les tuples
 par arité puis par champs ; les maps par taille, puis clés, puis valeurs ; les
 bitstrings par bits logiques.
+Deux petits entiers, deux flottants ou deux binaries d'octets entiers sont
+ordonnés directement depuis leurs mots ou cellules (`detail::word_order`), sans
+admission de termes.
 
 ## Affichage
 

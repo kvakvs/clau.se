@@ -101,16 +101,16 @@ SDK exists for those hosts):
   A 2026-10-03 audit removed all copied OTP files; 60-token window comparison
   against 4,150 OTP Erlang and 1,190 C/C++ files found no remaining overlap
   besides a generated integer tuple. `fixture_sources` enforces isolation.
-- Six end-goal program fixtures (`tests/fixtures/programs/`, plan 11 step 2)
+- Six end-goal program fixtures (`tests/fixtures/programs/`)
   hold OTP stdout/exit-status goldens and today's compile diagnostics;
   `programs_compile` checks them OTP-free and
   `tests/compiler/programs/regenerate.py --check` reproduces them under OTP
   ([fixture map](../tests/fixtures/programs/README.md)).
-- Term printing goldens (`tests/fixtures/printing/`, plan 11 step 4) hold OTP
+- Term printing goldens (`tests/fixtures/printing/`) hold OTP
   `~w` and `erlang:display/1` text for 9,542 values plus OTP stdout of compiled
   display calls; `tests/compiler/printing/regenerate.py --check` reproduces them
   ([fixture notes](../tests/fixtures/printing/README.md)).
-- Executable golden cases (`tests/fixtures/executables/`, plan 11 step 8) are
+- Executable golden cases (`tests/fixtures/executables/`) are
   source directories plus one `golden.json` with OTP stdout/exit status and an
   authored stderr pattern; `tests/compiler/executables/run.py` links and runs
   each under the policy/driver matrix (CTest `executables_<case>`), and
@@ -141,10 +141,9 @@ never stand in for a whole-test pass.
 
 ## Platform and sanitizer status
 
-- Native generated-code execution: Windows x64; Linux x86-64 (plan 11
-  step 63). 32-bit and ARM results are in the history.
-- Apple Silicon: pending (step 66).
-- Compiler and runtime ASan, UBSan and LeakSanitizer (plan 11 step 67): Linux
+- Native generated-code execution: Windows x64; Linux x86-64. 32-bit and ARM results are in the history.
+- Apple Silicon: pending.
+- Compiler and runtime ASan, UBSan and LeakSanitizer: Linux
   x86-64, one combined Debug configuration
   (`-fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=undefined`),
   full CTest with `CLAUSE_TEST_TIMEOUT_SCALE=10` (instrumented code runs
@@ -154,7 +153,7 @@ never stand in for a whole-test pass.
   instrumented. The four injected host-refusal tests (`codegen_failure_*`,
   `runtime_lifecycle_failure`, `runtime_memory`) are outside ASan's scope:
   its `operator new` aborts on an impossible size instead of throwing.
-- ThreadSanitizer (plan 11 step 68): Linux x86-64, the same instrumentation
+- ThreadSanitizer: Linux x86-64, the same instrumentation
   scope with `-fsanitize=thread`; full CTest and the concurrency tests five
   times each report no race after the `Executor::clear` lock-order fix. Out of
   scope as well: the two tests that replace `operator new`.
@@ -166,6 +165,58 @@ never stand in for a whole-test pass.
 - Historical macOS arm64 runs (2026-09-19/20) passed full Debug, C++26,
   ASan+UBSan, compiler-only and runtime-only builds for the parser and project
   stages; they predate the backend.
+
+## Benchmarks
+
+Manual performance comparison with Erlang/OTP. It is never
+part of CTest, the commit gate or `check-quality`, and only it needs a host
+Erlang/OTP; results are host-specific evidence, not gate results.
+
+```powershell
+make-benchmark.bat                         # Windows; set JOBS=N to cap parallel builds
+make-benchmark.bat --repeat 9 --only bench_gc,bench_msg
+make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
+```
+
+- Both configure and build a Release `clau` and runtime in `build/bench`, then
+  run `benchmarks/run.py` (`--help` lists its options).
+- Programs: `benchmarks/bench_*.erl` with `bench_util.erl`, built unchanged by
+  `erlc` and `clau -O2`. Each times its kernels with
+  `erlang:monotonic_time/1` after one warm-up call and prints
+  `BENCH <name> <nanoseconds>`: data generation, data processing, garbage
+  collection, message passing, file I/O (in an empty temporary working
+  directory) and loopback sockets.
+- Systems, on the same host in one run, interleaved: OTP with its default
+  flavor (JIT), OTP `-emu_flavor emu` when installed (the Windows installer
+  ships only the JIT, so those columns read `n/a`), Clause HEAD at O2 and
+  with `--lto`, and a previous Clause commit (default: the newest commit at
+  least one day older than HEAD; `--baseline REV`, `--no-baseline`) built in a
+  cached worktree under `build/bench-base/<hash>` that shares `thirdparty/`.
+- Report: per kernel the median of `--repeat` runs (default 5) in milliseconds
+  with six decimals and its spread,
+  the change of Clause O2 against each system (`+N%`: Clause faster, the
+  other takes N% longer; `-N%`: Clause takes N% longer; `(Fx)` the time
+  ratio) with a geometric mean, `--lto` against OTP and O2, program wall
+  times including startup, failures and timeouts (`--timeout`, 600 s per run).
+  Iteration counts keep a default run under 10 minutes; Clause, the slowest
+  system, sets the sizes, so some OTP kernels last only a few milliseconds.
+- History: `benchmarks/history/<host>.json` keeps one record per run day
+  (run date, HEAD hash and commit date, Clause, OTP and baseline medians),
+  `benchmarks/history/reports/<host>/<day>-<hash>.txt` the text reports; a
+  rerun on the same day replaces both. Records and reports run more than
+  183 days before the newest are pruned; a run with uncommitted source
+  changes is reported but not recorded. The history directory is
+  gitignored: it stays on the host that ran it.
+- Listings: with `--listings`, before measuring, a run writes each program's
+  [`--print-asm`](compile.md#assembly-listings) and `--print-ir` listings
+  (with `bench_util`, `--entry <program>` so unreachable library code is
+  left out as in the executable) beside the reports as `<program>.debug.asm` /
+  `<program>.debug.ll` (`-O0`) and `<program>.release.asm` /
+  `<program>.release.ll` (`-O2`, the code the `clause-o2` column runs),
+  replacing the previous run's listings, `--no-history` and uncommitted
+  changes included. `--print-ir` is the IR before the LLVM pipeline; the
+  assembly comments quote the IR after it. A program that fails to compile
+  loses its stale listings.
 
 ## History
 

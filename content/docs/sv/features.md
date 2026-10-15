@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 06042fa
-sourceSha256: a01c524098c785a3c361908d8a6a5221ef5182bf96ee3780a02e2e2a1efd0e2b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
+translatedAt: 2026-10-15
 ---
 # Rapportering av ej implementerade funktioner
 
@@ -36,6 +36,11 @@ ID reserverat.
   citattecken och omvända snedstreck så att kontexten inte kan injicera rader.
   UTF-8 behålls.
 - Exakt ett meddelande per misslyckad operation, oberoende av `--verbose`.
+- En uppskjuten funktion som kompilatorn kunde hoppa över utan att ändra vad
+  den accepterar skulle rapporteras som en varning och kompileringen skulle
+  fortsätta; ingen gör det i dag (`parse transforms` gjorde det tills plan step
+  73F tillämpade dem, se [transforms](transforms.md)). `codegen_placeholders`
+  kontrollerar ett meddelande per uppskjuten kompilatorfunktion.
 - Kompilatorn: [reject_feature](../compiler/src/codegen/features.hpp) rapporterar
   det första felet i en batch, låser fast felet, kastar förberedd utdata och
   markerar diagnostiken som `reported` så att drivrutinerna inte skriver ut den

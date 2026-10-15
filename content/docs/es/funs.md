@@ -1,12 +1,12 @@
 ---
 source: docs/funs.md
-sourceCommit: 06042fa
-sourceSha256: 86455c55a6eeb5c5a45118774fc530be75d7ca026113a4e394675ced4b7c12c4
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: d6183dca6e3b3f09dea66c149577541528e02b41b04f721c8d768762926ac676
+translatedAt: 2026-10-15
 ---
 # Valores de función
 
-Plan 11 steps 32–35 (2026-10-07): `fun F/A`, `fun M:F/A`, funs anónimos con
+`fun F/A`, `fun M:F/A`, funs anónimos con
 variables capturadas (clausuras, closures), funs con nombre
 (`fun Name(...) -> ... end`), llamadas a valores de función (`F(Args)`) y
 llamadas dinámicas (`M:F(Args)`, `apply/2,3`). Los datos provienen de los
@@ -121,6 +121,15 @@ fuentes fijados de `maint-29` (`erts/emulator/beam/utils.c` `erts_cmp`,
   comprueba un valor llamado, registra los errores anteriores en el canal de
   fallos (`ErrorReason` 22-24) y, en otro caso, añade los valores capturados
   tras los argumentos y devuelve el `FrameDescriptor` en el que entrar.
+- **Closures en línea** (ABI 21). El runtime que reclama la caché de átomos de
+  un módulo también rellena `ModuleDescriptor::fun_cache` con la dirección de
+  la definición de cada fun; mientras la reclamación sea suya, el código
+  generado asigna por desplazamiento (bump allocation) la celda del fun
+  (cabecera, definición, valores capturados) por sí mismo y llama a
+  `CLAUSE_make_fun_v1` solo cuando no hay espacio en el heap o en otro runtime.
+  `CLAUSE_apply_v1` y `CLAUSE_apply_list_v1` leen un fun de la aridad correcta
+  (y la lista de argumentos) directamente de sus celdas antes de la ruta
+  comprobada que informa de los errores.
 - **Llamadas.** La forma nativa pasa los argumentos en un array de palabras y
   llama al marcador `clause.apply` con el descriptor; `lower_frames` convierte
   el array en los registros del proceso y el marcador en una transferencia a
@@ -158,3 +167,16 @@ Registradas en [diferencias](differences.md):
   numera en su propio orden. Los funs creados dentro de comprehensions también
   pueden capturar sus valores en un orden distinto al de OTP, lo que solo se
   aprecia al comparar dos de esos funs.
+
+## Información de funs
+
+Fuente: `builtins/erlang/fun_info.cpp`. `erlang:fun_info/1` enumera los
+elementos de OTP en el orden de OTP: para un fun local `pid`, `module`,
+`new_index`, `new_uniq`, `index`, `uniq`, `name` (`-F/A-fun-N-` para un fun
+anónimo), `arity`, `env` (los valores capturados) y `type`; para
+`fun M:F/A` `module`, `name`, `arity`, `env` (`[]`) y `type`.
+`fun_info/2` devuelve un `{Item, Value}`; un elemento desconocido es `badarg`.
+`pid` es `undefined`, `new_uniq` el MD5 del nombre del módulo y `uniq` sus
+primeros 24 bits, por lo que difieren de los de OTP. `fun_to_list/1` es el
+texto `~w`. `is_builtin/3` es verdadero para los builtins del runtime y para
+`erlang:apply/2,3`.

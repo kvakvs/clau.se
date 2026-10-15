@@ -1,12 +1,12 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 06042fa
-sourceSha256: 4496f092872f90d6a3fb46c26f67950a76fa663502d4f2c80d8be45d55c8a599
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
+translatedAt: 2026-10-15
 ---
 # Modèle d'exécution : cadres et continuations
 
-Décision du plan 11 step 17 (2026-10-05). Elle fixe la manière dont les
+Elle fixe la manière dont les
 fonctions Erlang générées appellent, retournent, se suspendent et échouent une
 fois arrivés la récursion, les appels terminaux et les processus. Le step 19 a
 implémenté les appels, les retours, les appels terminaux et les cadres
@@ -94,7 +94,7 @@ la continuation 2 le gestionnaire d'une exception non capturée.
   d'empiler un cadre ; les arguments restent dans `x[0..arity)`, qui sont
   alors les seuls registres du processus à enraciner. La reprise recharge le
   budget et transfère vers `resume_at`, qui répète l'entrée. Les attentes
-  ultérieures (`receive`, step 46) stockent un indice de continuation du corps
+  ultérieures (`receive`) stockent un indice de continuation du corps
   au lieu d'une entrée.
 - **Sortie.** Retourner dans le cadre de fond enregistre une sortie normale ;
   y dérouler enregistre une exception non capturée. Dans les deux cas, le
@@ -192,10 +192,35 @@ Le step 19 (2026-10-05) implémente le modèle avec ces choix et ces lacunes :
   points d'accroche de test travaillent sur la forme native ; le backend
   exécute `lower_frames` avant l'inspection de l'IR et `optimize` l'exécute si
   c'est encore nécessaire.
-- **Entrée et corps.** Il n'y a pas de fonction d'entrée séparée : l'appelant
-  appelle `CLAUSE_enter_v1(context, callee.frame)`, qui empile le cadre,
-  copie les arguments et renvoie le corps de l'appelé. Un appel terminal
-  utilise `CLAUSE_tail_v1`, qui libère d'abord le cadre de l'appelant.
+- **Entrée et corps.** Il n'y a pas de fonction d'entrée séparée. La table
+  d'état du processus ci-dessus est `abi::v1::FrameState`, au début de chaque
+  contexte, de sorte que le code généré effectue les transferts inline
+  (révision 9 de l'ABI) : une entrée dépense une réduction, empile le cadre mis
+  à zéro, copie les arguments depuis les registres et transfère vers le corps
+  de l'appelé ; une entrée terminale réutilise d'abord la place de l'appelant ;
+  un retour dépile et transfère vers le corps de l'appelant. Chaque chemin se
+  replie sur `CLAUSE_enter_v1`, `CLAUSE_tail_v1` ou `CLAUSE_return_v1` lorsque
+  le tas demande une collecte, que le processus est profilé, qu'il ne reste
+  aucune réduction, que la pile doit grandir ou atteint sa limite, ou que
+  l'appelé est un builtin. La vérification d'échec après un appel lit le mot
+  `failed` de l'état. Un appel terminal sur soi-même garde son cadre là où il
+  est : il dépense une réduction, réinitialise les mots de reprise et de
+  gestionnaire du cadre ainsi que le nombre de valeurs vivantes et copie les
+  arguments au-delà des registres, sans réécrire l'en-tête ni mettre à zéro
+  les emplacements (chacun contient zéro ou un mot de terme que les collectes
+  réécrivent, et le corps écrit un emplacement avant de le lire).
+- **Paramètres registres** (révision 10 de l'ABI). Le code est
+  `void(void *, TermWord x0, TermWord x1, TermWord x2)` : chaque transfert
+  passe les trois premiers registres X comme paramètres C, de sorte que les
+  premiers arguments d'un appel et le résultat d'un retour restent dans des
+  registres machine. Un corps lit ses premiers arguments dans les paramètres
+  lorsqu'il démarre et le résultat de l'appel dans `x0` lorsqu'il reprend ;
+  `lower_frames` ne déverse l'un ou l'autre dans un emplacement que s'il est
+  vivant à travers un appel ou un point sûr. Les chemins de service stockent
+  les paramètres dans le tableau de registres avant le service et les
+  rechargent après. Comme tous les corps partagent un même prototype, LLVM
+  transforme en boucle un appel terminal sur soi-même dont l'empilement inline
+  ramène au même corps.
 - **Les positions terminales** sont la dernière expression du corps d'une
   clause, suivie à travers les blocs, les parenthèses et les corps de clauses
   `case` et `if`. Les appels dans les opérandes de `catch`, `try`, `maybe` et
@@ -209,19 +234,20 @@ Le step 19 (2026-10-05) implémente le modèle avec ces choix et ces lacunes :
   de termes, de sorte qu'aucune valeur SSA n'est transportée autour d'une
   boucle et qu'un point de reprise à l'intérieur n'a besoin de rien au-delà
   des déversements habituels.
-- **Cessions** (step 43, [processus](processes.md)). `CLAUSE_enter_v1` et
-  `CLAUSE_tail_v1` dépensent une des réductions du processus ; s'il n'en reste
-  plus, ils enregistrent la fonction appelée (`ProcessStack::resume_`, le
+- **Cessions** ([processus](processes.md)). Chaque entrée, inline ou via
+  `CLAUSE_enter_v1` et `CLAUSE_tail_v1`, dépense une des réductions du
+  processus ; s'il n'en reste plus, les services prennent le relais : ils
+  enregistrent la fonction appelée (`ProcessStack::resume_`, le
   `resume_at` du modèle), conservent ses arguments comme racines de registres
   et renvoient un code qui termine la tranche de temps, de sorte que la pile
   native se déroule jusqu'à l'exécuteur, qui répète plus tard l'entrée. Les
   têtes de boucle ne cèdent pas la main. Le ramasse-miettes énumère les
   emplacements de termes des cadres, les registres qu'une suspension garde
-  vivants (`ProcessStack::keep_registers`) et le canal d'échec (step 23,
-  [racines](runtime-heap.md#roots-and-safe-points)). Les entrées de fonction et
+  vivants (`ProcessStack::keep_registers`) et le canal d'échec
+  ([racines](runtime-heap.md#roots-and-safe-points)). Les entrées de fonction et
   les têtes de boucle des comprehensions sont des points sûrs qui effectuent
-  une collecte lorsque le tas le demande (step 26,
-  [collecte dans le code généré](runtime-heap.md#collection-in-generated-code)) ;
+  une collecte lorsque le tas le demande
+  ([collecte dans le code généré](runtime-heap.md#collection-in-generated-code)) ;
   les emplacements de déversement bruts ne contiennent jamais de termes.
 - **Pas de plafond.** La pile grandit jusqu'à ce que l'hôte refuse de la
   mémoire, ce qui échoue avec `out_of_memory` (code de sortie 70,

@@ -1,12 +1,12 @@
 ---
 source: docs/funs.md
-sourceCommit: 06042fa
-sourceSha256: 86455c55a6eeb5c5a45118774fc530be75d7ca026113a4e394675ced4b7c12c4
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: d6183dca6e3b3f09dea66c149577541528e02b41b04f721c8d768762926ac676
+translatedAt: 2026-10-15
 ---
 # Funktionsvärden
 
-Plan 11 steps 32–35 (2026-10-07): `fun F/A`, `fun M:F/A`, anonyma funs med
+`fun F/A`, `fun M:F/A`, anonyma funs med
 infångade variabler (closures), namngivna funs (`fun Name(...) -> ... end`),
 anrop av funktionsvärden (`F(Args)`) och dynamiska anrop (`M:F(Args)`,
 `apply/2,3`). Fakta kommer från de fastlåsta `maint-29`-källorna
@@ -117,6 +117,14 @@ och prober på OTP 29.1.1.
   kontrollerar ett anropat värde, registrerar felen ovan i felkanalen
   (`ErrorReason` 22-24) och lägger annars till de infångade värdena efter
   argumenten och returnerar den `FrameDescriptor` som ska anropas.
+- **Inline-closures** (ABI 21). Den runtime som tar en moduls atomcache fyller
+  också `ModuleDescriptor::fun_cache` med adressen till varje funs definition;
+  så länge anspråket är dess eget allokerar genererad kod själv fun-cellen
+  (huvud, definition, infångade värden) genom att flytta fram heappekaren och
+  anropar `CLAUSE_make_fun_v1` endast när heaputrymme saknas eller i en annan
+  runtime. `CLAUSE_apply_v1` och `CLAUSE_apply_list_v1` läser en fun med rätt
+  aritet (och argumentlistan) direkt från dess celler före den kontrollerade
+  vägen som rapporterar fel.
 - **Anrop.** Den inbyggda formen skickar argumenten i en ordarray och anropar
   markören `clause.apply` med deskriptorn; `lower_frames` gör arrayen till
   processens register och markören till en överföring via
@@ -152,3 +160,16 @@ Dokumenterade i [skillnader](differences.md):
   källkodsordning; OTP:s kompilator numrerar dem i sin egen ordning. Funs som
   skapas inuti comprehensions kan också fånga in sina värden i en annan ordning
   än OTP:s, vilket bara syns när två sådana funs jämförs.
+
+## Information om funs
+
+Källa: `builtins/erlang/fun_info.cpp`. `erlang:fun_info/1` listar OTP:s
+poster i OTP:s ordning: för en lokal fun `pid`, `module`, `new_index`,
+`new_uniq`, `index`, `uniq`, `name` (`-F/A-fun-N-` för en anonym fun),
+`arity`, `env` (de infångade värdena) och `type`; för `fun M:F/A` `module`,
+`name`, `arity`, `env` (`[]`) och `type`.
+`fun_info/2` returnerar en `{Item, Value}`; en okänd post ger `badarg`. `pid`
+är `undefined`, `new_uniq` MD5 av modulnamnet och `uniq` dess första 24 bitar,
+så de skiljer sig från OTP:s. `fun_to_list/1` är texten för `~w`.
+`is_builtin/3` är sant för runtimens inbyggda funktioner och
+`erlang:apply/2,3`.

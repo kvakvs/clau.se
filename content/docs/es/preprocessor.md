@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 06042fa
-sourceSha256: 08b6bf1b734adf5fc6f8aef3972fd56c8f9d20c1a688610c989862794900cd67
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
+translatedAt: 2026-10-15
 ---
 # Preprocesador
 
@@ -43,9 +43,13 @@ público. `DirectiveReader` es la API anterior, solo sintáctica.
 - Búsqueda de includes: directorio del archivo actual, directorio de trabajo y
   después las rutas de include en el orden de la API. La CLI invierte los `-I`
   repetidos para coincidir con `erlc`. Las rutas absolutas evitan la búsqueda.
-  `include_lib` prueba las rutas ordinarias y después los directorios de
-  aplicación proporcionados explícitamente; no hay servidor de código ni
-  deducción de versiones.
+  `include_lib` prueba las rutas ordinarias, después los directorios de
+  aplicación proporcionados explícitamente y después los directorios
+  `<app>-<version>` de las releases bajo cada directorio buscado (las versiones
+  son dígitos separados por puntos, como los lee el servidor de código de OTP;
+  gana la más alta). Varias versiones de una misma aplicación generan una
+  advertencia una vez por ejecución, que nombra el directorio usado; no hay
+  servidor de código.
 - Las cabeceras de ruta `$VAR` usan un resolutor inyectado; las variables no
   definidas se mantienen literales. Los operandos de include no se expanden como
   macros. Los archivos se decodifican como UTF-8 o como Latin-1 declarado; se

@@ -1,12 +1,12 @@
 ---
 source: docs/ports.md
-sourceCommit: 06042fa
-sourceSha256: ffc81af5614a310568c39bb585031013ebcf0a5b801da59a58e2b7fa8ef0fa3c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 60dc15d155f211fa34c0d05254cd2430ae96643f87d84d0c0ed2da0965711e49
+translatedAt: 2026-10-15
 ---
 # Порти
 
-Рішення плану 11, крок 57A (2026-10-08). Воно замінює рішення кроку 53
+Воно замінює рішення кроку 53
 (без портів, [процеси](processes.md#ports)): програми отримують порти в тому
 вигляді, як їх визначає OTP, і зовнішній ввід-вивід проходить через них.
 Кроки 57B–57F це реалізують; кожен розділ називає свій крок. Цей контракт
@@ -15,23 +15,22 @@ translatedAt: 2026-10-09
 
 Реалізовано: ідентичності, таблицю портів, вбудовані функції й повідомлення
 портів, зв'язки (links), монітори, імена й сигнали виходу портів, а також
-порти `fd` лише для виводу (крок 57B, `runtime/src/scheduler/ports.cpp`,
-`runtime/src/builtins/ports.cpp`, `runtime/src/ports/`; еталон OTP
+порти `fd` лише для виводу (`runtime/src/scheduler/ports.cpp`,
+`runtime/src/builtins/erlang/ports.cpp`, `runtime/src/ports/`; еталон OTP
 `executables_port_identities`); потік вводу-виводу і ввід портів `fd` з
-потоковим, пакетним і рядковим фреймуванням (крок 57C,
-`runtime/src/ports/io*.cpp`; еталон OTP `executables_port_input`); порти
-підпроцесів, `os:type/0`, `os:getenv/1` і `os:cmd/1` (крок 57D,
-`runtime/src/ports/spawn*.cpp`, `library/stdlib/os.erl`; еталон OTP
-`executables_port_spawn`); файловий драйвер, підмножину `file` бібліотеки і
-стандартний ввід через `io:get_line`/`io:get_chars` (крок 57E,
-`runtime/src/ports/file.cpp`, `library/stdlib/{file,io}.erl`; еталон OTP
-`executables_file_io`); сокети (крок 57F, еталон OTP `executables_sockets`);
-один подієвий потік вводу-виводу для портів усіх видів (крок 57G1,
-`runtime/src/ports/reactor.cpp`; еталон OTP `executables_many_ports`, тест
-runtime `runtime_port_io`); завдання портів на робочих потоках планувальника
-(крок 57G2, `runtime/src/scheduler/ports.cpp`; еталон OTP
-`executables_port_fairness`); зайняті порти й обмежений ввід (крок 57G3;
-еталони OTP `executables_busy_ports`, `executables_slow_owner`).
+потоковим, пакетним і рядковим фреймуванням (`runtime/src/ports/io*.cpp`;
+еталон OTP `executables_port_input`); порти підпроцесів, `os:type/0`,
+`os:getenv/1` і `os:cmd/1` (`runtime/src/ports/spawn*.cpp`,
+`library/stdlib/os.erl`; еталон OTP `executables_port_spawn`); файловий
+драйвер, підмножину `file` бібліотеки і стандартний ввід через
+`io:get_line`/`io:get_chars` (`runtime/src/ports/file.cpp`,
+`library/stdlib/{file,io}.erl`; еталон OTP `executables_file_io`); сокети
+(еталон OTP `executables_sockets`); один подієвий потік вводу-виводу для
+портів усіх видів (`runtime/src/ports/reactor.cpp`; еталон OTP
+`executables_many_ports`, тест runtime `runtime_port_io`); завдання портів
+на робочих потоках планувальника (`runtime/src/scheduler/ports.cpp`; еталон
+OTP `executables_port_fairness`); зайняті порти й обмежений ввід (еталони OTP
+`executables_busy_ports`, `executables_slow_owner`).
 
 ## Ідентичність
 
@@ -150,7 +149,7 @@ runtime `runtime_port_io`); завдання портів на робочих п
 ## Потік вводу-виводу
 
 Один потік вводу-виводу на runtime (`detail::Reactor`,
-`runtime/src/ports/reactor.hpp`, крок 57G1) виконує `io_context` Boost.Asio:
+`runtime/src/ports/reactor.hpp`) виконує `io_context` Boost.Asio:
 порт завершення вводу-виводу (I/O completion port) на Windows, `epoll` на
 Linux, `kqueue` на macOS. Його запускає перший порт, якому він потрібен; він
 обслуговує порти всіх видів, тож порт не коштує окремого потоку:
@@ -185,7 +184,7 @@ Linux, `kqueue` на macOS. Його запускає перший порт, я�
 
 ## Завдання портів
 
-Крок 57G2. Порт планується як процес: те, що передає потік вводу-виводу,
+Порт планується як процес: те, що передає потік вводу-виводу,
 чекає в порту, а порт чекає в черзі портів виконавця, доки робочий потік
 планувальника не виконає його завдання.
 
@@ -230,7 +229,7 @@ Windows (порт завершення) і WSL Linux (`poll()`): вільний 
 
 ## Зайняті порти
 
-Крок 57G3. Вивід, який драйвер ставить у чергу для потоку вводу-виводу
+Вивід, який драйвер ставить у чергу для потоку вводу-виводу
 (канали запущених програм), враховується в межах зайнятості порту,
 `busy_limits_port` в OTP (типово: верхня 8 192 байти, нижня 4 096;
 `{busy_limits_port, {Low, High}}` або `disabled` як опція `open_port/2`,
@@ -267,7 +266,7 @@ Windows (порт завершення) і WSL Linux (`poll()`): вільний 
 
 ## Підпроцеси
 
-Крок 57D. `open_port({spawn, Command}, Options)` і
+`open_port({spawn, Command}, Options)` і
 `open_port({spawn_executable, File}, Options)` запускають програму, чиї stdin
 і stdout є каналами порту:
 
@@ -303,8 +302,6 @@ Windows (порт завершення) і WSL Linux (`poll()`): вільний 
 
 ## Стандартний ввід-вивід і файли
 
-Крок 57E.
-
 - `io:format`, `io:put_chars` і `erlang:display` і далі пишуть у стандартний
   вивід безпосередньо ([io](io.md)). Стандартний ввід читає один серверний
   процес бібліотеки, зареєстрований як `clause_stdin` і запущений при
@@ -318,17 +315,65 @@ Windows (порт завершення) і WSL Linux (`poll()`): вільний 
   `{spawn_driver, "clause_file"}`, через `port_control/3`. Його операції
   (`ports/file.cpp`: open, read, write, position, read_line, close, і
   операції над шляхами read_file, write_file, delete, rename, list_dir,
-  make_dir, del_dir) — це синхронні системні виклики на робочому потоці
+  make_dir, del_dir і read_file_info, `ports/file_info.cpp`; get_cwd, set_cwd,
+  read_link, read_link_info, make_link і make_symlink, `ports/file_paths.cpp`)
+  — це синхронні системні виклики на робочому потоці
   процесу, що викликає, поза м'ютексом виконавця; їхні відповіді починаються
   з байта стану (0 — ok, 1 — помилка та її причина POSIX, 2 — кінець файлу).
   Протокол власний для Clause.
 - `file:open/2` повертає pid сервера вводу-виводу, якому належить файловий
   порт і який зв'язаний із процесом, що відкрив файл (режими `read`, `write`,
   `append`, `exclusive`, `binary`; інші режими ігноруються, як OTP ігнорує
-  опції, яких не використовує). `read/2`, `read_line/1`, `write/2`,
-  `position/2` та `io:get_line/2`, `io:get_chars/3` над ним — це запити до
-  цього сервера; після `close/1` запити повертають `{error, terminated}`, а
-  `close/1` лишається `ok`.
+  опції, яких не використовує; `write` обрізає файл, якщо не задано також
+  `append`).
+- `file:write_file/3` відкриває файл зі своїми режимами плюс `binary` і
+  `write`; `file:read_file_info/1,2` повертають `#file_info{}` з OTP на основі
+  стану шляху (з переходом за посиланнями), з часом як локальна чи універсальна
+  дата й час або секунди POSIX (`{time, local | universal | posix}`; `raw`
+  приймається). У Windows `inode`, `uid` і `gid` дорівнюють 0, а
+  `major_device` — номер диска, як їх повідомляє OTP.
+  `read/2`, `read_line/1`, `write/2`, `position/2` та `io:get_line/2`,
+  `io:get_chars/3` над ним — це запити до цього сервера; після `close/1`
+  запити повертають `{error, terminated}`, а `close/1` лишається `ok`.
+- Протокол вводу-виводу OTP: сервер стандартного вводу і сервер кожного
+  відкритого файлу відповідають на `{io_request, From, ReplyAs, Request}`
+  через `{io_reply, ReplyAs, Reply}`; такі запити надсилають `io:request/1,2`
+  і `io:requests/1,2` (`standard_io` і `user` називають сервер стандартного
+  вводу, інший атом — зареєстрований процес; `{error, arguments}`, коли його
+  не зареєстровано, `{error, calling_self}` для самого процесу, що викликає).
+  Запити: `get_until` (`M:F(Cont, Chars | eof, Extra...)` починаючи з
+  `Cont = []`, якому подається буферизоване або блоки файлу по 4 KiB, доки не
+  буде `{done, Result, Rest}`; `Rest` наступний запит читає знову: він
+  лишається в буфері, а для файлу позиція повертається назад на нього),
+  `get_line`, `get_chars`, `put_chars` (символи або `M:F(A)`), старі форми без
+  кодування (latin1) і `{requests, List}` (по порядку, із зупинкою на першому
+  `{error, _}`). Символи — це байти, як вище; файл у режимі binary повертає
+  списковий результат `get_until` як binary. Інші запити отримують
+  `{error, {request, Request}}`. Функція `get_until` чи `put_chars`, що
+  завершується збоєм, змушує сервер файлу відповісти `{error, Function}` і
+  завершитися з цим збоєм, як в OTP; процес, що відкрив файл, живе далі
+  (файловий сервер OTP не зв'язаний із ним). Запити вводу на стандартному
+  вводі виводять своє запрошення.
+- Каталоги, посилання й копії: `get_cwd/0` записує поточний каталог так, як
+  OTP (прямі скісні риски, мала літера диска), `get_cwd/1` приймає диск
+  Windows (`enotsup` деінде); `set_cwd/1` змінює його для всієї програми;
+  `read_link/1`, `read_link_all/1` (`einval` для шляху, що не є посиланням),
+  `read_link_info/1,2` (власний стан кінцевого посилання: `lstat` POSIX, у
+  Windows поля цілі з типом `symlink`), `make_link/2`, `make_symlink/2` (у
+  Windows потребує привілею: `eperm`, як в OTP), `list_dir_all/1`,
+  `del_dir_r/1`, `copy/2,3` (імена, `{Name, Modes}` або відкриті файли;
+  `{ok, BytesCopied}`), `raw_read_file_info/1`, `read_file/2`, `delete/2`,
+  `native_name_encoding/0` (`utf8`). `del_dir/1` відповідає `enoent` для
+  відсутнього шляху і `enotdir` для файлу. `consult/1` і родина
+  `eval`/`script` лишаються заглушками: їм потрібен згенерований парсер OTP.
+- Рішення щодо файлів: `file` з Clause — це файловий шар; `filelib` і
+  `filename` з OTP — звичайний Erlang, що працює поверх нього, коли шлях
+  пошуку програми містить вихідні файли OTP (`filelib:fold_files/5` потребує
+  `re`); `erl_prim_loader` надається поверх `file` з простими відповідями
+  `error` як в OTP і шляхом завантажувача `["."]` (`set_path/1`), а його
+  функції завантаження й архівів відхиляються до step 71; `prim_file` і
+  `prim_buffer` лишаються відсутніми, тож викликачі `raw_file_io*` з OTP ніколи
+  не потрапляють у програму.
 - Помилки відповідають OTP: `{error, enoent}`, `eexist`, `eisdir` (каталог,
   відкритий чи прочитаний як файл), `einval` (від'ємна позиція), `ebadf`
   (читання файлу лише для запису або запис у файл лише для читання),
@@ -386,6 +431,21 @@ Windows (порт завершення) і WSL Linux (`poll()`): вільний 
 - Порти сокетів плануються як інші порти ([завдання портів](#port-tasks)):
   повідомлення сокета чекають у його порту, доки завдання порту їх не
   доставить.
+- Адреси й хости: `inet:parse_address/1,2`,
+  `parse_strict_address/1,2`, `parse_ipv4_address/1`,
+  `parse_ipv4strict_address/1`, `parse_ipv6_address/1`,
+  `parse_ipv6strict_address/1` (послаблені форми OTP: короткі та вісімкові чи
+  шістнадцяткові поля IPv4, `::`, хвости IPv4, `%scope` для `fe80::` і
+  `ff02::`), `ntoa/1` (написання OTP: шістнадцяткові цифри малими літерами,
+  перша найдовша послідовність нулів як `::`), `is_ipv4_address/1`,
+  `is_ipv6_address/1`, `is_ip_address/1` написані на Erlang; `gethostname/0`
+  (операція сокета), `getaddr/2`, `getaddrs/2` (системний розв'язувач,
+  `getaddrinfo`) і `gethostbyname/1,2` (`h_name` — запитане ім'я, без
+  псевдонімів) відповідають через порт сокета, відкритий для запиту.
+- Рішення 41R: `gen_tcp`, `gen_udp` і `inet` з Clause — це мережевий шар, і
+  вони наближаються до списків експорту OTP в міру потреб програм; модулі
+  `socket` і `net` з OTP (API NIF сокетів) відсутні, як і `prim_socket`,
+  `prim_net`, `prim_inet` і `socket_registry`.
 
 ## Не надається
 

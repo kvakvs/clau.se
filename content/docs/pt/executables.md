@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: 06042fa
-sourceSha256: aaec2d5d2a83da50b160d09c8b37ecf1648199279e5aed4b35ef794633bf589a
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 84319a420ecb674ad4d7c524783b1696997988d90503989810d27f6feb553bc4
+translatedAt: 2026-10-15
 ---
 # Executáveis
 
@@ -15,7 +15,10 @@ cada alvo executável selecionado ao `output` do seu manifesto
 ## Seleção da entrada
 
 A entrada é uma função exportada de aridade 1 que recebe a lista de
-argumentos.
+argumentos. Uma `FUNCTION` selecionada sem `FUNCTION/1` pode, em vez disso,
+ser uma `FUNCTION/0` exportada: é executada sem os argumentos do programa (as
+opções do runtime continuam a ser retiradas). A entrada por omissão (sem
+seleção) é sempre `main/1`.
 
 | Origem | Grafia | Âmbito |
 | --- | --- | --- |
@@ -41,10 +44,10 @@ argumentos.
 | Falha | Diagnóstico (código de saída 1) |
 | --- | --- |
 | Módulo fora do lote | `<origin>: entry module M is not among the compiled modules` (origem: `--entry` ou o manifesto `file:line:col [target t] (entry)`) |
-| Sem `F/1` | `<file>:<line>:<col>: entry function M:F/1 is not defined` na declaração do módulo |
-| Só outras aridades | `... is not defined; found F/N, but the entry receives one argument (the argument list)` nessa definição |
-| `F/1` não exportada | `<file>:<line>:<col>: entry function M:F/1 is not exported` na definição |
-| Sem seleção, sem export de `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1; FUNCTION defaults to main)` |
+| Nem `F/1` nem `F/0` | `<file>:<line>:<col>: entry function M:F/1 is not defined` na declaração do módulo |
+| Só outras aridades | `... is not defined; found F/N, but the entry takes the argument list (FUNCTION/1) or nothing (FUNCTION/0)` nessa definição |
+| `F/1` (ou então `F/0`) não exportada | `<file>:<line>:<col>: entry function M:F/A is not exported` na definição |
+| Sem seleção, sem export de `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main)` |
 | Sem seleção, várias | `ambiguous entry point: main/1 is exported by a, b; choose the entry with ...` (a mesma sugestão) |
 
 Para alvos de projeto, a sugestão indica também a chave do manifesto: `... --entry MODULE[:FUNCTION] or with
@@ -54,7 +57,7 @@ entry = "MODULE[:FUNCTION]" in this target's [[targets]] table of the project ma
 [[targets]]
 name = "app"
 sources = ["src/*.erl"]
-entry = "app:start"   # calls app:start/1; plain "app" calls app:main/1
+entry = "app:start"   # calls app:start/1 (or app:start/0); plain "app" calls app:main/1
 ```
 
 ## Argumentos
@@ -87,6 +90,7 @@ são analisadas da mesma forma; um valor vai no argumento seguinte ou depois de
 | `--max-stack BYTES` | Limite da pilha de frames de cada processo; por omissão sem limite |
 | `--max-memory BYTES` | Limite da memória de todos os processos em conjunto (heaps, binaries off-heap, pilhas); por omissão sem limite |
 | `--schedulers N` | Workers do escalonador que executam processos, de 1 a 1024; por omissão um por processador lógico, como o `+S` do OTP ([workers](processes.md#workers)) |
+| `--profile FILE` | Escreve em `FILE`, quando o programa termina, um relatório das entradas e do tempo próprio por função e por processo ([perfilagem](profiling.md)); desativado por omissão |
 | `--args-file FILE` | Ficheiro de opções como o `vm.args` do OTP: reservado, indica `runtime option --args-file is not implemented` |
 | `--` | Termina as opções do runtime; os argumentos seguintes vão todos para `Entry` |
 
@@ -140,7 +144,7 @@ depois da limpeza gerada.
   as falhas do runtime e os relatórios de erro de outros processos que
   falham ([processos](processes.md#exits)).
 - O relatório é uma linha `uncaught exception <class>: <reason in ~w form>`,
-  seguida mais tarde por frames da pilha (step 15). O seu texto exato não é
+  seguida mais tarde por frames da pilha. O seu texto exato não é
   uma interface estável; os testes comparam-no por padrão.
 
 ## Objeto de arranque
@@ -197,6 +201,81 @@ na sua própria secção e liga com `--gc-sections` (ELF), `-dead_strip` (Mach-O
 ou `/OPT:REF /OPT:ICF` (MSVC), pelo que o código que nenhum caminho de entrada
 alcança é removido.
 
+`--lto` compila os módulos e o módulo de arranque para bitcode LLVM em vez de
+objetos e liga com `-flto -fuse-ld=lld`, pelo que o LLD otimiza o código
+gerado do programa como uma única unidade em conjunto com o arquivo nativo do
+runtime. Os descritores de módulos e de arranque, as entradas exportadas e
+`main` continuam referenciados e sobrevivem; os programas comportam-se como
+sem a opção. Só o LLD lê o bitcode deste compilador, pelo que `--lto` é
+aceite para alvos Windows MSVC e ELF; os outros falham antes da ligação com
+`--lto is not supported for target <triple>: it needs LLD`. `--lto` exige uma
+saída executável (`-o` ou uma compilação de projeto com ligação). O
+Clang/LLD instalado tem de ser da mesma versão do LLVM que o `clau` (23.1).
+
+### Vivacidade dos exports
+
+Um executável deixa de fora os exports que não consegue alcançar, pelo que a
+eliminação de código morto de `-Os` e `--lto` removem o código de biblioteca
+que o programa nunca chama. Logo após a resolução das chamadas, antes da
+inferência de tipos, uma análise de todo o lote começa na função de entrada
+e marca como vivo tudo o que uma função viva chama diretamente (também através
+de `-import` e dos auto-imports do OTP), cada `fun F/A` e `fun M:F/A` literal,
+e os alvos literais de `apply/3`, `spawn/3`, `spawn_link/3`,
+`spawn_monitor/3`, `spawn_opt/4,5`, `spawn_request/3,5`, `hibernate/3` e
+`make_fun/3` (todas as aridades de `M:F` quando a lista de argumentos não é
+literal), e `file:write/2` assim que `io:format/3`, `io:fwrite/3`,
+`io:put_chars/2` ou `io:nl/1` estiver vivo (os seus builtins escrevem através
+dele para um dispositivo que é um processo). A análise é conservadora:
+
+- um módulo cujo átomo de nome é usado como valor em qualquer ponto do código
+  vivo (passado, guardado, enviado, `?MODULE`, uma etiqueta de record,
+  `M:F(...)` com uma função determinada em tempo de execução, `fun M:F/A` com
+  uma parte determinada em tempo de execução) mantém todos os exports, o que
+  também mantém os callbacks dos módulos de behaviour iniciados pelo nome;
+- assim que o código vivo tenha simultaneamente uma chamada com um módulo
+  determinado em tempo de execução (`M:F(...)`, `apply/3` ou um spawn com um
+  módulo variável, `fun M:F/A` com um módulo variável, `binary_to_term/1,2`) e
+  um builtin que produz átomos (`list_to_atom/1`, `list_to_existing_atom/1`,
+  `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`, `binary_to_term/1,2`,
+  `fun_info/1,2`, `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`,
+  `pre_loaded/0`), todos os exports de todos os módulos ficam.
+
+Uma função que nada vivo alcança não recebe qualquer código. Um export deixado
+de fora mantém o seu nome na tabela de exports do módulo sem código, pelo que
+`function_exported/3` e `module_info(exports)` respondem como se estivesse
+exportado, enquanto uma chamada dinâmica que o alcance lança `undef`
+([diferenças](differences.md#errors-stack-traces-and-reports)). Isso só pode
+acontecer quando um nome de módulo vem de fora da análise: um rastreio de
+pilha, um termo de exceção ou dados de fora do programa. `--verbose` regista o
+resultado por módulo (`phase=liveness detail="dropped-exports=3"`, ou
+`detail="kept-all-exports reason='m' is used as a value in main:main/1"`).
+
+Uma função que nada vivo alcança também nunca tem os tipos inferidos nem é
+verificada em relação à sua `-spec`: a inferência cobre apenas o código vivo,
+o que é mais rápido para programas que usam pouco de grandes módulos de
+biblioteca (`bench_gc`: de 68 ms para 10 ms) e só pode estreitar os factos das
+funções vivas, uma vez que os chamadores inalcançáveis deixam de juntar os
+seus argumentos. Uma especificação contrariada apenas em código inalcançável
+é, por isso, comunicada para os artefactos `--emit`, mas não para o
+executável.
+
+`--keep-exports` (ou a opção de projeto `keep_exports = true`) mantém todos os
+exports chamáveis, como antes do step 62C. A análise aplica-se aos executáveis
+(`-o` ou uma compilação de projeto com ligação) e às inspeções de IR e de
+assembly com uma entrada (`--entry` ou o `entry` do manifesto do alvo), que
+mostram então o código do executável; os artefactos `--emit`, destinados a
+outros programas, mantêm todos os exports.
+
+As referências fracas da tabela de exports resolvidas pelo ligador foram
+avaliadas em alternativa e rejeitadas: os weak externals COFF precisam de uma
+definição por omissão e não deixam `/OPT:REF` eliminar o alvo, e as
+referências fracas Mach-O só se vinculam a símbolos de dylibs importadas, pelo
+que nenhuma forma funciona nos três formatos de objeto.
+
+`-g` mantém as tabelas de linhas Erlang para os depuradores: no executável
+(ELF), ou num `<name>.pdb` publicado ao lado dele (alvos MSVC)
+([depuração](debugging.md)).
+
 - `PATH` é relativo à invocação. Para alvos Windows, `.exe` é acrescentado
   quando o nome do ficheiro não tem extensão. O seu diretório tem de existir.
 - Ligador (linker): `--linker PATH` (um caminho ou nome de programa), caso
@@ -213,7 +292,9 @@ alcança é removido.
   do alvo; `--target-triple` para outro alvo precisa, portanto, de um runtime
   compilado para ele.
 - Os objetos e o executável são preparados num diretório privado
-  `.clause-link-*` ao lado da saída, que é removido no fim. A saída só é
+  `.clause-link-*` ao lado da saída, que é removido no fim; fica aí, e não no
+  [diretório de compilação](projects.md#build-directory), porque a mudança de
+  nome final não pode atravessar volumes. A saída só é
   substituída depois de uma ligação bem-sucedida, pelo que qualquer falha
   mantém inalterado um ficheiro existente. A saída não pode ser um diretório
   nem um alias de uma entrada.

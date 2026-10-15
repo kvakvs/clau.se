@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 06042fa
-sourceSha256: 08b6bf1b734adf5fc6f8aef3972fd56c8f9d20c1a688610c989862794900cd67
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
+translatedAt: 2026-10-15
 ---
 # Präprozessor
 
@@ -42,8 +42,12 @@ Stufenformat. `DirectiveReader` ist die ältere, rein syntaktische API.
 - Include-Suche: Verzeichnis der aktuellen Datei, Arbeitsverzeichnis, dann
   Include-Pfade in API-Reihenfolge. Die CLI kehrt wiederholte `-I` um, um `erlc`
   zu entsprechen. Absolute Pfade umgehen die Suche. `include_lib` versucht
-  gewöhnliche Pfade, dann explizit angegebene Anwendungsverzeichnisse; kein
-  Code-Server und kein Raten von Versionen.
+  gewöhnliche Pfade, dann explizit angegebene Anwendungsverzeichnisse, dann
+  die Verzeichnisse `<app>-<version>` von Releases unterhalb jedes durchsuchten
+  Verzeichnisses (Versionen sind durch Punkte getrennte Ziffern, wie sie der
+  Code-Server von OTP liest; die höchste gewinnt). Mehrere Versionen einer
+  Anwendung erzeugen einmal pro Lauf eine Warnung, die das verwendete
+  Verzeichnis nennt; kein Code-Server.
 - Pfadanfänge mit `$VAR` verwenden einen injizierten Resolver; nicht gesetzte
   Variablen bleiben literal. Include-Operanden werden nicht makroexpandiert.
   Dateien werden als UTF-8 oder deklariertes Latin-1 dekodiert; es gelten die

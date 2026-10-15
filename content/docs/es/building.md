@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: 06042fa
-sourceSha256: de3570e747becc95b3596b8c17bf4d8bab1fa83db2aae32da918222afd413e6c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 588e40c653165e5d39e7f284cf3173a4f04d81079cba804e17b7444a1f40662d
+translatedAt: 2026-10-15
 ---
 # Compilar el compilador
 
@@ -80,14 +80,34 @@ añaden `%ProgramFiles%\LLVM\bin` al `PATH` cuando falta `clang-cl`. Un
 directorio de compilación configurado con otro generador o compilador se
 reconfigura desde cero; con `CLAUSE_TOOLCHAIN=default` se conserva la elección
 propia de CMake (por ejemplo, `cl` de MSVC en un directorio aparte). Los valores
-por defecto de compilación son `BUILD_DIR=build/debug`, `BUILD_TYPE=Debug` y el
-paralelismo de la herramienta de compilación nativa (se cambia con `JOBS=N`);
+por defecto de compilación son `BUILD_DIR=build/debug` (pruebas),
+`TOOL_BUILD_DIR=build/tool` (`make build`, `make-build.bat`, `clau.bat`,
+`run-macos.sh`: pruebas desactivadas, para que nunca reconfiguren la
+compilación de pruebas), `BUILD_TYPE=Debug` y el paralelismo de la herramienta
+de compilación nativa (se cambia con `JOBS=N`);
 las variables de entorno `CMAKE`, `CTEST`, `CMAKE_ARGS` y `CLANG_FORMAT` también
 sustituyen las herramientas u opciones correspondientes. `make-test.bat`
 configura con las pruebas activadas, compila todos los objetivos y después
 ejecuta CTest, igual que `make test`, propagando los fallos de configuración,
 compilación o pruebas. Clean elimina los directorios `build/` y `cmake-build*/`
 locales del repositorio.
+
+`make benchmark` y `make-benchmark.bat` ejecutan la comparación manual de
+rendimiento con el Erlang/OTP del host (compilación Release en `build/bench`,
+nunca forma parte de las pruebas); véase
+[benchmarks](validation.md#benchmarks).
+
+`decompile-debug.bat <module>` y `decompile-release.bat <module>` recompilan un
+archivo fuente C++ (nombre sin ruta ni extensión; se añaden directorios padre
+cuando es ambiguo, p. ej. `ast/attributes`) con sus opciones registradas de
+Debug o Release y escriben `<module>.debug.asm` / `<module>.release.asm` en el
+directorio actual. Envuelven `tools/asm.py` (solo compilaciones con clang-cl),
+que toma la orden de compilación de `build/tool` y después de `build/debug`
+(`--build-dir` lo cambia). La salida conserva código y datos con comentarios de
+línea de fuente y nombres desmanglados, sin directivas de información de
+depuración, de desenrollado (unwinding) ni de tabla de símbolos.
+`--function TEXT` conserva solo las funciones cuyo nombre desmanglado contiene
+`TEXT`, y `--raw` escribe el listado sin filtrar.
 
 Las comprobaciones de calidad y el formateo se aplican por defecto a los
 archivos modificados: todo lo que difiere de `HEAD` en el árbol de trabajo, más
@@ -151,7 +171,8 @@ usa `cmake --build <dir> --parallel`. El preset de Windows coloca el ejecutable
 en `build/windows/bin/<Config>/clau.exe` y el runtime en
 `build/windows/lib/<Config>/clause_runtime.lib`.
 
-Como alternativa, `make build` compila solo `clau` y sus dependencias, y
+Como alternativa, `make build` compila solo `clau` y sus dependencias en
+`build/tool`, y
 `make test` compila y ejecuta el conjunto completo de pruebas. Para otra
 configuración:
 
@@ -166,6 +187,7 @@ Estas opciones, pasadas al configurar, sustituyen los valores por defecto:
 |---------------------------------------------|---------------------------------------------------------------|
 | `-DCLAUSE_BOOST_ROOT=/path/to/boost`    | Selecciona una instalación de Boost o un árbol de fuentes completo |
 | `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Selecciona la dependencia TOML fijada |
+| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Selecciona la amalgamación de SQLite fijada (caché de compilación) |
 | `-DCLAUSE_OTP_AUDITS=ON` | Activa las auditorías opcionales en vivo de OTP/referencia; por defecto OFF |
 | `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | Selecciona OTP 29+ para las auditorías opcionales; las pruebas normales no lo usan |
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Selecciona un ejecutable de Clang instalado en Windows |

@@ -1,8 +1,8 @@
 ---
 source: docs/usage.md
-sourceCommit: 06042fa
-sourceSha256: 69cd5cc2e8c6acc6bf67d677812a78d984940084e75d4930fbdcdf681e488435
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: d4118cc040e610cc84df916720e96a6009b90b6a1cbfe086434dc5800fe49461
+translatedAt: 2026-10-15
 ---
 # Використання компілятора
 
@@ -15,7 +15,7 @@ translatedAt: 2026-10-09
 У macOS `./run-macos.sh --parse-check examples/project/src/main.erl` спочатку
 виконує збирання, а потім запускає найновіший виконуваний файл, передаючи всі
 аргументи без змін. Він приймає перевизначення через змінні середовища
-`BUILD_DIR`, `BUILD_TYPE` і `JOBS`.
+`TOOL_BUILD_DIR`, `BUILD_TYPE` і `JOBS`.
 
 ```text
 clau [options] <source.erl>...
@@ -27,16 +27,29 @@ clau [options] <source.erl>...
   --print-pp               Print expanded Erlang source
   --print-ast              Print an indented syntax tree
   --print-source           Print each module as Erlang source
+  --print-abstr            Print each module as OTP abstract format forms
+  --parse-transform <mod>  Apply a parse transform to every module
+  --transform-path <dir>   Directory of precompiled transform modules (.beam)
+  --erl <path|none>        Host Erlang/OTP 29 erl that runs parse transforms
+  --print-inputs           List the batch's sources, including modules added by reference; do not compile
+  --print-env              Print the resolved compile environment as TOML and exit
   --print-types            Print each module as source annotated with inferred types
   --print-ir               Print verified IR with Erlang source comments before LLVM optimization
   --print-optimized-ir     Print verified IR with Erlang source comments after LLVM optimization
+  --print-asm              Print each module's assembly with IR and Erlang source comments
   --emit obj|llvm-ir|llvm-bc  Write one artifact per module
   --artifact-dir <dir>     Override the artifact root (requires --emit)
   --target-triple <triple>  Select the machine/OS/ABI
   -O0 / -O2 / -Os         Generic O0 (default) / speed / size optimization
   --no-type-specialization  Disable compiler variants at either optimization level
+  -g                      Emit Erlang line tables; executables keep them for debuggers
+  --lto                   Link modules as bitcode with link-time optimization (LLD targets)
+  --keep-exports          Keep every export of an executable callable (default: unreachable ones left out)
+  --build-dir <dir>       Keep temporary files and caches below <dir> (projects default: <manifest-dir>/build)
+  --no-cache              Neither read nor write build caches
+  --cache-inference-in-dirs <pattern>  Cache inference results of modules in matching directories (besides OTP's)
   --verbose               Trace files and compilation phases to stderr
-  --impldebug <n[,n...]>   Enable debug output for selected implementation steps
+  --print-stage-times     Print preprocess/parse/transform time per file, compile time per batch and link time to stderr
   -I, --include <dir>      Add an include directory (last supplied searched first)
   -D, --define <name[=term]>  Define a macro (default value: true)
   --app-dir <app=dir>      Set an include_lib application directory
@@ -78,14 +91,19 @@ clau [options] <source.erl>...
 clau -O2 -o demo answer.erl client.erl && ./demo
 clau -O2 --emit obj answer.erl client.erl
 clau --print-ir --print-optimized-ir -O2 answer.erl
+clau --print-asm -O2 answer.erl
 clau --print-types answer.erl client.erl
 ```
 
 Перегляд IR дозволяє обидва етапи разом і зупиняється перед генерацією
 об'єктного коду. Кілька знімків є окремими модулями; для окремих файлів
-асемблера використовуйте `--emit llvm-ir`. Перегляд типів зупиняється перед
-LLVM і друкує кожен модуль як вихідний код із виведеними сигнатурами функцій та
-анотаціями `Expression :: Type`. Він приймає параметри препроцесування/проєкту/
+асемблера використовуйте `--emit llvm-ir`. `--print-asm` друкує асемблер цілі для
+кожного модуля, де кожна послідовність інструкцій має коментар з інструкцією
+IR і рядком Erlang, з яких вона походить
+([лістинги асемблера](compile.md#assembly-listings)). Перегляд типів
+зупиняється перед LLVM і друкує кожен модуль як вихідний код із виведеними
+сигнатурами функцій та завершальними коментарями `% Type` до найзовнішнього
+виразу кожного рядка. Він приймає параметри препроцесування/проєкту/
 докладності, але відхиляє інші дії, призначення виводу і політику бекенду. Див.
 [параметри компіляції](compile.md).
 
@@ -97,17 +115,14 @@ LLVM і друкує кожен модуль як вихідний код із �
 та фази бекенду, а також обмежені рішення щодо спеціалізації в момент їхнього
 початку. Трасування йде в stderr у кожному режимі, зокрема для проєктів.
 
-`--impldebug 23` або `--impldebug 23,24,27` вибирає необов'язковий
-налагоджувальний вивід кроків реалізації незалежно від `--verbose`. Повторювані
-параметри поєднують свої вибори; дублікати ігноруються. Значення — знакові
-32-бітні десяткові цілі числа з необов'язковими знаками `+`/`-`, без пробілів і
-порожніх елементів списку. Кроки 23–27 друкують у stderr виведені входи/
-результати функцій і зв'язки параметрів із префіксом вибраного кроку
-(наприклад, `[impldebug 27]`). Це проаналізовані вхідні дані пониження, а не дамп
-IR. Майбутні кроки можуть перевіряти власний номер; вибір кроку без
-налагоджувального виводу нічого не змінює. Той самий вибір застосовується до
-позиційних вхідних файлів і кожної вибраної цілі проєкту. Дії перевірки/друку
-лише фронтенду не запускають виведення типів.
+`--print-stage-times` друкує `[time] <stage> <subject>: <milliseconds> ms` у
+stderr після завершення кожного етапу: `preprocess` (читання й
+препроцесування), `parse` і, для модулів із parse transforms, `transform`
+(запуск `erl` хоста й імпорт його форм) для кожного вихідного файлу, `compile`
+(від аналізу до генерації об'єктного коду) один раз на пакет із кількістю
+модулів і ціллю проєкту, і `link` для кожного виконуваного файлу з його
+остаточним шляхом. Парсер забирає форми з препроцесора, тож два часи для
+кожного файлу вимірюються окремо, хоча етапи чергуються.
 
 Коди виходу: **0** — успіх (зокрема з попередженнями), **1** — помилки
 вихідного коду/проєкту, **2** — помилки використання або невідомі назви цілей.
@@ -121,9 +136,7 @@ IR. Майбутні кроки можуть перевіряти власний
 Докладніше див. [препроцесування](preprocessor.md),
 [використання парсера](parser.md) і [стан валідації](validation.md).
 
-
 ## Проєкти
-
 
 Запустіть доданий приклад із двома цілями:
 

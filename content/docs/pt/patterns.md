@@ -1,8 +1,8 @@
 ---
 source: docs/patterns.md
-sourceCommit: 06042fa
-sourceSha256: 5d4fa604cd009ece1e93b35b9f94ebc0ecf7f468356ccdc6e96a4d84c9280a97
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: ef7903895b7901a6980a3cd181783486ae8672876229d35fae120e802392e989
+translatedAt: 2026-10-15
 ---
 # Padrões, cláusulas e correspondências no corpo
 
@@ -152,8 +152,9 @@ que não sejam os últimos.
 
 ## Limites
 
-A normalização de padrões partilha o orçamento semântico de 1 000 000 de
-unidades do módulo (um inteiro custa cerca do seu número de dígitos decimais);
+A normalização de padrões partilha o orçamento semântico do módulo (1 000 000
+de unidades, ou 32 por expressão em módulos maiores) (um inteiro custa cerca
+do seu número de dígitos decimais);
 uma constante acima do limite de inteiros de 4 194 240 bits é um
 `illegal pattern`, como no OTP ([termos](terms.md#integers)).
 Cada plano de correspondência tem um teto de 100 000 unidades de trabalho. O

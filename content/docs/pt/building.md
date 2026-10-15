@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: 06042fa
-sourceSha256: de3570e747becc95b3596b8c17bf4d8bab1fa83db2aae32da918222afd413e6c
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 588e40c653165e5d39e7f284cf3173a4f04d81079cba804e17b7444a1f40662d
+translatedAt: 2026-10-15
 ---
 # Compilar o compilador
 
@@ -80,8 +80,10 @@ do Visual Studio quando a shell não é uma developer shell e acrescentando
 Um diretório de compilação configurado com outro gerador ou compilador é
 reconfigurado de raiz; defina `CLAUSE_TOOLCHAIN=default` para manter a escolha
 do próprio CMake (por exemplo o `cl` do MSVC num diretório separado). Os
-valores por omissão da compilação são `BUILD_DIR=build/debug`,
-`BUILD_TYPE=Debug` e o paralelismo da ferramenta de compilação nativa
+valores por omissão da compilação são `BUILD_DIR=build/debug` (testes),
+`TOOL_BUILD_DIR=build/tool` (`make build`, `make-build.bat`, `clau.bat`,
+`run-macos.sh`: testes desativados, para nunca reconfigurarem a compilação de
+testes), `BUILD_TYPE=Debug` e o paralelismo da ferramenta de compilação nativa
 (substituível com `JOBS=N`); as variáveis de ambiente
 `CMAKE`, `CTEST`, `CMAKE_ARGS` e `CLANG_FORMAT` também substituem as
 ferramentas/opções correspondentes.
@@ -89,6 +91,22 @@ ferramentas/opções correspondentes.
 depois corre o CTest, tal como `make test`, propagando as falhas de
 configuração, compilação ou testes.
 O clean remove os diretórios `build/` e `cmake-build*/` locais do repositório.
+
+`make benchmark` e `make-benchmark.bat` executam a comparação manual de
+desempenho com o Erlang/OTP do anfitrião (compilação Release em `build/bench`,
+nunca faz parte dos testes); ver [benchmarks](validation.md#benchmarks).
+
+`decompile-debug.bat <module>` e `decompile-release.bat <module>` recompilam
+um ficheiro-fonte C++ (nome sem caminho nem extensão; acrescente diretórios
+pais quando for ambíguo, por exemplo `ast/attributes`) com as suas flags Debug
+ou Release registadas e escrevem `<module>.debug.asm` / `<module>.release.asm`
+no diretório atual. Envolvem `tools/asm.py` (apenas compilações clang-cl), que
+obtém o comando de compilação de `build/tool` e depois de `build/debug`
+(`--build-dir` substitui-o). A saída mantém o código e os dados com
+comentários das linhas de código-fonte e nomes desmanglados, sem diretivas de
+informação de depuração, de desenrolamento e da tabela de símbolos.
+`--function TEXT` mantém apenas as funções cujo nome desmanglado contém
+`TEXT`, e `--raw` escreve a listagem sem filtro.
 
 As verificações de qualidade e a formatação aplicam-se por omissão aos
 ficheiros alterados: tudo o que difere de `HEAD` na árvore de trabalho, mais
@@ -155,7 +173,7 @@ O preset do Windows coloca o executável em
 `build/windows/lib/<Config>/clause_runtime.lib`.
 
 Em alternativa, use `make build` para compilar apenas o `clau` e as suas
-dependências, ou `make test` para compilar e correr o conjunto completo de
+dependências em `build/tool`, ou `make test` para compilar e correr o conjunto completo de
 testes. Para uma configuração diferente:
 
 ```sh
@@ -170,6 +188,7 @@ omissão:
 |---|---|
 | `-DCLAUSE_BOOST_ROOT=/path/to/boost` | Seleciona uma instalação do Boost ou uma árvore de código-fonte completa |
 | `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Seleciona a dependência TOML fixada |
+| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Seleciona a amalgamação SQLite fixada (cache de compilação) |
 | `-DCLAUSE_OTP_AUDITS=ON` | Ativa as auditorias opcionais com OTP real/de referência; por omissão OFF |
 | `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | Seleciona o OTP 29+ para as auditorias opcionais; não usado pelos testes normais |
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Seleciona um executável do Clang instalado no Windows |

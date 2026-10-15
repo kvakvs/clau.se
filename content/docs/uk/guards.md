@@ -1,8 +1,8 @@
 ---
 source: docs/guards.md
-sourceCommit: 06042fa
+sourceCommit: 6ed3851c
 sourceSha256: d5589018751662ec240dc70ab6c6d0637d16fa10698c1c4fa7510a033dd888f1
-translatedAt: 2026-10-09
+translatedAt: 2026-10-15
 ---
 # Guard
 

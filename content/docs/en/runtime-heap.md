@@ -1,7 +1,7 @@
 # Process heap contract
 
 Process heaps follow the classic ERTS design. This note is the contract; plan
-11 phase C (steps 8A–8I) delivered it, and later steps named below extend it.
+11 phase C delivered it, and later steps named below extend it.
 [runtime.md](runtime.md#process-memory) summarizes the API.
 
 ## What phase C replaced
@@ -40,21 +40,23 @@ parses from its first word:
 
 No cell needs alignment stronger than a word. `memory/heap_walk` parses an area cell by cell and `ProcessHeap::verify`
 checks a whole heap (8C). Cells hold only words and bytes,
-except the off-heap binary's `std::shared_ptr` (below), so a cell moves by
-copying its words.
+except the off-heap binary's `std::shared_ptr` and the off-heap map's tree
+pointer (below), so a cell moves by copying its words.
 
 | Kind | Words after the header | Traced words |
 | --- | --- | --- |
 | cons (no header) | 2 words in total | head, tail |
 | `tuple` | n element slots | all |
-| `map` | 2n slots: keys in exact term order, each followed by its value | all |
+| `map` | 2n slots: keys in exact term order, each followed by its value; at most 32 entries | all |
+| `tree_map` | entry count, root of the off-heap tree, off-heap map link: 3 words ([off-heap maps](#off-heap-maps)) | none on the heap; the tree's words |
 | `native_record` | address of the runtime's `RecordDefinition`, then n field values in definition order | values |
 | `fun_closure` | address of the runtime's `FunDefinition`, then n captured values ([funs](funs.md)) | values |
 | `bignum` | sign word, then magnitude limbs, least significant first | none |
 | `floating` | 8 bytes: 1 word (64-bit) or 2 words (32-bit) | none |
 | `reference` | 8 bytes: the reference number ([pids and references](terms.md#pids-and-references)) | none |
 | `heap_binary` | bit length, then data bytes rounded up to words (at most 64 bytes) | none |
-| `refc_binary` | bit offset, bit length, `std::shared_ptr` (2 words), off-heap link: 5 words | none |
+| `refc_binary` | bit offset, bit length, the buffer's first byte (read by generated code), append end and limit, `std::shared_ptr` (2 words), off-heap link: 8 words | none |
+| `sub_binary` | bit offset into the original, bit length, the original `heap_binary` or `refc_binary` (never a sub-binary): 3 words | the original |
 | `filler` | n unused words | none |
 
 The `map` count is in words (entries = count / 2). Pids are immediates, admitted against the runtime's issued
@@ -68,10 +70,11 @@ A binary larger than 64 bytes is an immutable buffer that floats outside every
 process heap, shared by reference count (BEAM ProcBin and `Binary`).
 
 - Its boxed `refc_binary` cell holds a `std::shared_ptr` to the buffer, a bit
-  offset and a bit length; slices of a large binary are new `refc_binary` cells
-  sharing the buffer (ERTS sub-binaries are not used). Copying a cell to another
-  process copies the `shared_ptr` ([copying between heaps](#copying-between-heaps)),
-  never the bytes.
+  offset and a bit length. Slices of a large binary (and slices of those) are
+  `sub_binary` cells naming the original cell, as ERTS sub-binaries do:
+  a slice takes no buffer reference and keeps the original alive. Copying a
+  cell to another process copies the `shared_ptr`
+  ([copying between heaps](#copying-between-heaps)), never the bytes.
 - Each cell is linked into its process's off-heap list through its link word.
   The list is the only way to find these cells' C++ state.
 - Moving a cell copies its other words and move-constructs the `shared_ptr` into
@@ -84,14 +87,85 @@ process heap, shared by reference count (BEAM ProcBin and `Binary`).
   virtual binary heap of ERTS) until that process's last cell for it dies, and
   once to the runtime-wide account from creation until the buffer is freed.
 - `std::shared_ptr` is two pointers on every supported STL; a `static_assert`
-  keeps the cell size fixed at five words after the header on both widths.
+  keeps the cell size fixed at eight words after the header on both widths.
+
+### Handle references
+
+A handle reference is a reference that also holds one
+off-heap buffer, as an OTP magic reference holds a resource; `atomics` arrays
+live in them ([atomics and counters](builtins.md#atomics-and-counters)).
+
+- Its cell has kind `reference` and the `refc_binary` layout: eight words after
+  the header, the 64-bit reference number in the offset and bit-length words
+  (where a plain reference cell keeps it), then the `shared_ptr` and the link
+  word. Every reference service reads only the number, so it compares, hashes,
+  prints and encodes like a plain reference.
+- It is listed, moved, swept, charged and copied exactly like an off-heap
+  binary cell (`layout::off_heap_cell`); its buffer is freed when the last
+  copy of the reference in any process dies.
+- A process-wide registry maps the numbers of live handles to their buffers
+  (weak references), so `binary_to_term/1` of an encoded handle rebuilds a
+  handle sharing the buffer while it lives, and a plain reference after.
+  Expired entries are dropped as the registry grows.
+
+## Off-heap maps
+
+A map with more than 32 entries (OTP's `MAP_SMALL_MAP_LIMIT`) is a 4-word
+`tree_map` stub on the heap naming a process-private persistent B+ tree
+(`terms/map_tree`). Smaller maps stay `map` cells.
+
+- Leaves hold up to 32 key and value words in exact key order; branches hold up
+  to 32 children with their first keys and entry counts, so lookup and access by
+  position are O(log n). Key and value words point into the owner's heap: unlike
+  binaries, the tree holds terms.
+- An update copies the path to each changed leaf and shares every other node
+  with the source map, which stays unchanged, so building a map key by key costs
+  O(n log n) instead of O(n^2). Nodes are reference counted; nodes created by the
+  same update carry its edit token and change in place until the stub is
+  published. A failed update releases what it built.
+- Each stub is linked into its process's off-heap map list. A collection copies
+  a stub like any cell and, when it scans the copy, rewrites the key and value
+  words of the stub's tree, visiting each shared node once per collection. The
+  sweep then relinks moved stubs and releases the trees of dead ones; teardown
+  releases all.
+- Node words are charged to the process as off-heap words (with binaries:
+  enough of them requests a collection) and to the runtime-wide account.
+  Freed nodes are kept for reuse, up to 1,024 of each kind per process (about
+  1 MB at most), since a path-copying update allocates a node per level and a
+  collection frees the old paths together.
+- Copying a map to another heap (messages, `MessageBuffer`) builds a new tree in
+  the destination from the translated entries.
+- An owned update (`MapOperation::update_owned`) whose source the
+  compiler proved unread afterwards takes over the source stub's tree reference
+  and changes in place every node it reaches through unshared nodes, copying
+  only shared ones. The source stub is left consumed (no tree, size 0); a failed
+  owned update gives the tree back to it. The compiler marks an update owned
+  only when the function built the source map itself (`M = <map expression or
+  comprehension>` in the same clause body), reads `M` nowhere else and never
+  captures it in a fun (`semantic/map_ownership`).
 
 ## Areas
 
 - **Heap.** One block `[start, top, end)` per process with bump allocation
   (8G). It is created by the process's first allocation, sized
   `max(min_heap_words, request)` so that request always fits, and owned by
-  that process alone.
+  that process alone. Generated code bump-allocates small tuples and lists in
+  it directly through `FrameState::heap_top`/`heap_limit`:
+  `HeapStorage::absorb` takes those words into the top and `used_words_`
+  before any heap operation (reservation, admission, collection, verification,
+  usage queries) and `expose` shows the free words again after one. Inline
+  allocation never makes a fragment and stays off under a per-process budget.
+- **Literal areas**. Each module's compound literals — strings and
+  constant lists, tuples of constants, floats and bignum literals — are laid
+  out by the compiler as heap cells in one read-only global
+  (`ModuleDescriptor::literals`), registered runtime-wide
+  (`detail::LiteralAreas`, a lock-free sorted snapshot) when the module is
+  registered. Terms of every process may point into them: admission and
+  `TermAccess::object` read cells through `HeapStorage::readable` (heap,
+  fragments, then literals); the collector leaves literal words as they are
+  (`owned` stays heap-only); copies between heaps and into message buffers keep
+  pointing at them (a literal root needs no copy); the verifier accepts them.
+  Literals hold only immediates (fixed atoms only) and other literals' words.
 - **Fragments.** When a request does not fit and the heap may not move, it
   goes into the newest fragment if it fits there, else into a new fragment
   sized to fit (at least the minimum heap size) and chained to the process. The
@@ -101,7 +175,7 @@ process heap, shared by reference count (BEAM ProcBin and `Binary`).
   overflow stays in fragments until the next safepoint or host collection
   ([collection in generated code](#collection-in-generated-code)).
 - **Stack.** Generated frames (BEAM Y registers) live on one flat stack per
-  process, apart from the heap (`ProcessStack`, step 19). Each frame is a
+  process, apart from the heap (`ProcessStack`). Each frame is a
   four-word header (caller's header offset, descriptor, resume, handler)
   followed by term slots (spilled terms included) and raw spill slots; frames
   link by offsets, so the
@@ -123,10 +197,10 @@ process heap, shared by reference count (BEAM ProcBin and `Binary`).
   known before copying. A result less than 25% live is copied once more into
   the size its live data needs (8H); failing to allocate that block keeps the
   larger one. Neither is smaller than `min_heap_words`. Both sizes count the
-  process stack's words as live (step 26), as ERTS keeps the stack inside the
+  process stack's words as live, as ERTS keeps the stack inside the
   heap block.
 - With a budget set (below), a new block holds at most its live words plus half of the
-  budget left after them and off-heap buffers (`block_limit`, step 27), never
+  budget left after them and off-heap buffers (`block_limit`), never
   less than `min_heap_words`. The other half stays free for fragments and new
   off-heap buffers, so garbage allocated after a collection reaches the next
   safepoint as a trigger instead of exhausting the budget. The first copy is
@@ -149,14 +223,13 @@ process heap, shared by reference count (BEAM ProcBin and `Binary`).
 - An optional runtime-wide limit, `RuntimeOptions::memory_limit_bytes`
   (default `UNLIMITED_HEAP_BYTES`; programs set it with `--max-memory`), bounds
   the memory of all processes together: heap blocks, fragments, off-heap
-  buffers and stack capacity (step 27A). OTP has no such limit; it is closest
+  buffers and stack capacity. OTP has no such limit; it is closest
   to running the VM under an OS memory limit, but fails one process instead of
   the node.
 - One account per runtime (`detail::RuntimeMemory`, shared by every heap
   storage and stack) is charged when a block, fragment, off-heap buffer or
   stack capacity is created and released when it is dropped; a buffer shared by
-  several processes is charged once and released when its last reference dies
-  (step 28). Teardown returns every charge of the process.
+  several processes is charged once and released when its last reference dies. Teardown returns every charge of the process.
   `Runtime::memory_bytes()` reports the total.
 - To each process the limit acts as a budget of the storage it owns plus what
   the limit leaves (`HeapStorage::budget`, `room`), so the sizing above keeps
@@ -187,20 +260,20 @@ remains the full check that every slot names an object start, for tests.
 
 ## Roots and safe points
 
-`ProcessContext::visit_roots` enumerates every root word for the collector
-(step 23). At a safe point nothing else holds heap words of the process:
+`ProcessContext::visit_roots` enumerates every root word for the collector. At a safe point nothing else holds heap words of the process:
 
 | Owner | Root words | Notes |
 | --- | --- | --- |
-| Frame term slots | The first `roots` slots of every frame on the stack (step 19) | Bottom frames have none; resume and handler indices are integers |
+| Frame term slots | The first `roots` slots of every frame on the stack | Bottom frames have none; resume and handler indices are integers |
 | Raw frame slots | None | Spilled native values; generated code keeps no heap word there at a safe point (step 24 reload rule) |
-| Registers | `x[0..live)` (`ProcessStack::keep_registers`) | A suspended entry's arguments (step 43); every push and pop clears `live` |
+| Registers | `x[0..live)` (`ProcessStack::keep_registers`) | A suspended entry's arguments; every push and pop clears `live` |
 | Failure channel | Error payload (BEAM `fvalue`), `erlang:error/2,3` argument list, stack trace term | Rebound in place; captured trace frames are descriptor pointers into code |
-| Trap state | The term words of a trapping builtin's `TrapState` (step 43A) | Released when the builtin finishes or fails |
-| Process dictionary | Every key and value (step 41C) | Until erased or the process ends |
-| Mailbox | Every message in the signal inbox and the message queue (step 45), including `'EXIT'` and `'DOWN'` messages | Until a receive takes it; rewritten in place, so the receive cursor (a list position) and timeout deadline stay valid |
+| Trap state | The term words of a trapping builtin's `TrapState` | Released when the builtin finishes or fails |
+| Process dictionary | Every key and value | Until erased or the process ends |
+| Mailbox | Every message in the signal inbox and the message queue, including `'EXIT'` and `'DOWN'` messages | Until a receive takes it; rewritten in place, so the receive cursor (a list position) and timeout deadline stay valid |
 | Explicit roots | The span a host passes to `collect(roots)` (8E) | Read back after the call |
 | Off-heap list | None | Links are swept and relinked, not traced |
+| Off-heap maps | None directly: the key and value words of the tree of every stub the collection copies | Rewritten when the copied stub is scanned; the list is swept like the binary list |
 
 No heap cell holds a pin. Atoms are immediates and the atom table is never
 collected. Fun cells name code through their untraced `FunDefinition`, which
@@ -228,7 +301,7 @@ a request that does not fit creates a fragment.
 
 ## Message buffers
 
-Plan 11 step 41F. A `MessageBuffer`
+A `MessageBuffer`
 ([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) keeps a term
 outside every process: `copy_of` copies the graph from its process heap into a
 `HeapStorage` of its own (its own lifetime token, the runtime's atoms and
@@ -239,7 +312,7 @@ Timer messages use it, so they are never re-encoded.
 
 ## Collection in generated code
 
-Decision of plan 11 step 24 (2026-10-06), implemented in step 26
+Implemented in step 26
 ([implementation](#implementation)). Generated
 code collects only at a few **safepoints** where every live term already sits
 in a root. Everything else, including every allocating service, is a
@@ -252,7 +325,7 @@ A safepoint collects when the heap asks for it; otherwise it costs one check.
 | Trigger | Condition at the safepoint | ERTS counterpart |
 | --- | --- | --- |
 | Heap full | Any fragment exists: an allocation did not fit the heap block since the last collection | Heap top reaches the heap end |
-| Off-heap binary pressure | Off-heap words reach the virtual binary heap limit: 46,422 words at first, after each collection twice the surviving off-heap words, never less than that, but at most the survivors plus half of the budget left free after the heap block (step 27) | `bin_vheap_sz` / binary virtual heap |
+| Off-heap binary pressure | Off-heap words reach the virtual binary heap limit: 46,422 words at first, after each collection twice the surviving off-heap words or the survivors plus the live heap words, whichever is more (never less than 46,422; amortized binary collections), but at most the survivors plus half of the budget left free after the heap block | `bin_vheap_sz` / binary virtual heap |
 | `erlang:garbage_collect/0` | Always; arrives with the builtin families (steps 36-37) as a forced safepoint | Explicit full sweep |
 
 The new block is sized for the live words **plus the stack words in use**
@@ -274,12 +347,12 @@ safepoints is bounded by straight-line code and single service results.
 Not safepoints (critical sections, which keep allocating into fragments):
 every other runtime service, including allocation, construction and matching
 services; `CLAUSE_return_v1`; exception propagation; and later message
-delivery (step 45). Services may therefore hold raw heap words in C++ for their
+delivery. Services may therefore hold raw heap words in C++ for their
 whole run, and their input arrays and outputs need no reload.
 
 ### Waiting and suspended processes
 
-Plan step 51. A process that is not running is never collected: it is waiting
+A process that is not running is never collected: it is waiting
 in a receive, queued after a yield or trap, or not yet started, and everything
 it holds is already a root (its frames, the registers of the entry or
 continuation it will resume at, trap state and its messages). Messages sent to
@@ -318,15 +391,16 @@ safepoint, and no native pointer crosses one at all (already an error in
   collection rewrites stack words in place and never moves the stack; every
   transfer re-reads it in the body prologue as before.
 - Optimization runs after `lower_frames` and cannot replace a reload by the
-  older SSA value: the frame address comes from `CLAUSE_frame_v1`, so the
-  safepoint call may write every slot (prototype below).
+  older SSA value: the frame address is loaded from the context's
+  `FrameState`, and the opaque safepoint call may write every slot through it
+  (prototype below).
 
 ### Failure behavior
 
 - A collection at a safepoint never records a failure. When its new block
   cannot be allocated (`out_of_memory`) the heap stays as it is and execution
   continues with fragments.
-- **Memory exhaustion** (step 27). With no cap, memory runs out only when the
+- **Memory exhaustion**. With no cap, memory runs out only when the
   host refuses a heap block, fragment, off-heap buffer or stack growth:
   `out_of_memory`. With an optional budget or
   [runtime-wide limit](#runtime-memory-limit) set, a request beyond it is
@@ -341,8 +415,6 @@ safepoint, and no native pointer crosses one at all (already an error in
   safepoints allocates more than that half; garbage is collected first.
 
 ### Implementation
-
-Step 26 (2026-10-06):
 
 - `ProcessStack::safepoint(live)` asks `ProcessHeap::wants_collection()` (a
   fragment exists, or off-heap words reached `binary_limit_words_`), keeps
@@ -364,8 +436,6 @@ Step 26 (2026-10-06):
   (tuple, list, binary) per frame, and an error payload caught after unwinding
   allocating frames and kept through a long allocating loop.
 
-Step 27 (2026-10-06):
-
 - `collected_size` caps the block at `block_limit(live)`; `shrink` also runs
   when the block exceeds the limit of the surviving words; `collect` caps
   `binary_limit_words_` at the survivors plus half of the budget left free
@@ -383,8 +453,6 @@ Step 27 (2026-10-06):
   (72 MB) while dropping four per step and prints the count as OTP does.
   `runtime_collection` `near_budget` checks both caps with a 10,000-word
   budget (heap block and off-heap buffers).
-
-Step 27A (2026-10-06):
 
 - Runtime-wide limit and `--max-heap`, `--max-stack`, `--max-memory`
   ([runtime memory limit](#runtime-memory-limit)). Authored golden runs prove
@@ -441,7 +509,7 @@ off-heap words.
 ## Copying between heaps
 
 `ProcessHeap::add(value)`, equivalently `value.copy_to(heap)`, returns a term
-of the destination heap (step 28, BEAM `size_object` and `copy_struct`):
+of the destination heap (BEAM `size_object` and `copy_struct`):
 
 - Immediates and atoms of the same runtime need no storage, and a term of the
   destination heap keeps its identity. A graph of another process of the same
@@ -452,7 +520,8 @@ of the destination heap (step 28, BEAM `size_object` and `copy_struct`):
 - One walk with an explicit stack (no recursion) finds every distinct object
   reachable from the value, keyed by address, so internal sharing survives:
   `{T, T}` copies `T` once, unlike ERTS's default `copy_struct`, which
-  flattens sharing. The copy is one reservation of the sum of their words, in
+  flattens sharing. The addresses go into an open-addressing map
+  (`boost::unordered_flat_map`). The copy is one reservation of the sum of their words, in
   the heap block or a fragment, filled in walk order with pointers rewritten
   to the copies.
 - An off-heap binary's copy is a new cell sharing the buffer; the destination

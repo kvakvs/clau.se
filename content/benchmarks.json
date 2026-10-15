@@ -1,0 +1,270 @@
+{
+  "runAt": "2026-10-15T15:06:24+02:00",
+  "host": {
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "cpus": 32,
+    "os": "Windows 11 (10.0.26200)"
+  },
+  "otp": "29, ERTS 17.1",
+  "commit": "6ed3851c",
+  "runs": 5,
+  "kernels": [
+    {
+      "name": "datagen.bigint_factorial",
+      "otp": 67.9936,
+      "otpSpread": 9,
+      "clause": 106.6096,
+      "clauseSpread": 12
+    },
+    {
+      "name": "datagen.binary_append",
+      "otp": 0.3072,
+      "otpSpread": 33,
+      "clause": 1.2648,
+      "clauseSpread": 19
+    },
+    {
+      "name": "datagen.list_of_tuples",
+      "otp": 38.5024,
+      "otpSpread": 19,
+      "clause": 59.8223,
+      "clauseSpread": 10
+    },
+    {
+      "name": "datagen.list_to_tuple",
+      "otp": 3.4816,
+      "otpSpread": 18,
+      "clause": 7.8669,
+      "clauseSpread": 27
+    },
+    {
+      "name": "datagen.map_put",
+      "otp": 0.6144,
+      "otpSpread": 33,
+      "clause": 2.0102,
+      "clauseSpread": 7
+    },
+    {
+      "name": "datagen.string_build",
+      "otp": 5.4272,
+      "otpSpread": 19,
+      "clause": 60.506,
+      "clauseSpread": 10
+    },
+    {
+      "name": "dataproc.binary_match",
+      "otp": 0.3072,
+      "otpSpread": 33,
+      "clause": 4.5145,
+      "clauseSpread": 11
+    },
+    {
+      "name": "dataproc.comprehension",
+      "otp": 2.048,
+      "otpSpread": 15,
+      "clause": 5.0211,
+      "clauseSpread": 13
+    },
+    {
+      "name": "dataproc.int_to_list",
+      "otp": 7.9872,
+      "otpSpread": 26,
+      "clause": 38.7872,
+      "clauseSpread": 12
+    },
+    {
+      "name": "dataproc.map_foldl",
+      "otp": 2.7648,
+      "otpSpread": 26,
+      "clause": 9.2037,
+      "clauseSpread": 12
+    },
+    {
+      "name": "dataproc.map_update",
+      "otp": 0.7168,
+      "otpSpread": 14,
+      "clause": 5.6046,
+      "clauseSpread": 17
+    },
+    {
+      "name": "dataproc.sort",
+      "otp": 3.9936,
+      "otpSpread": 23,
+      "clause": 12.5655,
+      "clauseSpread": 15
+    },
+    {
+      "name": "dataproc.term_to_binary",
+      "otp": 3.072,
+      "otpSpread": 53,
+      "clause": 41.6154,
+      "clauseSpread": 19
+    },
+    {
+      "name": "file.large_read",
+      "otp": 8.0896,
+      "otpSpread": 19,
+      "clause": 39.829,
+      "clauseSpread": 15
+    },
+    {
+      "name": "file.large_write",
+      "otp": 34.0992,
+      "otpSpread": 33,
+      "clause": 87.5445,
+      "clauseSpread": 56
+    },
+    {
+      "name": "file.read_file",
+      "otp": 45.056,
+      "otpSpread": 25,
+      "clause": 238.0519,
+      "clauseSpread": 24
+    },
+    {
+      "name": "file.read_line",
+      "otp": 57.856,
+      "otpSpread": 30,
+      "clause": 177.6455,
+      "clauseSpread": 23
+    },
+    {
+      "name": "file.small_files",
+      "otp": 439.0912,
+      "otpSpread": 34,
+      "clause": 436.2571,
+      "clauseSpread": 27
+    },
+    {
+      "name": "gc.explicit_collect",
+      "otp": 10.6496,
+      "otpSpread": 43,
+      "clause": 26.6748,
+      "clauseSpread": 33
+    },
+    {
+      "name": "gc.grow_shrink",
+      "otp": 16.9984,
+      "otpSpread": 125,
+      "clause": 41.6486,
+      "clauseSpread": 11
+    },
+    {
+      "name": "gc.long_lived_churn",
+      "otp": 7.9872,
+      "otpSpread": 19,
+      "clause": 13.4238,
+      "clauseSpread": 24
+    },
+    {
+      "name": "gc.short_processes",
+      "otp": 41.472,
+      "otpSpread": 63,
+      "clause": 139.0728,
+      "clauseSpread": 38
+    },
+    {
+      "name": "msg.fan_in",
+      "otp": 105.3696,
+      "otpSpread": 35,
+      "clause": 98.3205,
+      "clauseSpread": 239
+    },
+    {
+      "name": "msg.large_message",
+      "otp": 6.9632,
+      "otpSpread": 88,
+      "clause": 54.2299,
+      "clauseSpread": 18
+    },
+    {
+      "name": "msg.ping_pong",
+      "otp": 75.0592,
+      "otpSpread": 14,
+      "clause": 75.6428,
+      "clauseSpread": 13
+    },
+    {
+      "name": "msg.ring",
+      "otp": 50.8928,
+      "otpSpread": 18,
+      "clause": 69.1188,
+      "clauseSpread": 9
+    },
+    {
+      "name": "socket.tcp_connect",
+      "otp": 260.608,
+      "otpSpread": 76,
+      "clause": 162.9086,
+      "clauseSpread": 89
+    },
+    {
+      "name": "socket.tcp_echo",
+      "otp": 322.7648,
+      "otpSpread": 76,
+      "clause": 240.525,
+      "clauseSpread": 107
+    },
+    {
+      "name": "socket.udp_round_trip",
+      "otp": 336.6912,
+      "otpSpread": 96,
+      "clause": 272.655,
+      "clauseSpread": 118
+    }
+  ],
+  "programs": [
+    {
+      "name": "bench_datagen",
+      "otp": 0.27,
+      "clause": 0.28
+    },
+    {
+      "name": "bench_dataproc",
+      "otp": 0.17,
+      "clause": 0.16
+    },
+    {
+      "name": "bench_file",
+      "otp": 0.92,
+      "clause": 1.39
+    },
+    {
+      "name": "bench_gc",
+      "otp": 0.26,
+      "clause": 0.33
+    },
+    {
+      "name": "bench_msg",
+      "otp": 0.51,
+      "clause": 0.46
+    },
+    {
+      "name": "bench_socket",
+      "otp": 1.37,
+      "clause": 0.91
+    }
+  ],
+  "history": [
+    {
+      "date": "2026-10-12",
+      "commit": "a7bc0c9b",
+      "ratio": 20.18
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "8a244d9c",
+      "ratio": 16.9
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "55f42a9d",
+      "ratio": 16.92
+    },
+    {
+      "date": "2026-10-15",
+      "commit": "6ed3851c",
+      "ratio": 2.73
+    }
+  ]
+}

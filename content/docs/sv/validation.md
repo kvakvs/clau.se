@@ -1,8 +1,8 @@
 ---
 source: docs/validation.md
-sourceCommit: 06042fa
-sourceSha256: ed256a9f28346170cd141eff3a0d84d3dcaad4d06bbf853414738bd11cb36bd5
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 908ac8c879d3df66cb4e8e52800e07da92013325c177e1556378cadd0597b50f
+translatedAt: 2026-10-15
 ---
 # Validering
 
@@ -39,6 +39,9 @@ cmake --build build/debug --target check-quality-all  # whole tree
   O2-projekt utan specialisering, kör mutationer en gång och hoppar över
   `full_only`-tester. Fullt läge (standard) kör alla kombinationer av
   drivrutin/policy.
+- `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplicerar gränserna per körning för
+  golden-köraren (60 s) och köraren för semantiska fall (15 s) för
+  instrumenterade byggen.
 - `check-quality`, `make format` och `make-format.bat` omfattar filer som
   ändrats sedan `HEAD` plus ospårade filer; `cmake/quality_scope.py` lägger till
   översättningsenheter som inkluderar en ändrad header. Ändringar i
@@ -48,7 +51,53 @@ cmake --build build/debug --target check-quality-all  # whole tree
   native-konsumenter länkar föräldrabyggets runtime via
   `ClauseRuntimeTargets.cmake` i stället för att kompilera den igen; endast
   `runtime_link` bygger runtime fristående.
-- Tröskelvärden och undertryckningar höjs aldrig för att klara grinden.
+- Tröskelvärden och undertryckningar höjs aldrig för att klara grinden. Två
+  undantag för tredjepartskod är konfigurerade (plan 11 steps 63-64,
+  användarens beslut): `cmake/tidy_filter.py` tar bort rapporter från den
+  statiska analysatorn som ligger i Boost-headers (falska positiva för
+  limb-lagring i Boost.Multiprecision på Linux som en omskrivning av den
+  anropande koden bara flyttar) och räknar dem i utdata, och
+  `bugprone-exception-escape` ignorerar `bad_array_new_length` (MSVC:s
+  flyttkonstruktorer för map/set allokerar; ett allokeringsfel är ändå
+  fatalt).
+- clang-tidy kontrollerar projektets headers på varje värd: headerfiltret
+  godtar avgränsarna `/` och `\` (Windows-sökvägar matchade aldrig före step
+  63).
+
+### Linux
+
+Samma grind körs på Linux med det fastlåsta LLVM 23.1.2 SDK för Linux som
+värdkompilator (`CC`/`CXX` från dess `bin/`), systemets libstdc++, Ninja och
+CMake 3.28 eller nyare. Boost 1.90 och toml++ 3.4.0 kommer från installerade
+paket eller extraheras till `thirdparty/` (`boost_1_90_0/`,
+`tomlplusplus-3.4.0/`); endast Windows laddar ned dem. Versionsarkivets
+`ld.lld` länkar ICU 70 (Ubuntu 22.04) och dess `lldb` länkar Python 3.14; på
+värdar utan dem behöver `linking_lto` ICU 70 i `LD_LIBRARY_PATH`, och
+`linking_debugger` använder GDB.
+
+```sh
+cmake --preset debug --fresh -G Ninja -DBUILD_TESTING=ON
+cmake --build build/debug
+ctest --preset debug -j 16
+```
+
+`check-quality` (Lizard, clang-tidy) körs endast på Windows-värden för
+utveckling; andra värdar bygger och kör testerna. Step 63 körde den en gång på
+Linux, vilket hittade det som Windows-körningen inte kunde se (källfiler
+endast för POSIX, libstdc++:s `std::optional`), och lämnade den ren.
+
+### Andra mål
+
+32-bitars- och ARM-mål kontrolleras utan en kompilator byggd för dem (inget
+LLVM SDK finns för de värdarna):
+
+- Ett bygge med endast runtime (`-DCLAUSE_BUILD_COMPILER=OFF -DBUILD_TESTING=ON`)
+  för målet kör runtime- och ABI-testerna där: inbyggt, i ett användarland för
+  målet (chroot) eller genom värdens emulator (qemu binfmt).
+- `tests/compiler/executables/cross.py` kör varje golden för körbara filer och
+  varje programfixtur med den här värdens `clau`, `--target-triple`, det
+  byggets runtime-arkiv och en `--linker` som når målets bibliotek
+  (`run.py --target-option` skickar dem vidare).
 
 ## Fixturer och ursprung
 
@@ -65,17 +114,17 @@ cmake --build build/debug --target check-quality-all  # whole tree
   fönster om 60 token mot 4 150 Erlang-filer och 1 190 C/C++-filer från OTP
   hittade ingen kvarvarande överlappning utöver en genererad heltalstupel.
   `fixture_sources` upprätthåller isoleringen.
-- Sex programfixturer för slutmålet (`tests/fixtures/programs/`, plan 11 step 2)
+- Sex programfixturer för slutmålet (`tests/fixtures/programs/`)
   innehåller goldens för stdout/slutstatus från OTP och dagens
   kompileringsdiagnostik; `programs_compile` kontrollerar dem utan OTP och
   `tests/compiler/programs/regenerate.py --check` återskapar dem under OTP
   ([fixturkarta](../tests/fixtures/programs/README.md)).
-- Goldens för termutskrift (`tests/fixtures/printing/`, plan 11 step 4)
+- Goldens för termutskrift (`tests/fixtures/printing/`)
   innehåller OTP:s `~w`- och `erlang:display/1`-text för 9 542 värden plus OTP:s
   stdout från kompilerade display-anrop;
   `tests/compiler/printing/regenerate.py --check` återskapar dem
   ([fixturanteckningar](../tests/fixtures/printing/README.md)).
-- Golden-fall för körbara filer (`tests/fixtures/executables/`, plan 11 step 8)
+- Golden-fall för körbara filer (`tests/fixtures/executables/`)
   är källkataloger plus en `golden.json` med stdout/slutstatus från OTP och ett
   handskrivet stderr-mönster; `tests/compiler/executables/run.py` länkar och kör
   vart och ett under matrisen av policyer/drivrutiner (CTest
@@ -107,19 +156,88 @@ Fall som beror på filsystemets förmågor (länkar, skiftlägesalias) rapporter
 
 ## Plattforms- och sanitizer-status
 
-- Native-exekvering av genererad kod: endast Windows x64.
-- Linux, Apple Silicon och native 32-bitarsexekvering: väntande (objekten
-  inspekteras bara).
-- ASan, UBSan och LeakSanitizer för kompilatorn/frontend: väntande. Det
-  förbyggda LLVM SDK för Windows står i konflikt med instrumenterad kod
-  (`annotate_string` 0 mot 1; tidigare även dubblerade allokatorsymboler för
-  rpmalloc/ASan). Ingen kontroll inaktiverades för att kringgå det.
+- Native-exekvering av genererad kod: Windows x64; Linux x86-64. Resultat för
+  32-bitars och ARM finns i historiken.
+- Apple Silicon: väntande.
+- ASan, UBSan och LeakSanitizer för kompilatorn och runtime: Linux x86-64, en
+  kombinerad Debug-konfiguration
+  (`-fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=undefined`),
+  fullständig CTest med `CLAUSE_TEST_TIMEOUT_SCALE=10` (instrumenterad kod
+  körs flera gånger långsammare): ingen sanitizer-rapport. Kompilatorn,
+  runtimen och testprogrammen är instrumenterade; program som `clau` länkar tar
+  sanitizer-runtimen från ett `clang++`-omslag i `PATH`, deras genererade kod
+  är inte instrumenterad. De fyra testerna med injicerad vägran från värden
+  (`codegen_failure_*`, `runtime_lifecycle_failure`, `runtime_memory`) ligger
+  utanför ASan:s räckvidd: dess `operator new` avbryter vid en omöjlig storlek
+  i stället för att kasta.
+- ThreadSanitizer: Linux x86-64, samma instrumenteringsräckvidd med
+  `-fsanitize=thread`; fullständig CTest och samtidighetstesterna fem gånger
+  vardera rapporterar ingen kapplöpning efter åtgärden av låsordningen i
+  `Executor::clear`. Också utanför räckvidden: de två tester som ersätter
+  `operator new`.
+- På Windows står det förbyggda LLVM SDK fortfarande i konflikt med
+  instrumenterad kod (`annotate_string` 0 mot 1).
 - ASan enbart för runtime godkänns på Windows med Release-sonder,
   `/EHsc /fsanitize=address`, `/MT`, Clangs ASan-importbibliotek och statiska
   runtime-thunk samt ASan-DLL:en i `PATH`.
 - Historiska körningar på macOS arm64 (2026-09-19/20) klarade fullständiga
   Debug-, C++26-, ASan+UBSan-, enbart kompilator- och enbart runtime-byggen för
   parser- och projektstegen; de är äldre än backend.
+
+## Prestandamätningar
+
+Manuell prestandajämförelse med Erlang/OTP. Den är aldrig en del av CTest,
+commit-grinden eller `check-quality`, och endast den behöver ett Erlang/OTP på
+värden; resultaten är värdspecifika belägg, inte grindresultat.
+
+```powershell
+make-benchmark.bat                         # Windows; set JOBS=N to cap parallel builds
+make-benchmark.bat --repeat 9 --only bench_gc,bench_msg
+make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
+```
+
+- Båda konfigurerar och bygger en Release-`clau` och runtime i `build/bench`
+  och kör sedan `benchmarks/run.py` (`--help` listar dess alternativ).
+- Program: `benchmarks/bench_*.erl` med `bench_util.erl`, byggda oförändrade
+  av `erlc` och `clau -O2`. Var och en tar tid på sina kärnor med
+  `erlang:monotonic_time/1` efter ett uppvärmningsanrop och skriver ut
+  `BENCH <name> <nanoseconds>`: generering av data, bearbetning av data,
+  skräpsamling, meddelandeöverföring, fil-I/O (i en tom temporär arbetskatalog)
+  och loopback-socketar.
+- System, på samma värd i en körning, varvade: OTP med sin standardvariant
+  (JIT), OTP `-emu_flavor emu` när den är installerad (Windows-installeraren
+  levererar endast JIT, så de kolumnerna visar `n/a`), Clause HEAD vid O2 och
+  med `--lto`, samt en tidigare Clause-commit (standard: den nyaste commit som
+  är minst en dag äldre än HEAD; `--baseline REV`, `--no-baseline`) byggd i
+  ett cachat arbetsträd under `build/bench-base/<hash>` som delar
+  `thirdparty/`.
+- Rapport: per kärna medianen av `--repeat` körningar (standard 5) i
+  millisekunder med sex decimaler och dess spridning, förändringen för Clause
+  O2 mot varje system (`+N%`: Clause snabbare, det andra tar N % längre tid;
+  `-N%`: Clause tar N % längre tid; `(Fx)` tidskvoten) med ett geometriskt
+  medelvärde, `--lto` mot OTP och O2, programmens totala tider inklusive
+  uppstart, fel och tidsgränser (`--timeout`, 600 s per körning).
+  Iterationsantalen håller en standardkörning under 10 minuter; Clause, det
+  långsammaste systemet, bestämmer storlekarna, så vissa OTP-kärnor varar bara
+  några millisekunder.
+- Historik: `benchmarks/history/<host>.json` behåller en post per kördag
+  (kördatum, HEAD-hash och commitdatum, medianer för Clause, OTP och
+  baslinjen), `benchmarks/history/reports/<host>/<day>-<hash>.txt`
+  textrapporterna; en ny körning samma dag ersätter båda. Poster och rapporter
+  som körts mer än 183 dagar före den nyaste rensas bort; en körning med
+  ändringar i källkoden som inte har checkats in rapporteras men registreras
+  inte. Historikkatalogen ignoreras av git: den stannar på värden som körde
+  den.
+- Listningar: med `--listings` skriver en körning, före mätningen, varje
+  programs [`--print-asm`](compile.md#assembly-listings)- och
+  `--print-ir`-listningar (med `bench_util`, `--entry <program>` så att onåbar
+  bibliotekskod utelämnas som i den körbara filen) bredvid rapporterna som
+  `<program>.debug.asm` / `<program>.debug.ll` (`-O0`) och
+  `<program>.release.asm` / `<program>.release.ll` (`-O2`, koden som kolumnen
+  `clause-o2` kör), och ersätter den föregående körningens listningar, även
+  med `--no-history` och ändringar som inte har checkats in. `--print-ir` är
+  IR före LLVM-kedjan; assemblerkommentarerna citerar IR efter den. Ett
+  program som inte går att kompilera förlorar sina inaktuella listningar.
 
 ## Historik
 
@@ -191,6 +309,14 @@ CTest-körningar utan överhoppningar.
 | 2026-10-07 | Plan 11 step 33 closures med fångade variabler | 175 (171 snabba) | 134 ändrade | Snabbt 171/171; fullt `-j 12` 175/175 på 126 s; Lizard och tidy godkända efter komplexitetsåtgärder |
 | 2026-10-07 | Plan 11 step 34 namngivna funs | 176 (172 snabba) | 132 ändrade | Snabbt 172/172; fullt `-j 12` 176/176 på 152 s; Lizard 0 varningar; tidy godkänt |
 | 2026-10-07 | Plan 11 step 35 dynamiska anrop `M:F(Args)`, `apply/2,3`, `fun M:F/A` vid körning (ABI 8) | 177 (173 snabba) | 290 (analysatorkonfiguration ändrad) | Snabbt 173/173; fullt `-j 12` 177/177 på 142 s; Lizard 0 varningar och tidy godkänt efter en komplexitetsåtgärd och tre tidy-åtgärder |
+| 2026-10-09 | Plan 11 step 63 Linux x86-64 (WSL2 Ubuntu 25.04, glibc 2.41, LLVM 23.1.2 SDK clang, libstdc++ 14, GDB 16.2) | 235 | 338 | Fullständig CTest 235/235 på 161 s; Lizard och clang-tidy rena (7 analysatorrapporter i Boost-headers ignorerade); Windows-grinden 235/235 med headers kontrollerade |
+| 2026-10-09 | Plan 11 step 64 32-bitars: Windows x86 (WoW64, clang-cl) och Linux i386 (Debian 13 chroot, clang 19) | 42 + 65 goldens | — | Runtime-/ABI-tester 42/42 inbyggt på båda; `cross.py`-goldens 65/65 på båda (körningar av `integer_limit` endast för 64 bitar överhoppade) |
+| 2026-10-09 | Plan 11 step 65 Linux arm64 och armhf (Debian 13 sysroots, qemu-user 9.2) | 42 + 65 goldens | — | Runtime-/ABI-tester 42/42 vardera; goldens 64/65 vardera (`port_spawn` `enoent`: lucka i qemu:s `posix_spawn`), körgräns 900 s |
+| 2026-10-10 | Plan 11 step 67 ASan + UBSan + LeakSanitizer (Linux x86-64) | 235 | — | Ingen sanitizer-rapport; fyra tester med injicerad vägran från värden utanför ASan:s räckvidd; `CLAUSE_TEST_TIMEOUT_SCALE=10` |
+| 2026-10-10 | Plan 11 step 68 ThreadSanitizer (Linux x86-64) | 233 | — | En inverterad låsordning åtgärdad (`Executor::clear`); därefter ingen rapport i fullständig CTest och 15 samtidighetstester x5 |
+| 2026-10-10 | Plan 11 step 65A `-behaviour`/`-behavior` och genererad `behaviour_info/1` | 234 (snabba) | 342 | Ny konfigurering; snabbt 234/234; Lizard 0 varningar; tidy godkänt efter en åtgärd (kastande statisk initiering); nya `lint_diagnostics` (8 OTP-genererade fall) och `executables_behaviours`; OTP `--check` återskapar 60 goldens för körbara filer och 8 lint-goldens; programgoldens återskapade endast för den ändrade orakelhashen |
+| 2026-10-10 | Plan 11 step 65B `module_info/0,1` och informativa attribut | 235 (snabba) | 344 | Ny konfigurering; snabbt 235/235; Lizard 0 varningar; tidy godkänt efter uppdelning av `parse_and_print`; nya `executables_module_info` och lint-fallen `module_info_defined`, `exports_repeated` återskapas under OTP 29.1.1 |
+| 2026-10-10 | Plan 11 step 65C importer, kompileringstips, namngivna avvisningar av attribut | 236 (snabba) | — | Se belägg för plan 65C; `executables_imports` och tre lint-fall för importer återskapas under OTP 29.1.1 |
 | 2026-10-06 | Plan 11 step 27E ERTS-gräns för stora heltal, `error:system_limit` | 165 (161 snabba) | 157 ändrade | Snabbt 161/161; fullt `-j 12` 165/165 på 130 s; Lizard 0 varningar; tidy godkänt; 21 goldens för körbara filer återskapas under OTP |
 | 2026-10-06 | Plan 11 step 27D inga tak för map-storlek eller nyckelarbete | 164 (160 snabba) | 13 ändrade | Snabbt 160/160; fullt `-j 12` 164/164 på 115 s; efter en tidy-åtgärd i `bit_order` godkänns 35 berörda tester; Lizard 0 varningar; tidy godkänt |
 | 2026-10-06 | Plan 11 step 27C gräns för tupelaritet 16 777 215 | 164 (160 snabba) | 51 ändrade | Snabbt 160/160; fullt `-j 12` 164/164 på 121 s; Lizard 0 varningar; tidy godkänt |

@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 06042fa
-sourceSha256: a6c1ea20b3bdb7055c6080cff72a2a86c4cdce87eb6bd8944ffce5c709e98d66
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 117cb0d9a710183b84c1f3474a4ae07fa185ffa3bdb502b383d297027e183aff
+translatedAt: 2026-10-15
 ---
 # Term-Darstellungen
 
@@ -30,7 +30,9 @@ stehen in [abi.md](abi.md#terms).
   ([Wurzeln](runtime-heap.md#roots-and-safe-points)); er hält den Heap-Speicher
   nicht fest. Nach dem Abbau des Kontexts liefert ein Zugriff `expired_context`;
   nach einer späteren Speicherbereinigung `stale_term`. Terme können immer sicher zerstört
-  werden.
+  werden. Die Abbauprüfung liest das Lebensdauer-Token des Kontexts, ohne ihn
+  zu sperren: Ein Kontext und seine Terme werden jeweils von einem Thread
+  verwendet.
 - Die Konstruktion validiert Kinder, reserviert, initialisiert und
   veröffentlicht dann in einem Schritt; ein Fehlschlag macht Speicher und Zähler
   rückgängig.
@@ -57,10 +59,31 @@ stehen in [abi.md](abi.md#terms).
 - Nutzdaten stammen aus einem prozessweiten Zähler, sodass das Atomwort einer
   fremden Runtime erkennbar ist. 32-Bit-Prozesse haben insgesamt 2^26
   Identitäten über ihre gesamte Lebensdauer.
+- Das Zulassen eines Atomworts liest einen sperrfreien Index nach Atomnummer
+  (die festen Atome direkt, dann Blöcke von 4.096 Einträgen, die einmal unter
+  der Internierungssperre veröffentlicht werden); Nummern jenseits von 2^24
+  weichen auf die gesperrte Tabelle aus.
 - Host-Atom-Terme halten die Schreibweise fest und überleben den Abbau der
   Runtime. Ein Atom zwischen Runtimes zu bewegen heißt, `atom_utf8()` im Ziel zu
   internieren.
-- Booleans sind die Atome `true`/`false`.
+- Booleans sind die Atome `true`/`false`. Die festen Atome `false`, `true`,
+  `undefined`, `ok` und `error` (`abi::v1::fixed_atom_spellings`) haben in
+  jeder Runtime die Wörter der Atomnummern 0–4, werden mit dem Speicher
+  angelegt, ohne Sperre gefunden und weder von `size()` noch gegen
+  `max_atoms` gezählt; erzeugter Code verwendet sie als Konstanten. Jedes
+  andere Atomwort ist privat für die Runtime.
+- Zusammengesetzte Literale aus Konstanten (Zeichenketten, Listen und Tupel aus
+  Immediates und anderen Literalen, Gleitkommazahlen, Bignums) sind Zellen des
+  Literalbereichs des Moduls, zur Kompilierzeit gebaut und gemeinsam genutzt
+  ([Literalbereiche](runtime-heap.md#areas)); Ganzzahlliterale im kleinen
+  Bereich sind Immediates.
+- Andere Atomliterale werden aus dem Atom-Cache des Moduls geladen
+  (`ModuleDescriptor::atom_cache`: die Identität der beanspruchenden Runtime,
+  dann ein Wort pro Slot), den die erste Runtime füllt, die das Modul
+  registriert; ein Kontext, dessen `FrameState::runtime` dem Anspruch
+  entspricht, liest ihn ohne Aufruf, jeder andere ruft `CLAUSE_atom_v3` auf.
+  Der Anspruch wird zurückgegeben, wenn der Code-Server der Runtime das Modul
+  freigibt.
 - Internieren und Nachschlagen sind sicher gegenüber nebenläufigen
   Scheduler-Workern ([Threads](runtime.md#threads)); eine Schreibweise behält
   ein Wort.
@@ -71,9 +94,14 @@ stehen in [abi.md](abi.md#terms).
   größere sind unveränderliche Zellen mit Vorzeichen und Betrag. Null und kleine
   Werte werden immer zu Immediates normalisiert. Literale werden nicht auf die
   Host-Breite verengt.
+- Bei `-O2` überspringen Operanden, die die Inferenz als klein beweist, ihre
+  Tag-Prüfungen, und ein bewiesener Ergebnisbereich überspringt auch die
+  Überlaufprüfung und den Rückfallpfad ([Beweise](specialization.md#proofs)).
 - Generierte `+`, `-`, `*` versuchen bei zwei Immediates einen Inline-Schnellpfad
   (Berechnung in doppelter Breite mit expliziten Grenzen), andernfalls rufen
-  sie den Runtime-Dienst auf.
+  sie den Runtime-Dienst auf; ebenso `band`, `bor`, `bxor`, `bsr`, `div`, `rem`
+  und Vergleiche zweier kleiner Ganzzahlen
+  ([Inline-Formen](abi.md#runtime-services)).
 - `div` schneidet in Richtung null ab; `rem` übernimmt das Vorzeichen des
   Dividenden; bitweise Operationen verwenden unendliches Zweierkomplement;
   negative Verschiebungsweiten kehren die Richtung um; riesige
@@ -119,9 +147,11 @@ stehen in [abi.md](abi.md#terms).
 - Unveränderliche Tabellen, sortiert nach exakter Schlüsselordnung. Doppelte
   Schlüssel bei der Konstruktion behalten den letzten Wert. Die Konstruktion
   sortiert die Schlüssel (O(n log n) Vergleiche; bereits aufsteigende Schlüssel
-  werden nur geprüft); Aktualisierungen fügen per binärer Suche ein. Keine
-  Größen- oder Arbeitsgrenze außer dem Speicher, wie in OTP; auf 32-Bit-Zielen
-  begrenzt die Wortanzahl des Headers eine Map auf 2^24 - 1 Einträge (`resource_limit`). Ganzzahl- und Gleitkommaschlüssel unterscheiden sich (auch
+  werden nur geprüft). Bis zu 32 Einträgen ist eine Map eine Heap-Zelle, und
+  eine Aktualisierung fügt per binärer Suche in eine Kopie ein; darüber ist sie
+  ein B+-Baum außerhalb des Heaps, aktualisiert durch Pfadkopie in O(log n)
+  ([Maps außerhalb des Heaps](runtime-heap.md#off-heap-maps)). Keine Größen-
+  oder Arbeitsgrenze außer dem Speicher, wie in OTP. Ganzzahl- und Gleitkommaschlüssel unterscheiden sich (auch
   `0.0` gegenüber `-0.0`, auch verschachtelt).
 - Aktualisierungen mit `K := V` erfordern den Schlüssel; `K => V` fügt ein oder
   ersetzt. Aktualisierungen bereiten eine neue Tabelle vor und veröffentlichen sie
@@ -142,7 +172,28 @@ stehen in [abi.md](abi.md#terms).
   Segments aufzubauen.
 - Die Konstruktion bereitet alle Segmente vor dem Veröffentlichen vor.
   Ganzzahlsegmente werden abgeschnitten; die native Bytereihenfolge stammt aus
-  dem Datenlayout des Ziels.
+  dem Datenlayout des Ziels. Ein Ganzzahlsegment eines kleinen Werts mit einer
+  Breite von höchstens 64 Bit wird aus seinem Maschinenwort geschrieben (an
+  einer Bytegrenze ganze Bytes auf einmal); andere nehmen den Pfad mit
+  Mehrfachpräzision. Auf 64-Bit-Zielen schreibt erzeugter Code ein binary aus
+  ganzbytigen Ganzzahlsegmenten konstanter Breite (höchstens 64 Bytes) direkt
+  als Inline-binary in den Heap-Block, wenn jeder Wert eine kleine Ganzzahl ist
+  und der Heap Platz hat; andernfalls baut es der Bits-Dienst, der
+  Segmente kleiner Ganzzahlen aus ihren Argumentwörtern liest.
+- Anhängen (wie bei den beschreibbaren binaries von OTP): Eine Konstruktion,
+  die mit einem ganzen binary beginnt (`<<Acc/binary, ...>>`), baut ihr
+  Ergebnis in einem Puffer mit Reserveplatz (doppelte Größe, mindestens
+  256 Bytes), dessen Off-Heap-Zelle im erzeugenden Prozess die belegten Bits
+  und die Kapazität vermerkt (null in jeder anderen Zelle, Kopien
+  eingeschlossen). Ein späteres Anhängen, dessen Akkumulator-Ansicht genau dort
+  endet, schreibt die neuen Bytes in den Reserveplatz, den keine Ansicht
+  abdeckt, und gibt eine längere Ansicht desselben Puffers zurück: ein
+  Sub-binary der eigenen Off-Heap-Zelle des Puffers, das über die Bits dieser
+  Zelle hinausreichen darf. Erzeugter Code tut dies inline für ganzbytige
+  Ganzzahlsegmente konstanter Breite mit kleinen Werten; jeder andere
+  Akkumulator (eine ältere Ansicht, die eines anderen Prozesses, eine nicht
+  ausgerichtete, ein voller Puffer) wird in einen neuen, verdoppelten Puffer
+  kopiert. Andere Ansichten des Puffers ändern sich nie.
 - Gleitkommasegmente: Breiten 16/32/64; die Konstruktion darf Unendlich kodieren,
   das Matching weist aber unendliche/NaN-Felder ab. Gleitkomma-Matches der
   Breite null extrahieren `0.0`.
@@ -182,7 +233,7 @@ stehen in [abi.md](abi.md#terms).
 
 ## Pids und Referenzen
 
-Plan 11 step 42. `self/0` gibt die Pid des aufrufenden Prozesses zurück,
+`self/0` gibt die Pid des aufrufenden Prozesses zurück,
 `make_ref/0` eine neue Referenz; `pid_to_list/1` und `ref_to_list/1` geben
 ihren Text zurück.
 
@@ -194,7 +245,7 @@ ihren Text zurück.
   bleibt ein gültiger Term, wie in OTP. 32-Bit-Ziele haben 2^28 Nummern pro
   Programmlauf, 64-Bit-Ziele 2^60; einen Prozess darüber hinaus zu erzeugen
   schlägt mit `resource_limit` fehl.
-- Ein Port (plan step 57B) ist ein Immediate-Wort (niedrigste vier Bits `0x7`),
+- Ein Port ist ein Immediate-Wort (niedrigste vier Bits `0x7`),
   das seine Nummer aus einer eigenen, nie wiederverwendeten Sequenz enthält, und
   wird wie eine Pid zugelassen; er wird als `#Port<0.N>` ausgegeben und ordnet
   sich zwischen Funs und Pids ein ([Ports](ports.md#identity)).
@@ -203,6 +254,10 @@ ihren Text zurück.
   eigenen Prozess, als Host-`Term` veraltet nach einer Speicherbereinigung, zwischen
   Prozessen als Wert kopiert. Nummern stammen aus einem prozessweiten Zähler,
   sodass jede Referenz eines Programmlaufs eindeutig ist.
+- Eine Handle-Referenz (eine magic reference von OTP) ist eine Referenzzelle,
+  die zusätzlich einen Puffer außerhalb des Heaps hält; sie ist für jeden Dienst
+  dieselbe Referenz und teilt ihren Puffer mit jeder Kopie
+  ([Handle-Referenzen](runtime-heap.md#handle-references)).
 - Die Ausgabe folgt den lokalen Identitäten von OTP: eine Pid als `<0.N.S>`
   (N die niedrigsten 28 Bits ihrer Nummer, S der Rest), eine Referenz als
   `#Ref<0.A.B.C>` (C die niedrigsten 18 Bits ihrer Nummer, B die nächsten 32,
@@ -219,6 +274,9 @@ Bytes auf einmal. Ordnung: Zahlen < Atome < Referenzen < Funs < Pids < Tupel < n
 Bitstrings (für die Ordnung untereinander siehe [Funs](funs.md#comparison-and-printing)). Atome werden nach UTF-8-Schreibweise verglichen (Codepoint-Reihenfolge); Tupel nach
 Stelligkeit, dann Feldern; Maps nach Größe, dann Schlüsseln, dann Werten;
 Bitstrings nach logischen Bits.
+Zwei kleine Ganzzahlen, zwei Gleitkommazahlen oder zwei ganzbytige binaries
+werden direkt aus ihren Wörtern oder Zellen geordnet (`detail::word_order`),
+ohne Zulassung als Term.
 
 ## Ausgabe
 

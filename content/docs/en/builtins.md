@@ -1,6 +1,6 @@
 # Builtins
 
-Plan 11 step 36 (2026-10-07): the production builtin bridge. Builtins are
+The production builtin bridge. Builtins are
 `erlang` functions the runtime implements in C++. The runtime registers them
 by module, function and arity; generated code reaches them directly, through
 dynamic calls and as fun values.
@@ -20,30 +20,40 @@ builtin both the compiler and the runtime know:
   `xor/2`, arithmetic and bitwise operators (`erlang:'+'/1,2` …);
 - `display/1`, `halt/0,1`, `error/1,2,3`, `exit/1`, `throw/1`, `raise/3` and
   `function_exported/3`;
-- term access (plan step 37): `setelement/3`, `make_tuple/2,3`,
+- term access: `setelement/3`, `make_tuple/2,3`,
   `tuple_to_list/1`, `list_to_tuple/1` and the list operators `'++'/2` and
   `'--'/2` (`A ++ B`, `A -- B` lower to them);
-- conversions (plan step 38): `atom_to_list/1`, `list_to_atom/1`,
+- conversions: `atom_to_list/1`, `list_to_atom/1`,
   `integer_to_list/1,2`, `list_to_integer/1,2`, `float_to_list/1,2`,
   `binary_to_list/1`, `list_to_binary/1`, `iolist_to_binary/1`
   (`term_to_binary/1` is not selected);
-- console output (plan step 40): `io:format/1,2` and `io:put_chars/1`, the
-  first builtins of another module ([io](io.md));
-- process identities (plan step 42): `self/0`, `make_ref/0`, `pid_to_list/1`
+- console output: `io:format/1,2` and `io:put_chars/1`, the
+  first builtins of another module ([io](io.md)); output devices: `io:format/3`, `io:fwrite/1,2,3`, `io:put_chars/2`, `io:nl/0,1`;
+- the `lists` data functions ([lists module](#lists-module));
+- every `math` function ([math module](#math-module));
+- the `binary` module ([binary module](#binary-module));
+- `os` environment, process and version queries and the `maps` BIFs (  [maps module](#maps-module));
+- `persistent_term` ([persistent terms](#persistent-terms));
+- the `unicode` conversions ([unicode module](#unicode-module));
+- the `code` module's loaded-module queries ([code module](#code-module));
+- the `init` module's command-line answers ([init module](#init-module));
+- `atomics`, `counters` and the `erts_internal` functions stdlib calls (  [atomics and counters](#atomics-and-counters), [erts_internal](#erts-internal));
+- `unicode_util`'s tables ([unicode_util](#unicode-util));
+- process identities: `self/0`, `make_ref/0`, `pid_to_list/1`
   and `ref_to_list/1` ([pids and references](terms.md#pids-and-references));
-- processes (plan step 43): `spawn/1,3` and `is_process_alive/1`
-  ([processes](processes.md)); links and exit signals (step 48):
+- processes: `spawn/1,3` and `is_process_alive/1`
+  ([processes](processes.md)); links and exit signals:
   `spawn_link/1,3`, `link/1`, `unlink/1`, `exit/2`, `exit_signal/2`,
-  `process_flag/2` ([links](processes.md#links)); monitors (step 49):
+  `process_flag/2` ([links](processes.md#links)); monitors:
   `spawn_monitor/1,3`, `monitor/2`, `demonitor/1,2`
-  ([monitors](processes.md#monitors)); registered names (step 50):
+  ([monitors](processes.md#monitors)); registered names:
   `register/2`, `unregister/1`, `whereis/1`, `registered/0`
   ([registered names](processes.md#registered-names));
-- messages (plan step 45): `'!'/2` (the `!` operator) and `send/2`
+- messages: `'!'/2` (the `!` operator) and `send/2`
   ([messages](processes.md#messages));
-- the process dictionary (plan step 41C): `put/2`, `get/0,1`,
+- the process dictionary: `put/2`, `get/0,1`,
   `get_keys/0,1`, `erase/0,1` ([process dictionary](processes.md#process-dictionary));
-- binary, atom and number conversions (plan step 41D): `atom_to_binary/1,2`,
+- binary, atom and number conversions: `atom_to_binary/1,2`,
   `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`,
   `list_to_existing_atom/1`, `integer_to_binary/1,2`, `binary_to_integer/1,2`,
   `float_to_binary/1,2`, `binary_to_float/1`, `list_to_float/1`,
@@ -54,29 +64,27 @@ builtin both the compiler and the runtime know:
   sides of the point (`list_to_float("1e10")` is `badarg`), an exponent past
   the range is `badarg` and an underflow `0.0`; encodings are `utf8`,
   `unicode` and `latin1`; they run to completion;
-- the [external term format](#external-term-format) (plan step 41E):
+- the [external term format](#external-term-format):
   `term_to_binary/1,2`, `term_to_iovec/1,2`, `external_size/1,2`,
   `binary_to_term/1,2`;
-- [time](#time) and unique values (plan step 41F): `monotonic_time/0,1`,
+- [time](#time) and unique values: `monotonic_time/0,1`,
   `system_time/0,1`, `time_offset/0,1`, `convert_time_unit/3`,
   `timestamp/0`, `now/0`, `unique_integer/0,1`, `localtime/0`,
   `universaltime/0`, `date/0`, `time/0`, `localtime_to_universaltime/1,2`,
   `universaltime_to_localtime/1`, `posixtime_to_universaltime/1`,
   `universaltime_to_posixtime/1`; [timers](processes.md#timers):
   `start_timer/3,4`, `send_after/3,4`, `cancel_timer/1,2`, `read_timer/1,2`;
-- [process introspection](processes.md#introspection) (plan step 41G1):
+- [process introspection](processes.md#introspection):
   `process_info/1,2`, `processes/0`, `group_leader/0,2`,
   `garbage_collect/0,1,2`, `yield/0`; [system information](#system-information):
   `statistics/1`, `system_info/1`, `memory/0,1`;
-- [spawn options and aliases](processes.md#spawn-options) (plan step 41G2):
+- [spawn options and aliases](processes.md#spawn-options):
   `spawn_opt/2..5`, `spawn_request/1..5`, `spawn_request_abandon/1`,
   `alias/0,1`, `unalias/1`, `monitor/3`, `hibernate/3`;
-- [fun information](funs.md#fun-information), [hashing](#hashing) and MD5
-  (plan step 41G3): `fun_info/1,2`, `fun_to_list/1`, `is_builtin/3`,
+- [fun information](funs.md#fun-information), [hashing](#hashing) and MD5: `fun_info/1,2`, `fun_to_list/1`, `is_builtin/3`,
   `phash/2`, `phash2/1,2`, `md5/1`, `md5_init/0`, `md5_update/2`,
   `md5_final/1`;
-- [nodes](processes.md#nodes) and [code loading](#code-loading) (plan step
-  41H): `nodes/0,1,2`, `is_alive/0`, `monitor_node/2,3`,
+- [nodes](processes.md#nodes) and [code loading](#code-loading): `nodes/0,1,2`, `is_alive/0`, `monitor_node/2,3`,
   `disconnect_node/1`, `module_loaded/1`, `loaded/0`, `pre_loaded/0`,
   `delete_module/1`, `prepare_loading/2`, `finish_loading/1`,
   `get_module_info/1,2`.
@@ -142,9 +150,300 @@ function reaches the [erlang library module](#erlang-module).
   and `A` a small integer; it is true when a module of the program exports
   `M:F/A` or `M:F/A` is a registered builtin.
 
+## Lists module
+
+Source: `runtime/src/builtins/lists/`. OTP's `lists` is Erlang code
+(apart from a few BIFs), so Clause's builtins raise what OTP's clauses raise:
+
+- `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`,
+  `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2` and
+  `keydelete/3` raise `function_clause` for an argument no OTP clause
+  accepts, and walk lists as lazily as OTP: `sublist([a | b], 1)` is `[a]`,
+  `nthtail(1, [a | b])` is `b`, `flatten/2` does not check its tail beyond
+  `is_list`.
+- `keymember/3` and `keysearch/3` are BIFs in OTP: `badarg` for a position
+  that is not a positive small integer or an improper tail reached before a
+  match.
+- Keys and order compare with `==` and term order; of elements comparing
+  equal the first wins (`max([1, 1.0])` is `1`, `usort([1.0, 1])` is
+  `[1.0]`, `umerge/1,2` keep the element of the earlier list).
+- They run to completion. Functions that take funs (`foreach/2`,
+  `mapfoldl/3`, `mapfoldr/3`, `splitwith/2`, `partition/2`, `filtermap/2`,
+  `uniq/2`, ...) are Erlang in `library/stdlib/lists.erl`, because a builtin
+  cannot call a fun and get its result back; so are `prefix/2`, `suffix/2`
+  and `uniq/1`, with OTP's clauses and guards.
+- A `function_clause` from a builtin has no frame of its own
+  ([differences](differences.md)).
+
+## Math module
+
+Source: `runtime/src/builtins/math.cpp`. `library/stdlib/math.erl`
+holds OTP 29's exports as stubs; every one is a builtin over the C library
+(`pi/0` and `tau/0` are constants). Arguments are numbers converted to floats:
+anything else is `badarg`, an integer too large for a float `badarith`. A
+result that is not a finite float (a domain error such as `sqrt(-1)`,
+`log(0)`, `acos(2)`, or an overflow such as `pow(10, 400)`, `exp(1000)`) is
+`badarith`. `floor/1` and `ceil/1` return floats. Results are the host C
+library's, which can differ from OTP's in the last bit
+([differences](differences.md)). On 64-bit targets generated code computes
+`sqrt`, `floor`, `ceil` (LLVM intrinsics) and `exp`, `log`, `log2`, `log10`,
+`sin`, `cos`, `pow` (the same C library functions, called without LLVM's
+substitutions) of number arguments inline into a float cell; other operands and
+non-finite results call the builtin, which raises.
+
+## Binary module
+
+Source: `runtime/src/builtins/binary/`. `library/stdlib/binary.erl`
+holds OTP 29's exports; `replace/3,4` (including a fun replacement and
+`{insert_replaced, ...}`) and `list_to_bin/1` are Erlang over the builtins,
+every other function is a builtin:
+
+- Patterns are a non-empty binary, a non-empty list of non-empty binaries or
+  a compiled pattern. A match is the leftmost position and there the longest
+  pattern; `matches/2,3` and `split/2,3` with `global` take non-overlapping
+  matches from the left. `{scope, {Start, Length}}` limits where matches may
+  start and end (a negative length counts back); `split/3` also takes
+  `global`, `trim` and `trim_all`.
+- `compile_pattern/1` returns `{bm, [Pattern]}` or `{ac, Patterns}`, Clause's
+  own shape (OTP: a reference inside the tuple, [differences](differences.md)).
+- `part/2,3`, `bin_to_list/2,3`, `at/2`, `first/1`, `last/1`, `copy/1,2`,
+  `longest_common_prefix/1`, `longest_common_suffix/1`, `join/2`,
+  `decode_unsigned/1,2`, `encode_unsigned/1,2`, `encode_hex/1,2` and
+  `decode_hex/1` follow OTP; every wrong argument (a bitstring, a range
+  outside the subject, an unknown option) is `badarg`.
+- `referenced_byte_size/1` is the binary's own size.
+- They run to completion.
+
+## Maps module
+
+Source: `runtime/src/builtins/maps.cpp`, `runtime/src/builtins/os.cpp`.
+
+- `maps:get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`,
+  `take/2`, `update/3`, `with/2`, `without/2` and `from_keys/2` are builtins
+  with OTP's errors: a non-map is `{badmap, Map}`, a missing key of
+  `update/3` `{badkey, Key}`, a key list that is not a proper list `badarg`.
+  Keys match exactly (`1` and `1.0` are different keys). `filter/2`,
+  `map/2`, `foreach/2` and `update_with/3,4` are Erlang in
+  `library/stdlib/maps.erl`.
+- `os:getenv/0` (`"Name=Value"` strings; Windows' per-drive `=C:` entries
+  are left out), `os:env/0` (`{Name, Value}` pairs), `os:putenv/2`,
+  `os:unsetenv/1` (`badarg` unless the arguments are strings and the name is
+  non-empty without `=`), `os:getpid/0` and `os:version/0` are builtins;
+  `os:timestamp/0`, `os:system_time/0,1`, `os:perf_counter/0,1` and
+  `os:getenv/2` are Erlang over the `erlang` time builtins and `getenv/1`.
+
+## Persistent terms
+
+Plan 11 step 41M2 (`runtime/src/builtins/persistent_term.cpp`) over the
+runtime's table ([runtime](runtime.md#persistent-terms)). `put/2` and
+`put_new/2` return `ok` (`put_new/2` of a stored key is `ok` for an exactly
+equal value, else `badarg`); `get/1` of a key not stored is `badarg`,
+`get/2` returns the default; `get/0` lists every `{Key, Value}`; `erase/1`
+says whether the key was stored; `info/0` is `#{count => N, memory => Bytes}`
+(the words of the stored copies). Keys match exactly (`1` and `1.0` differ).
+Every read copies the value into the caller's heap.
+
+## Unicode module
+
+Source: `runtime/src/builtins/unicode/`. `library/stdlib/unicode.erl`
+holds OTP 29's exports and types; `characters_to_binary/1,2,3`,
+`characters_to_list/1,2`, `bin_is_7bit/1`, `bom_to_encoding/1` and
+`encoding_to_bom/1` are builtins, the normalization, category and identifier
+functions stay stubs; they can now be written over [unicode_util](#unicode-util) when a program needs them.
+
+- Encodings: `latin1`, `unicode`/`utf8`, `utf16` and `utf32`, big endian by
+  default or `{utf16 | utf32, big | little}`; anything else is `badarg`
+  (`encoding_to_bom/1`: `function_clause`, as OTP).
+- Chardata is a binary or a list, possibly improper with a binary tail, of
+  code points, binaries in the input encoding and nested chardata;
+  consecutive binaries decode as one stream, so a character may span two.
+  Anything else is `badarg`.
+- A character the output cannot take (an invalid code point or byte
+  sequence, a code above 255 for `latin1` output) ends the conversion with
+  `{error, Converted, Rest}`; input ending inside a character with
+  `{incomplete, Converted, Rest}`. `Rest` has OTP's shape: the unconverted
+  part of the innermost list headed by the failing element (a binary as its
+  unconverted suffix, alone when it ends the top level), inside the remaining
+  tail of every enclosing list; unfinished bytes carried from a binary come
+  first, and with `latin1` output a failing integer is wrapped in a list.
+- `bin_is_7bit/1` is false for anything but a binary of bytes below 128.
+
+## Code module
+
+Source: `runtime/src/builtins/code.cpp`. `library/kernel/code.erl`
+holds OTP 29's exports and types; no `code_server` process exists, and the
+queries about loaded modules answer for the linked program: a module is
+loaded when the program has it (compiled code or runtime builtins).
+`ensure_loaded/1` gives `{module, M}` or `{error, nofile}`,
+`ensure_modules_loaded/1` `ok` or `{error, [{M, nofile}]}`, `is_loaded/1`
+`{file, preloaded}` or `false`, `which/1` `preloaded` or `non_existing`,
+`module_status/1` `loaded` or `not_loaded`, `all_loaded/0` and
+`module_status/0` list every module, `is_sticky/1` is `false`. A module
+argument that is not an atom is `function_clause`. Code paths and loading
+stay stubs until [step 71](../.agents/11-plan.md#step-71). OTP's
+`io_lib:format/2` error path (`code:ensure_modules_loaded/1`) now raises the
+original `badarg`.
+
+## Init module
+
+Source: `runtime/src/builtins/init.cpp`, `library/erts/init.erl`. An executable is a started system without a boot script. Startup decodes the
+command line once (`ProgramArguments`, `runtime/src/startup/arguments.cpp`):
+the arguments after the runtime options are both the arity-1 entry's argv
+and `get_plain_arguments/0`. There are no emulator flags; the only flag is
+`home`, set at startup as OTP's `erlexec` sets it (`HOME`; on Windows
+`HOMEDRIVE` and `HOMEPATH`, else `USERPROFILE`), so `get_argument(home)` is
+`{ok, [[Home]]}`, `get_arguments/0` is `[{home, [Home]}]` and every other
+flag is `error`. `script_name/0` is the executable's absolute path with
+forward slashes. These four are builtins; the rest are Erlang:
+
+- answers of OTP's started `init`: `get_status/0` `{started, started}`,
+  `notify_when_started/1` `started`, `ensure_loaded/1` `not_allowed`,
+  `fetch_loaded/0` `[]`, `objfile_extension/0` `".beam"`,
+  `archive_extension/0` `".ez"`, `code_path_choice/0` `strict`,
+  `run_on_load_handlers/0` `ok`, `wait_until_started/0` (waits for
+  `{init, started}`); `get_configfd/1` and `set_configfd/2` keep their values
+  in `persistent_term` under `{init, configfd, Id}`;
+- `script_id/0` is `{"Clause", "29"}`;
+- `stop/0,1` and `reboot/0` halt at once with OTP's status rules: a
+  non-negative integer is the exit status, a byte list the halt slogan, any
+  other argument `badarg`;
+- refused: `boot/1` and `restart/0,1` raise `notsup` after OTP's argument
+  checks (`restart/1` of a list that is not `[]` or `[{mode, M}]` is
+  `badarg`), `make_permanent/2` returns `{error, notsup}` for valid names and
+  `{error, badarg}` otherwise.
+
+## Unicode util
+
+Source: `library/stdlib/unicode_util.erl`, `runtime/src/builtins/unicode/`. OTP generates
+`unicode_util` while it builds (900 KB of Erlang); Clause keeps the data in generated C++ tables
+(`unicode/tables.cpp`) queried by the builtins of its private `clause_unicode` module (`table/1`, `class/1`,
+`cases/1`, `flags/1`, `compose_pair/2`), and `unicode_util.erl` answers OTP's functions over them with OTP's result
+shapes:
+
+- `cp/1` takes the first code point of chardata as OTP does, keeping binary tails and flattening up to three more
+  code points of nested lists; `{error, Rest}` at invalid UTF-8;
+- `lookup/1`, `category/1`, `get_case/1`, `spec_version/0` (`{17, 0}`), `pattern_whitespace/0`; `uppercase/1`,
+  `lowercase/1`, `titlecase/1`, `casefold/1` map the first code point (`{badarg, Rest}` at invalid UTF-8);
+  `is_wide/1`, `is_whitespace/1`, `is_other_id_start/1`, `is_other_id_continue/1`,
+  `is_letter_not_pattern_syntax/1`;
+- `gc/1`: extended grapheme clusters by UAX #29, with OTP's rule order (CR LF, controls, Latin-1 fast
+  paths, prepend, Hangul syllables, regional indicator pairs, extended pictographic and ZWJ sequences, Indic
+  conjuncts) and its result shapes: a cluster is a code point or a list, and the rest stays the chardata it came
+  from where OTP keeps it (`{error, Rest}` at invalid UTF-8);
+- `nfd/1`, `nfc/1`, `nfkd/1`, `nfkc/1` normalize the first cluster: canonical or compatibility
+  decomposition with algorithmic Hangul, stable canonical ordering, then composition by the composition pairs.
+
+`tools/unicode/generate.py` writes the tables once per Unicode update: case mappings, categories (including the
+neighbor categories OTP's generator gives some unassigned code points), decompositions and the property predicates
+come from the host OTP's answers for every code point (`tools/unicode/observe.escript`), the grapheme break, emoji,
+Indic and composition data from the Unicode Character Database files OTP 29 pins (`lib/stdlib/uc_spec`, Unicode
+17.0). Only the generated tables are committed, with the Unicode copyright notice the Unicode License v3 asks
+for; normal builds need neither OTP nor the data files. Test `executables_unicode_tables` compares digests of the
+answers of plane 0 and sample blocks of the other planes with OTP's (all 1.1M code points matched when
+the tables were generated); `executables_unicode_clusters` compares clusters and normal forms of hand-picked
+strings for every rule and a seeded sweep of 2000 random strings.
+
+## Zlib module
+
+Source: `runtime/src/builtins/zlib/streams.cpp`, `library/erts/zlib.erl`. The runtime links zlib
+1.3.2, the release OTP 29 bundles ([zlib](compile.md#zlib)), so compressed bytes equal OTP's for every level,
+strategy, window size and flush. A stream is a [handle reference](runtime-heap.md#handle-references) whose buffer
+holds the `z_stream`; its finalizer ends an active session when the last copy dies. The private `clause_zlib`
+builtins (`open/0`, `close/1`, `set_controller/2`, `deflate_init/2`, `inflate_init/3`, `deflate/3`, `inflate/2`,
+the end, reset, parameter and dictionary calls) run one operation over all their input; `zlib.erl` keeps OTP's
+API, argument errors (`bad_compression_level`, `bad_windowbits`, ...), stream states (`not_initialized`,
+`already_initialized`, `not_on_controlling_process`, a closed stream refusing a new init), `eos_behavior` (`cut`,
+`reset`, `error`), `data_error` from `inflateEnd/1` before the end of a stream, dictionaries
+(`{need_dictionary, Adler}` raised or returned), output kept by `deflateParams/3` for the next `deflate`, and the
+whole-buffer `compress/1`, `uncompress/1`, `zip/1`, `unzip/1`, `gzip/1`, `gunzip/1` (concatenated members). A gzip
+header names the platform, as OTP's zlib writes it. `term_to_binary/2` with `compressed` or `{compressed, Level}`
+compresses as OTP decides (into five bytes fewer than the payload, else plain) and `binary_to_term/1,2` inflates
+compressed input.
+
+## Re module
+
+Source: `runtime/src/builtins/re/`, `library/stdlib/re.erl`. OTP 29's exports and types
+over the PCRE2 release OTP bundles ([PCRE2](compile.md#pcre2)). `version/0` is PCRE2's version and date as a
+binary (`<<"10.47 2025-10-21">>`, as on OTP).
+
+A compiled pattern is OTP 29's `{re_pattern, CaptureCount, Unicode, UseCRLF, Ref}`, where `Ref` is a
+[handle reference](runtime-heap.md#handle-references) owning the `pcre2_code`; its finalizer frees the code with
+the last copy, and processes share it read-only. As in OTP, the C side is small and the rest is Erlang:
+
+- `clause_re:compile/2` compiles a regex binary with compile options (`{ok, Pattern}` or `{error, {Message,
+  Offset}}` with PCRE2's message); `re:inspect/2` answers `namelist`.
+- `clause_re:run/4` is OTP's `re:run` BIF without its traps: one match of a binary subject from `{offset, N}`,
+  compiling a textual regex first (`{error, {compile, Reason}}` with `report_errors`), with every capture spec
+  (`all`, `first`, `all_but_first`, `none`, `all_names`, numbers and names, duplicated names) and type
+  (`index`, `list`, `binary`), `match_limit` and `match_limit_recursion` (`{error, match_limit}` with
+  `report_errors`, else `nomatch`), and OTP's `badarg` for compile options or other newline conventions given
+  with a compiled pattern.
+- `re.erl` converts Unicode chardata to UTF-8 and captures back to characters, runs `global` matches one at a time
+  (after an empty match it retries anchored and non-empty, then steps one character, or a CR LF pair with CRLF
+  newlines, as OTP's `loopexec` does), and implements `replace/3,4` (`\N`, `\gN`, `\g{N}`, `&`, a replacement
+  fun) and `split/2,3` (`{parts, N}`, `trim`, `group`, `{return, Type}`) with OTP's results.
+
+Exported patterns (`export`, `import/1`) are not provided. `executables_re_module` compares compiling, matching,
+captures, global and Unicode matches, replace, split and argument errors with OTP.
+
+## Prim eval
+
+Source: `runtime/src/process/receive.cpp`, `library/erts/prim_eval.erl`. `prim_eval:'receive'(Fun,
+Timeout)` is the receive of `erl_eval`, whose clauses are a fun: it scans the mailbox from the oldest message
+with the steps of a compiled [receive](processes.md#receive), the private `clause_receive` builtins `peek/0`
+(`{message, M}` or `none`), `skip/0`, `take/0`, `restart/0` and `wait/1` (the wait builtin of compiled code, with
+its timeout and `timeout_value`). The first message for which `Fun` answers anything but `nomatch` is removed and
+that answer returned; `timeout` when `Timeout` expires. An exception from `Fun` leaves every message in place.
+`executables_prim_eval_receive` compares mailbox order, timeouts, a message arriving during the wait and
+exceptions with OTP.
+
+## Atomics and counters
+
+Source: `runtime/src/builtins/atomics.cpp`. An `atomics` array is a
+[handle reference](runtime-heap.md#handle-references) whose buffer holds a
+signedness word and the 64-bit values, updated through `std::atomic_ref`
+with sequentially consistent operations; it is shared by every copy of the
+reference (messages, persistent terms, `binary_to_term/1` while it lives) and
+freed with the last one.
+
+- `new/2` takes an arity from 1 to 2^27 and `[{signed, Bool}]` options (the
+  last wins); `get/2`, `put/3`, `add/3`, `add_get/3`, `sub/3`, `sub_get/3`,
+  `exchange/3`, `compare_exchange/4` and `info/1` are builtins with OTP's
+  `badarg` for a bad reference, index or value. Stored values must fit the
+  array (int64 or uint64); increments may be any integer from -2^63 to
+  2^64 - 1 and wrap. `info/1` reports OTP's `memory` of 40 + 8 bytes per
+  value.
+- `counters` is Erlang (`library/erts/counters.erl`): `{atomics, Ref}` and
+  `{write_concurrency, Ref}` both wrap a signed atomics array, so
+  write-concurrency counters are exact at every read. `info/1` of the
+  latter reports the array's size and memory.
+
+## Erts internal
+
+Source: `runtime/src/builtins/erts_internal.cpp`, `library/erts/erts_internal.erl`. The functions OTP's `stdlib` and `kernel`
+call:
+
+- builtins `cmp_term/2` (exact term order: an integer before an equal
+  float) and `map_next/3`, the protocol of `maps:iterator/1,2` and
+  `maps:next/1`: an integer path walks the map in key order and continues
+  over the remaining keys, a key-list path takes its keys in order; a list
+  accumulator receives every association from the path on;
+- Erlang `list_to_integer/2` and `binary_to_integer/2` (the helpers of
+  `string:to_integer/1` and the conversion BIFs, `big` beyond a small
+  integer of the word size), `map_to_tuple_keys/1` (the sorted keys of any
+  map), `term_type/1`, the write-concurrency `counters_*` functions,
+  `dynamic_node_name/0,1` over `persistent_term`;
+- refused: `get_creation/0` is `undefined` (no distribution) and
+  `map_hashmap_children/1` raises `badarg` (no map has hashmap nodes);
+- declined: the distribution, `.beam` and emulator-internal groups.
+
+`erts_code_purger:purge/1` answers `{false, false}` and `soft_purge/1`
+`true`, since linked code has no old code; the purger process and
+`finish_after_on_load/2` wait for [step 71](../.agents/11-plan.md#step-71).
+
 ## Portions
 
-Plan 11 step 43A (2026-10-08): builtins whose work grows with a list or binary
+Builtins whose work grows with a list or binary
 argument run in bounded portions, like OTP's trapping BIFs, so a long builtin
 cannot keep other processes from running ([processes](processes.md)).
 
@@ -161,6 +460,15 @@ cannot keep other processes from running ([processes](processes.md)).
 - Results, errors and evaluation order are the same as running to completion.
   An error found late (an improper tail) is raised when the walk reaches it.
 - Host calls (`call_builtin`) continue every trap at once.
+- `integer_to_list/1` of a small integer, `list_to_integer/1` of a short
+  decimal string and `atom_to_list/1` work on words without staging
+  allocations; other arguments take the general paths.
+  `list_to_tuple/1` and `tuple_to_list/1` read their argument's cells as words
+  and build the result without admitting the elements again, as do the
+  character lists of these conversions.
+- List walks validate the list once and read its cells as words, with no
+  `Term` per cell; `Left ++ Right` copies a `Left` of at most 64 cells in one
+  step without portion state.
 
 | Builtin | Portions |
 | --- | --- |
@@ -180,7 +488,7 @@ part of the loop.
 
 ## Typed builtins
 
-Plan 11 step 41 (2026-10-07): builtins that check their own arguments are C++
+Builtins that check their own arguments are C++
 functions of typed parameters ([typed.hpp](../runtime/src/builtins/typed.hpp)),
 `Result Function(ProcessContext &, Parameters...)`, registered with
 `typed_entry<Function>(module, name)` (the arity is the parameter count).
@@ -225,7 +533,7 @@ functions of typed parameters ([typed.hpp](../runtime/src/builtins/typed.hpp)),
 
 ## Erlang module
 
-Plan 11 step 41B. The compiler knows which `erlang` functions exist from two
+The compiler knows which `erlang` functions exist from two
 owned sources, never from runtime code:
 
 - `library/stdlib/erlang.terms`: OTP 29's `erlang` exports as
@@ -260,8 +568,7 @@ Calls:
 
 ## External term format
 
-Plan 11 step 41E (`erlang/term_encoding.cpp`, `erlang/term_decoding.cpp`).
-Both directions share the codec of
+Source: `erlang/term_encoding.cpp`, `erlang/term_decoding.cpp`. Both directions share the codec of
 [external_term.hpp](../abi/include/clause/abi/external_term.hpp) with the
 compiler, and walk terms with explicit stacks, so nesting depth costs no
 native stack.
@@ -284,7 +591,7 @@ native stack.
 
 ## Time
 
-Plan 11 step 41F (`erlang/time.cpp`). Monotonic time is the steady clock;
+Source: `erlang/time.cpp`. Monotonic time is the steady clock;
 `native` and `perf_counter` are nanoseconds; units are the OTP atoms
 (including the deprecated plural ones) or a positive parts-per-second
 integer. `convert_time_unit/3` rounds down, as OTP. `unique_integer/0,1`
@@ -296,7 +603,7 @@ use the C library's local time zone.
 
 ## System information
 
-Plan 11 step 41G1 (`erlang/system.cpp`).
+Source: `erlang/system.cpp`.
 
 - `statistics/1`: `wall_clock` and `runtime` (`{Total, SinceLastCall}` in
   milliseconds), `run_queue`, `total_run_queue_lengths`,
@@ -318,7 +625,7 @@ Plan 11 step 41G1 (`erlang/system.cpp`).
 
 ## Hashing
 
-Plan 11 step 41G3 (`erlang/hashing.cpp`, `erlang/md5.cpp`).
+Source: `erlang/hashing.cpp`, `erlang/md5.cpp`.
 
 - `phash2/1,2` and `phash/2` hash a term's structure: exactly equal terms
   hash equally in every program run (atoms by spelling, maps in key order,
@@ -331,7 +638,7 @@ Plan 11 step 41G3 (`erlang/hashing.cpp`, `erlang/md5.cpp`).
 
 ## Code loading
 
-Plan 11 step 41H (`erlang/code.cpp`). Every module is linked into the program
+Source: `erlang/code.cpp`. Every module is linked into the program
 and stays loaded; [step 71](../.agents/11-plan.md#step-71) decides about
 dynamic code. `module_loaded/1` is true for a compiled module or a module with
 runtime builtins (`erlang`, `io`, `os`); `loaded/0` and `pre_loaded/0` list

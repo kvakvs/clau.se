@@ -39,6 +39,9 @@ numbers, feature IDs (`F13`, `D02`) or dates into the site.
 All in `messages/en.ts` first; it is the source of truth:
 
 - `meta.description`, `footer.tagline`: only if the project summary changed.
+  Also always set last updated date in footer (in YYYY-MM-DD format): the
+  footer shows `updatedAt` of `content/home-meta.json` (step 6) after
+  `footer.updated`.
 - `home.title`, `home.intro`: what Clause is.
 - `home.status`: what works today and what is still missing, in one or two
   sentences. Mention the main gaps (for example platforms not validated yet)
@@ -57,6 +60,25 @@ All in `messages/en.ts` first; it is the source of truth:
   their content changed (prerequisites, build steps, options).
 - The paragraphs of documentation (typically first) which state implementation
   date, referring to plan steps - should not be displayed in the web.
+  `pnpm sync-docs` strips them (`stripPlanReferences` in
+  `scripts/sync-docs.mjs`): paragraph lead-ins such as `Plan 11 step 41T
+(paths).` and parenthetical references such as `(plan step 37)`,
+  `(OPT0.2A)`. Extend its patterns when a new form shows up in the copy.
+
+## Benchmarks Page
+
+- Use 🔺 emoji instead of asterisk to mark runs with unstable results.
+- The geometric mean card needs to state whether we're on average slower or faster than BEAM JIT.
+- The blue bars (where Clause is faster) should say 'faster' in small font to the right
+  of the bar left aligned to the zero line
+- The red bars (where Clause is slower) should say 'slower' in small font to the right
+  of the bar, right aligned to the zero line
+- Latest benchmarks, summarize differences with latest benchmark report in Clause -O2 and OTP,
+  this page can have a top menu item for it. The page is
+  `app/[lang]/benchmarks/`, with strings in `benchmarks.*` and data in
+  `content/benchmarks.json`, written by `pnpm sync-benchmarks` from the newest
+  report in `../clau/benchmarks/history/reports/` (gitignored, so only on the
+  host that ran it; if missing, keep the committed JSON and say so).
 
 Only claim what `docs/` or `00-finished.md` shows as delivered. Items that are
 open in `01-todo.md` or listed as unfinished are not features, those can only be mentioned as planned; at most they appear in `home.status` as remaining work. When a source says a feature is
@@ -82,7 +104,9 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
    dirty. If nothing changed and not `full`, report that and stop.
 
 2. **Sync the docs.** Run `pnpm sync-docs`, then `pnpm docs-status`, and keep
-   the list of outdated and missing translations for the report.
+   the list of outdated and missing translations for the report. Run
+   `pnpm sync-benchmarks`; if the geometric mean or the kernel list changed
+   noticeably, check that `home.status` and `benchmarks.*` still read right.
 3. **Read the sources.** With `full` or on the first run read all of them.
    Otherwise read the diffs from step 1 and as much of the surrounding files
    as needed to judge them; always reread `00-finished.md` (summary table and
@@ -118,7 +142,7 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
 8. **Quality gates.** Run, stopping at the first failure and fixing it:
 
    ```powershell
-   pnpm exec prettier --write messages content/home-meta.json
+   pnpm exec prettier --write messages content/home-meta.json content/benchmarks.json
    pnpm lint
    pnpm typecheck
    pnpm build

@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 06042fa
-sourceSha256: 08b6bf1b734adf5fc6f8aef3972fd56c8f9d20c1a688610c989862794900cd67
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
+translatedAt: 2026-10-15
 ---
 # Pré-processador
 
@@ -43,9 +43,12 @@ Esta é uma interface interna, não um formato público de fase.
 - Pesquisa de includes: diretório do ficheiro atual, diretório de trabalho e
   depois os caminhos de include pela ordem da API. A CLI inverte os `-I`
   repetidos para corresponder ao `erlc`. Os caminhos absolutos dispensam a
-  pesquisa. `include_lib` tenta os caminhos comuns e depois os diretórios de
-  aplicações indicados explicitamente; sem code server nem adivinhação de
-  versões.
+  pesquisa. `include_lib` tenta os caminhos comuns, depois os diretórios de
+  aplicações indicados explicitamente e, por fim, os diretórios de releases
+  `<app>-<version>` abaixo de cada diretório pesquisado (as versões são
+  dígitos separados por pontos, tal como o code server do OTP as lê; ganha a
+  mais alta). Várias versões de uma mesma aplicação geram um aviso uma vez por
+  execução, indicando o diretório usado; sem code server.
 - Os prefixos de caminho `$VAR` usam um resolvedor injetado; as variáveis não
   definidas ficam literais. Os operandos de include não são expandidos como
   macros. Os ficheiros são descodificados como UTF-8 ou Latin-1 declarado;

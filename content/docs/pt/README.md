@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: 06042fa
-sourceSha256: f48733b2827bbf09b77162c249d6b913411b1f3a60e76cf52b281ba68666f65b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 42d519fef371b8ba151942ea3a92a7ab67b3f1f6aaae2cf1f40c9cc18b5df542
+translatedAt: 2026-10-15
 ---
 # Documentação do Clause
 
@@ -17,6 +17,9 @@ encontram-se em `.agents/`.
 | Projetos TOML e seleção de alvos | [projects.md](projects.md) |
 | CLI do compilador, artefactos, SDK do LLVM, exemplo | [compile.md](compile.md) |
 | Ponto de entrada do executável, argumentos, estado de saída, fluxos de saída, ligação | [executables.md](executables.md) |
+| Informação de depuração (`-g`), depuradores e a pilha de chamadas Erlang | [debugging.md](debugging.md) |
+| Perfilagem opcional (`--profile FILE`): entradas e tempo próprio por função e processo | [profiling.md](profiling.md) |
+| Parse transforms: carregador OTP do anfitrião, intercâmbio do formato abstrato, localização de transforms | [transforms.md](transforms.md) |
 | Análise semântica, tipos, inferência, vinculações | [semantic.md](semantic.md) |
 | Política de especialização de tipos | [specialization.md](specialization.md) |
 | ABI do código gerado: termos, símbolos, registo, falhas, raízes | [abi.md](abi.md) |

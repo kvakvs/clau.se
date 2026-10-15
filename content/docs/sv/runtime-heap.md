@@ -1,15 +1,14 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 06042fa
-sourceSha256: b86a14bcde03a998409e7048283225de3a5f8f84ded889ba64544a4671571cbc
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 9883758a534ec454ceeb011c2dc1e6e2d1893aca483c1b3ca7f36f99319bc537
+translatedAt: 2026-10-15
 ---
 # Kontrakt för processheapen
 
 Processheapar följer den klassiska ERTS-designen. Den här anteckningen är
-kontraktet; plan 11 phase C (steg 8A–8I) levererade det, och senare steg som
-nämns nedan utökar det. [runtime.md](runtime.md#process-memory) sammanfattar
-API:t.
+kontraktet; plan 11 phase C levererade det, och senare steg som nämns nedan
+utökar det. [runtime.md](runtime.md#process-memory) sammanfattar API:t.
 
 ## Vad phase C ersatte
 
@@ -34,7 +33,12 @@ genomlöpare tolkar från dess första ord:
 - **Huvudord** (primär tagg `00`): bitarna 2–6 innehåller `BoxedKind`, bit 7
   och uppåt antalet ord som följer efter huvudet. En boxad term pekar på sitt
   huvud. Antalet täcker varje prefix-, nyttolast- och utfyllnadsord, så att
-  genomlöparen hoppar över ospårad nyttolast utan att tolka den.
+  genomlöparen hoppar över ospårad nyttolast utan att tolka den. Det har 25
+  bitar på 32-bitarsmål (högst 33 554 431 ord) och 57 på 64-bitarsmål
+  (`BoxHeader::MAX_COUNT`): gränsen för tupelaritet (2^24 - 1) och den största
+  bignum (131 072 ord på 32 bitar) ryms enligt statisk kontroll, maps
+  kontrollerar det när de byggs, och cons-celler och celler av fast storlek har
+  inget stort antal.
 - **Cons-cell**: två termord (head, tail) utan huvud. En listterm pekar på
   head. Ett head är aldrig ett huvud eftersom ingen term har taggen `00`.
 - **Utfyllnad**: ordet med enbart nollor (sort `tuple`, antal 0) är en
@@ -46,20 +50,23 @@ genomlöpare tolkar från dess första ord:
 Ingen cell behöver starkare justering än ett ord. `memory/heap_walk` tolkar ett
 område cell för cell och `ProcessHeap::verify` kontrollerar en hel heap (8C).
 Celler innehåller bara ord och byte, utom binary-cellen utanför heapens
-`std::shared_ptr` (nedan), så en cell flyttas genom att dess ord kopieras.
+`std::shared_ptr` och trädpekaren i map-cellen utanför heapen (nedan), så en
+cell flyttas genom att dess ord kopieras.
 
 | Sort | Ord efter huvudet | Spårade ord |
 | --- | --- | --- |
 | cons (inget huvud) | 2 ord totalt | head, tail |
 | `tuple` | n elementplatser | alla |
-| `map` | 2n platser: nycklar i exakt termordning, var och en följd av sitt värde | alla |
+| `map` | 2n platser: nycklar i exakt termordning, var och en följd av sitt värde; högst 32 poster | alla |
+| `tree_map` | antal poster, roten i trädet utanför heapen, länk för map-listan utanför heapen: 3 ord ([maps utanför heapen](#off-heap-maps)) | inga på heapen; trädets ord |
 | `native_record` | adressen till runtimens `RecordDefinition`, sedan n fältvärden i definitionsordning | värden |
 | `fun_closure` | adressen till runtimens `FunDefinition`, sedan n fångade värden ([funs](funs.md)) | värden |
 | `bignum` | teckenord, sedan beloppets limbs, minst signifikant först | inga |
 | `floating` | 8 byte: 1 ord (64 bitar) eller 2 ord (32 bitar) | inga |
 | `reference` | 8 byte: referensnumret ([pids och referenser](terms.md#pids-and-references)) | inga |
 | `heap_binary` | bitlängd, sedan databyte avrundade uppåt till ord (högst 64 byte) | inga |
-| `refc_binary` | bitoffset, bitlängd, `std::shared_ptr` (2 ord), länk för listan utanför heapen: 5 ord | inga |
+| `refc_binary` | bitoffset, bitlängd, buffertens första byte (läses av genererad kod), slut och gräns för tillägg, `std::shared_ptr` (2 ord), länk för listan utanför heapen: 8 ord | inga |
+| `sub_binary` | bitoffset in i originalet, bitlängd, originalets `heap_binary` eller `refc_binary` (aldrig en delbinär): 3 ord | originalet |
 | `filler` | n oanvända ord | inga |
 
 Antalet för `map` anges i ord (poster = antal / 2). Pids är omedelbara värden
@@ -73,9 +80,10 @@ En binary större än 64 byte är en oföränderlig buffert som ligger utanför 
 processheap och delas genom referensräkning (BEAM:s ProcBin och `Binary`).
 
 - Dess boxade `refc_binary`-cell innehåller en `std::shared_ptr` till bufferten,
-  en bitoffset och en bitlängd; delar av en stor binary är nya
-  `refc_binary`-celler som delar bufferten (ERTS sub-binaries används inte).
-  Att kopiera en cell till en annan process kopierar `shared_ptr`
+  en bitoffset och en bitlängd. Delar av en stor binary (och delar av sådana)
+  är `sub_binary`-celler som namnger originalcellen, så som ERTS sub-binaries
+  gör: en del tar ingen buffertreferens och håller originalet vid liv. Att
+  kopiera en cell till en annan process kopierar `shared_ptr`
   ([kopiering mellan heapar](#copying-between-heaps)), aldrig byten.
 - Varje cell är länkad in i sin process lista utanför heapen via sitt länkord.
   Listan är det enda sättet att hitta dessa cellers C++-tillstånd.
@@ -90,14 +98,87 @@ processheap och delas genom referensräkning (BEAM:s ProcBin och `Binary`).
   den dör, och en gång till det runtime-omfattande kontot från skapandet tills
   bufferten frigörs.
 - `std::shared_ptr` är två pekare i varje STL som stöds; en `static_assert`
-  håller cellstorleken fast på fem ord efter huvudet för båda bredderna.
+  håller cellstorleken fast på åtta ord efter huvudet för båda bredderna.
+
+### Handtagsreferenser
+
+En handtagsreferens är en referens som också håller en buffert utanför heapen,
+så som en magisk referens i OTP håller en resurs; `atomics`-arrayer lever i
+dem ([atomics och counters](builtins.md#atomics-and-counters)).
+
+- Dess cell har sorten `reference` och layouten för `refc_binary`: åtta ord
+  efter huvudet, det 64-bitars referensnumret i offset- och bitlängdsorden (där
+  en vanlig referenscell håller det), sedan `shared_ptr` och länkordet. Varje
+  referenstjänst läser endast numret, så den jämförs, hashas, skrivs ut och
+  kodas som en vanlig referens.
+- Den listas, flyttas, genomsöks, debiteras och kopieras exakt som en
+  binary-cell utanför heapen (`layout::off_heap_cell`); dess buffert frigörs
+  när den sista kopian av referensen i någon process dör.
+- Ett processomfattande register mappar numren för levande handtag till deras
+  buffertar (svaga referenser), så att `binary_to_term/1` av ett kodat handtag
+  återskapar ett handtag som delar bufferten medan den lever, och en vanlig
+  referens därefter. Utgångna poster tas bort när registret växer.
+
+## Maps utanför heapen
+
+En map med fler än 32 poster (OTP:s `MAP_SMALL_MAP_LIMIT`) är en
+`tree_map`-stubbe på 4 ord på heapen som namnger ett processprivat persistent
+B+-träd (`terms/map_tree`). Mindre maps förblir `map`-celler.
+
+- Löv håller upp till 32 nyckel- och värdeord i exakt nyckelordning; grenar
+  håller upp till 32 barn med deras första nycklar och antal poster, så
+  uppslagning och åtkomst via position är O(log n). Nyckel- och värdeord pekar
+  in i ägarens heap: till skillnad från binaries håller trädet termer.
+- En uppdatering kopierar vägen till varje ändrat löv och delar varje annan nod
+  med källmapen, som förblir oförändrad, så att bygga en map nyckel för nyckel
+  kostar O(n log n) i stället för O(n^2). Noder är referensräknade; noder som
+  skapats av samma uppdatering bär dess redigeringstoken och ändras på plats
+  tills stubben publiceras. En misslyckad uppdatering frigör det den byggt.
+- Varje stubbe är länkad in i sin process map-lista utanför heapen. En
+  skräpsamling kopierar en stubbe som vilken cell som helst och skriver, när den
+  genomsöker kopian, om nyckel- och värdeorden i stubbens träd, och besöker
+  varje delad nod en gång per skräpsamling. Genomsökningen av listan länkar
+  sedan om flyttade stubbar och frigör träden för döda; nedmonteringen frigör
+  alla.
+- Nodord debiteras processen som ord utanför heapen (tillsammans med binaries:
+  tillräckligt många begär en skräpsamling) och det runtime-omfattande kontot.
+  Frigjorda noder behålls för återanvändning, upp till 1 024 av varje sort per
+  process (högst cirka 1 MB), eftersom en vägkopierande uppdatering allokerar en
+  nod per nivå och en skräpsamling frigör de gamla vägarna tillsammans.
+- Att kopiera en map till en annan heap (meddelanden, `MessageBuffer`) bygger
+  ett nytt träd i målet från de översatta posterna.
+- En ägd uppdatering (`MapOperation::update_owned`) vars källa kompilatorn har
+  bevisat inte läses efteråt tar över källstubbens trädreferens och ändrar på
+  plats varje nod den når via odelade noder, och kopierar endast delade. Källstubben
+  lämnas förbrukad (inget träd, storlek 0); en misslyckad ägd uppdatering ger
+  tillbaka trädet till den. Kompilatorn markerar en uppdatering som ägd endast
+  när funktionen själv byggde källmapen (`M = <map expression or
+  comprehension>` i samma klausulkropp), inte läser `M` någon annanstans och
+  aldrig fångar den i en fun (`semantic/map_ownership`).
 
 ## Områden
 
 - **Heap.** Ett block `[start, top, end)` per process med bump-allokering (8G).
   Det skapas av processens första allokering, med storleken
   `max(min_heap_words, request)` så att begäran alltid ryms, och ägs enbart av
-  den processen.
+  den processen. Genererad kod bump-allokerar små tupler och listor direkt i
+  det via `FrameState::heap_top`/`heap_limit`: `HeapStorage::absorb` tar in de
+  orden i top och `used_words_` före varje heapoperation (reservation,
+  tillträde, skräpsamling, verifiering, frågor om användning) och `expose` visar
+  de lediga orden igen efter en. Inline-allokering skapar aldrig ett fragment
+  och är avstängd under en budget per process.
+- **Literalområden**. Varje moduls sammansatta literaler — strängar och
+  konstanta listor, tupler av konstanter, flyttal och bignum-literaler — läggs
+  ut av kompilatorn som heapceller i en enda skrivskyddad global
+  (`ModuleDescriptor::literals`), registrerad runtime-omfattande
+  (`detail::LiteralAreas`, en låsfri sorterad ögonblicksbild) när modulen
+  registreras. Termer i varje process får peka in i dem: tillträde och
+  `TermAccess::object` läser celler via `HeapStorage::readable` (heap,
+  fragment, sedan literaler); skräpsamlaren lämnar literalord som de är
+  (`owned` förblir endast heap); kopior mellan heapar och in i
+  meddelandebuffertar fortsätter peka på dem (en literalrot behöver ingen
+  kopia); verifieraren godtar dem. Literaler innehåller endast omedelbara värden
+  (endast fasta atomer) och andra literalers ord.
 - **Fragment.** När en begäran inte ryms och heapen inte får flyttas hamnar den
   i det nyaste fragmentet om den ryms där, annars i ett nytt fragment av
   passande storlek (minst den minsta heapstorleken) som kedjas till processen.
@@ -108,7 +189,7 @@ processheap och delas genom referensräkning (BEAM:s ProcBin och `Binary`).
   skräpsamling från värden
   ([skräpsamling i genererad kod](#collection-in-generated-code)).
 - **Stack.** Genererade ramar (BEAM:s Y-register) lever på en platt stack per
-  process, skild från heapen (`ProcessStack`, step 19). Varje ram är ett huvud
+  process, skild från heapen (`ProcessStack`). Varje ram är ett huvud
   på fyra ord (anroparens huvudoffset, deskriptor, återupptagning, hanterare)
   följt av termplatser (inklusive spillda termer) och råa spillplatser; ramar
   länkas via offsets, så blocket växer genom fördubbling och flyttas. Det har
@@ -132,10 +213,10 @@ processheap och delas genom referensräkning (BEAM:s ProcBin och `Binary`).
   kopieras en gång till in i den storlek som dess levande data behöver (8H);
   misslyckas allokeringen av det blocket behålls det större. Inget av dem är
   mindre än `min_heap_words`. Båda storlekarna räknar processtackens ord som
-  levande (step 26), eftersom ERTS håller stacken inuti heapblocket.
+  levande, eftersom ERTS håller stacken inuti heapblocket.
 - Med en budget satt (nedan) rymmer ett nytt block högst sina levande ord plus
   hälften av den budget som återstår efter dem och buffertarna utanför heapen
-  (`block_limit`, step 27), aldrig mindre än `min_heap_words`. Den andra
+  (`block_limit`), aldrig mindre än `min_heap_words`. Den andra
   hälften förblir ledig för fragment och nya buffertar utanför heapen, så att
   skräp som allokeras efter en skräpsamling når nästa safepoint som en utlösare
   i stället för att tömma budgeten. Den första kopian dimensioneras utifrån alla
@@ -159,14 +240,14 @@ processheap och delas genom referensräkning (BEAM:s ProcBin och `Binary`).
 - En valfri runtime-omfattande gräns, `RuntimeOptions::memory_limit_bytes`
   (standard `UNLIMITED_HEAP_BYTES`; program sätter den med `--max-memory`),
   begränsar minnet för alla processer tillsammans: heapblock, fragment,
-  buffertar utanför heapen och stackkapacitet (step 27A). OTP har ingen sådan
+  buffertar utanför heapen och stackkapacitet. OTP har ingen sådan
   gräns; det närmaste är att köra VM:en under en minnesgräns i operativsystemet,
   men här misslyckas en process i stället för noden.
 - Ett konto per runtime (`detail::RuntimeMemory`, delat av varje heaplagring
   och stack) debiteras när ett block, fragment, en buffert utanför heapen eller
   stackkapacitet skapas och krediteras när det släpps; en buffert som delas av
-  flera processer debiteras en gång och krediteras när dess sista referens dör
-  (step 28). Nedmonteringen återför varje debitering för processen.
+  flera processer debiteras en gång och krediteras när dess sista referens dör.
+  Nedmonteringen återför varje debitering för processen.
   `Runtime::memory_bytes()` rapporterar summan.
 - För varje process fungerar gränsen som en budget för den lagring den äger
   plus vad gränsen lämnar (`HeapStorage::budget`, `room`), så att
@@ -199,19 +280,21 @@ början av ett objekt, för tester.
 
 ## Rötter och safepoints
 
-`ProcessContext::visit_roots` räknar upp varje rotord för skräpsamlaren
-(step 23). Vid en safepoint håller ingenting annat heapord för processen:
+`ProcessContext::visit_roots` räknar upp varje rotord för skräpsamlaren. Vid en
+safepoint håller ingenting annat heapord för processen:
 
 | Ägare | Rotord | Anteckningar |
 | --- | --- | --- |
-| Ramens termplatser | De första `roots` platserna i varje ram på stacken (step 19) | Bottenramar har inga; index för återupptagning och hanterare är heltal |
+| Ramens termplatser | De första `roots` platserna i varje ram på stacken | Bottenramar har inga; index för återupptagning och hanterare är heltal |
 | Råa ramplatser | Inga | Spillda native-värden; genererad kod håller inget heapord där vid en safepoint (omläsningsregeln från step 24) |
-| Register | `x[0..live)` (`ProcessStack::keep_registers`) | En suspenderad ingångs argument (step 43); varje push och pop rensar `live` |
+| Register | `x[0..live)` (`ProcessStack::keep_registers`) | En suspenderad ingångs argument; varje push och pop rensar `live` |
 | Felkanal | Felnyttolast (BEAM:s `fvalue`), argumentlistan till `erlang:error/2,3`, stackspårstermen | Binds om på plats; fångade spårramar är deskriptorpekare in i koden |
-| Trap-tillstånd | Termorden i en trappande inbyggd funktions `TrapState` (step 43A) | Frigörs när den inbyggda funktionen avslutas eller misslyckas |
-| Brevlåda | Varje meddelande i signalinkorgen och meddelandekön (step 45), inklusive `'EXIT'`- och `'DOWN'`-meddelanden | Tills en receive tar det; skrivs om på plats, så receive-markören (en listposition) och tidsgränsen förblir giltiga |
+| Trap-tillstånd | Termorden i en trappande inbyggd funktions `TrapState` | Frigörs när den inbyggda funktionen avslutas eller misslyckas |
+| Processlexikon | Varje nyckel och värde | Tills de raderas eller processen avslutas |
+| Brevlåda | Varje meddelande i signalinkorgen och meddelandekön, inklusive `'EXIT'`- och `'DOWN'`-meddelanden | Tills en receive tar det; skrivs om på plats, så receive-markören (en listposition) och tidsgränsen förblir giltiga |
 | Explicita rötter | Det intervall som en värd skickar till `collect(roots)` (8E) | Läses tillbaka efter anropet |
 | Lista utanför heapen | Inga | Länkar genomsöks och länkas om, de spåras inte |
+| Maps utanför heapen | Inga direkt: nyckel- och värdeorden i trädet för varje stubbe som skräpsamlingen kopierar | Skrivs om när den kopierade stubben genomsöks; listan genomsöks som binary-listan |
 
 Ingen heapcell håller ett lås. Atomer är omedelbara värden och atomtabellen
 skräpsamlas aldrig. Fun-celler namnger kod via sin ospårade `FunDefinition`,
@@ -240,9 +323,20 @@ Varje annan begäran returnerar `unsafe_point` och ändrar ingenting, inte ens
 felkanalen för ett pågående genererat anrop. Allokering flyttar aldrig heapen:
 en begäran som inte ryms skapar ett fragment.
 
+## Meddelandebuffertar
+
+En `MessageBuffer`
+([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) håller en term
+utanför varje process: `copy_of` kopierar grafen från dess processheap till en
+egen `HeapStorage` (egen livstidstoken, runtimens atomer och minneskonto,
+binaries utanför heapen delade och hållna), med samma `GraphCopy` som en
+sändning använder; `copy_to` kopierar den till en mottagares heap. Omedelbara
+värden behöver ingen lagring. Bufferten skräpsamlas aldrig och frigörs med sin
+sista ägare. Timermeddelanden använder den, så de kodas aldrig om.
+
 ## Skräpsamling i genererad kod
 
-Beslut i plan 11 step 24 (2026-10-06), implementerat i step 26
+Implementerat i step 26
 ([implementation](#implementation)). Genererad kod samlar skräp endast vid
 några få **safepoints** där varje levande term redan ligger i en rot. Allt
 annat, inklusive varje allokerande tjänst, är en **kritisk sektion** som aldrig
@@ -255,8 +349,8 @@ En safepoint samlar skräp när heapen begär det; annars kostar den en kontroll
 | Utlösare | Villkor vid safepointen | Motsvarighet i ERTS |
 | --- | --- | --- |
 | Full heap | Något fragment finns: en allokering rymdes inte i heapblocket sedan den senaste skräpsamlingen | Heapens top når heapens slut |
-| Tryck från binaries utanför heapen | Orden utanför heapen når gränsen för den virtuella binary-heapen: 46 422 ord till en början, efter varje skräpsamling två gånger de överlevande orden utanför heapen, aldrig mindre än så, men högst de överlevande plus hälften av den budget som lämnas ledig efter heapblocket (step 27) | `bin_vheap_sz` / virtuell binary-heap |
-| `erlang:garbage_collect/0` | Alltid; kommer med familjerna av inbyggda funktioner (steg 36-37) som en tvingad safepoint | Explicit fullständig genomsökning |
+| Tryck från binaries utanför heapen | Orden utanför heapen når gränsen för den virtuella binary-heapen: 46 422 ord till en början, efter varje skräpsamling två gånger de överlevande orden utanför heapen eller de överlevande plus de levande heaporden, det som är störst (aldrig mindre än 46 422; amorterade binary-skräpsamlingar), men högst de överlevande plus hälften av den budget som lämnas ledig efter heapblocket | `bin_vheap_sz` / virtuell binary-heap |
+| `erlang:garbage_collect/0` | Alltid; kommer med familjerna av inbyggda funktioner (steps 36-37) som en tvingad safepoint | Explicit fullständig genomsökning |
 
 Det nya blocket dimensioneras för de levande orden **plus de stackord som
 används** (ERTS håller stacken inuti heapblocket): en djup stack får en större
@@ -277,13 +371,13 @@ två safepoints begränsas av rak kod och enskilda tjänsteresultat.
 Inte safepoints (kritiska sektioner, som fortsätter att allokera i fragment):
 varje annan runtime-tjänst, inklusive allokerings-, konstruktions- och
 matchningstjänster; `CLAUSE_return_v1`; propagering av undantag; och senare
-leverans av meddelanden (step 45). Tjänster kan därför hålla råa heapord i C++
+leverans av meddelanden. Tjänster kan därför hålla råa heapord i C++
 under hela sin körning, och deras indataarrayer och utdata behöver ingen
 omläsning.
 
 ### Väntande och suspenderade processer
 
-Plan step 51. En process som inte körs skräpsamlas aldrig: den väntar i en
+En process som inte körs skräpsamlas aldrig: den väntar i en
 receive, står i kö efter en yield eller trap, eller har inte startat än, och
 allt den håller är redan en rot (dess ramar, registren för den ingång eller
 fortsättning där den ska återupptas, trap-tillstånd och dess meddelanden).
@@ -325,15 +419,16 @@ safepoint, och ingen native-pekare korsar en överhuvudtaget (redan ett fel i
   skräpsamling skriver om stackord på plats och aldrig flyttar stacken; varje
   överföring läser om den i kroppens prolog som tidigare.
 - Optimeringen körs efter `lower_frames` och kan inte ersätta en omläsning med
-  det äldre SSA-värdet: ramadressen kommer från `CLAUSE_frame_v1`, så
-  safepoint-anropet kan skriva varje plats (prototyp nedan).
+  det äldre SSA-värdet: ramadressen läses från kontextens `FrameState`, och
+  det ogenomskinliga safepoint-anropet kan skriva varje plats via den
+  (prototyp nedan).
 
 ### Beteende vid fel
 
 - En skräpsamling vid en safepoint registrerar aldrig ett fel. När dess nya
   block inte kan allokeras (`out_of_memory`) förblir heapen som den är och
   exekveringen fortsätter med fragment.
-- **Minnesuttömning** (step 27). Utan tak tar minnet slut endast när värden
+- **Minnesuttömning**. Utan tak tar minnet slut endast när värden
   vägrar ett heapblock, ett fragment, en buffert utanför heapen eller
   stacktillväxt: `out_of_memory`. Med en valfri budget eller
   [runtime-omfattande gräns](#runtime-memory-limit) satt ger en begäran utöver
@@ -349,8 +444,6 @@ safepoint, och ingen native-pekare korsar en överhuvudtaget (redan ett fel i
   hälften; skräpet samlas först.
 
 ### Implementation
-
-Step 26 (2026-10-06):
 
 - `ProcessStack::safepoint(live)` frågar `ProcessHeap::wants_collection()` (ett
   fragment finns, eller orden utanför heapen har nått `binary_limit_words_`),
@@ -375,8 +468,6 @@ Step 26 (2026-10-06):
   efter avveckling av allokerande ramar och behålls genom en lång allokerande
   loop.
 
-Step 27 (2026-10-06):
-
 - `collected_size` begränsar blocket till `block_limit(live)`; `shrink` körs
   också när blocket överskrider gränsen för de överlevande orden; `collect`
   begränsar `binary_limit_words_` till de överlevande plus hälften av den
@@ -395,8 +486,6 @@ Step 27 (2026-10-06):
   (72 MB) medan den släpper fyra per steg och skriver ut antalet som OTP gör.
   `runtime_collection` `near_budget` kontrollerar båda taken med en budget på
   10 000 ord (heapblock och buffertar utanför heapen).
-
-Step 27A (2026-10-06):
 
 - Runtime-omfattande gräns och `--max-heap`, `--max-stack`, `--max-memory`
   ([minnesgräns för runtime](#runtime-memory-limit)). Handskrivna golden-körningar
@@ -455,7 +544,7 @@ sammanslagna fragmenten, stackens platskapacitet och ord utanför heapen.
 ## Kopiering mellan heapar
 
 `ProcessHeap::add(value)`, likvärdigt med `value.copy_to(heap)`, returnerar en
-term i målheapen (step 28, BEAM:s `size_object` och `copy_struct`):
+term i målheapen (BEAM:s `size_object` och `copy_struct`):
 
 - Omedelbara värden och atomer i samma runtime behöver ingen lagring, och en
   term i målheapen behåller sin identitet. En graf från en annan process i samma
@@ -466,8 +555,9 @@ term i målheapen (step 28, BEAM:s `size_object` och `copy_struct`):
 - En genomgång med en explicit stack (ingen rekursion) hittar varje distinkt
   objekt som kan nås från värdet, med adressen som nyckel, så intern delning
   överlever: `{T, T}` kopierar `T` en gång, till skillnad från ERTS standard för
-  `copy_struct`, som plattar ut delning. Kopian är en reservation av summan av
-  deras ord, i heapblocket eller ett fragment, fylld i genomgångsordning med
+  `copy_struct`, som plattar ut delning. Adresserna läggs i en map med öppen
+  adressering (`boost::unordered_flat_map`). Kopian är en reservation av summan
+  av deras ord, i heapblocket eller ett fragment, fylld i genomgångsordning med
   pekare omskrivna till kopiorna.
 - Kopian av en binary utanför heapen är en ny cell som delar bufferten; målet
   håller bufferten (och debiterar sina egna ord utanför heapen om det inte

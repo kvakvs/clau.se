@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 06042fa
-sourceSha256: a01c524098c785a3c361908d8a6a5221ef5182bf96ee3780a02e2e2a1efd0e2b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
+translatedAt: 2026-10-15
 ---
 # Meldung zurückgestellter Features
 
@@ -36,6 +36,11 @@ seine ID bleibt reserviert.
   Anführungszeichen und Backslashes, sodass Kontext keine Zeilen einschleusen
   kann. UTF-8 bleibt erhalten.
 - Genau eine Meldung pro fehlgeschlagener Operation, unabhängig von `--verbose`.
+- Ein zurückgestelltes Feature, das der Compiler überspringen könnte, ohne zu
+  ändern, was er akzeptiert, würde als Warnung gemeldet, und die Kompilierung
+  liefe weiter; heute tut das keines (`parse transforms` tat es, bis plan step
+  73F sie anwendete, siehe [Transforms](transforms.md)). `codegen_placeholders`
+  prüft eine Meldung pro zurückgestelltem Compiler-Feature.
 - Compiler: [reject_feature](../compiler/src/codegen/features.hpp) meldet den
   ersten Fehlschlag eines Batches, hält den Fehlschlag fest, verwirft
   bereitgestellte Ausgaben und markiert die Diagnose als `reported`, damit

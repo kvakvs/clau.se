@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 06042fa
-sourceSha256: a01c524098c785a3c361908d8a6a5221ef5182bf96ee3780a02e2e2a1efd0e2b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
+translatedAt: 2026-10-15
 ---
 # Notificación de funcionalidades diferidas
 
@@ -37,6 +37,11 @@ identificador queda reservado.
   inyectar líneas. Se conserva UTF-8.
 - Exactamente un mensaje por operación fallida, con independencia de
   `--verbose`.
+- Una característica diferida que el compilador pudiera omitir sin cambiar lo
+  que acepta se informaría como advertencia y la compilación continuaría;
+  ninguna lo hace hoy (`parse transforms` lo hacía hasta que el plan step 73F
+  las aplicó, véase [transforms](transforms.md)). `codegen_placeholders`
+  comprueba un mensaje por cada característica diferida del compilador.
 - Compilador: [reject_feature](../compiler/src/codegen/features.hpp) informa del
   primer fallo de un lote, retiene el fallo, descarta la salida preparada y marca
   el diagnóstico como `reported` para que los drivers no lo vuelvan a imprimir.

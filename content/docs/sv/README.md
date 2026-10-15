@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: 06042fa
-sourceSha256: f48733b2827bbf09b77162c249d6b913411b1f3a60e76cf52b281ba68666f65b
-translatedAt: 2026-10-09
+sourceCommit: 6ed3851c
+sourceSha256: 42d519fef371b8ba151942ea3a92a7ab67b3f1f6aaae2cf1f40c9cc18b5df542
+translatedAt: 2026-10-15
 ---
 # Clause-dokumentation
 
@@ -17,6 +17,9 @@ finns i `.agents/`.
 | TOML-projekt och val av mål | [projects.md](projects.md) |
 | Kompilatorns CLI, artefakter, LLVM SDK, exempel | [compile.md](compile.md) |
 | Startpunkt för körbara filer, argument, slutstatus, utdataströmmar, länkning | [executables.md](executables.md) |
+| Felsökningsinformation (`-g`), debuggrar och Erlangs anropsstack | [debugging.md](debugging.md) |
+| Profilering som slås på explicit (`--profile FILE`): anrop och egen tid per funktion och process | [profiling.md](profiling.md) |
+| Parse transforms: värdens OTP-laddare, utbyte av abstrakt format, uppslagning av transformer | [transforms.md](transforms.md) |
 | Semantisk analys, typer, inferens, bindningar | [semantic.md](semantic.md) |
 | Policy för typspecialisering | [specialization.md](specialization.md) |
 | ABI för genererad kod: termer, symboler, registrering, fel, rötter | [abi.md](abi.md) |
