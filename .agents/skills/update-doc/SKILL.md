@@ -73,24 +73,9 @@ Style: technical, concise, neutral; no marketing words ("blazing",
 "powerful", "seamless"). Technical names stay as written: Erlang, OTP, ERTS,
 BEAM, LLVM, Clang, CMake, Clause, `clau`.
 
-## Benchmarks Page
-
-- IMPORTANT: Updating benchmarks requires recent benchmark results within last 3 hours. Skip the
-  update if the results are too old.
-- Use 🔺 emoji instead of asterisk to mark runs with unstable results.
-- The geometric mean card needs to state whether we're on average slower or faster than BEAM JIT.
-- Create a component for `Bar` diagrams
-  - The blue bars (where Clause is faster) should say 'faster' in small font to the right
-    of the bar left aligned to the zero line
-  - The red bars (where Clause is slower) should say 'slower' in small font to the right
-    of the bar, right aligned to the zero line
-  - Whole programs chart also needs `Bar` diagrams added
-- Latest benchmarks, summarize differences with latest benchmark report in Clause -O2 and OTP,
-  this page can have a top menu item for it. The page is
-  `app/[lang]/benchmarks/`, with strings in `benchmarks.*` and data in
-  `content/benchmarks.json`, written by `pnpm sync-benchmarks` from the newest
-  report in `../clau/benchmarks/history/reports/` (gitignored, so only on the
-  host that ran it; if missing, keep the committed JSON and say so).
+The benchmarks page (`benchmarks.*`, `content/benchmarks.json`) is not part
+of this skill: it is refreshed with `/update-benchmarks`
+(`.agents/skills/update-benchmarks/`).
 
 ## Steps
 
@@ -108,9 +93,7 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
    dirty. If nothing changed and not `full`, report that and stop.
 
 2. **Sync the docs.** Run `pnpm sync-docs`, then `pnpm docs-status`, and keep
-   the list of outdated and missing translations for the report. Run
-   `pnpm sync-benchmarks`; if the geometric mean or the kernel list changed
-   noticeably, check that `home.status` and `benchmarks.*` still read right.
+   the list of outdated and missing translations for the report.
 3. **Read the sources.** With `full` or on the first run read all of them.
    Otherwise read the diffs from step 1 and as much of the surrounding files
    as needed to judge them; always reread `00-finished.md` (summary table and
@@ -146,7 +129,7 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
 8. **Quality gates.** Run, stopping at the first failure and fixing it:
 
    ```powershell
-   pnpm exec prettier --write messages content/home-meta.json content/benchmarks.json
+   pnpm exec prettier --write messages content/home-meta.json
    pnpm lint
    pnpm typecheck
    pnpm build

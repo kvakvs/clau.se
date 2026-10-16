@@ -166,7 +166,8 @@ scripts/             build helper scripts (e.g. docs sync)
   records the source commit in `content/home-meta.json`.
 - Benchmarks page data comes from `pnpm sync-benchmarks`, which reads the newest
   report of `../clau/benchmarks/history/` into `content/benchmarks.json` (commit
-  it; host name left out).
+  it; host name left out). The `/update-benchmarks` skill
+  (`.agents/skills/update-benchmarks/`) runs it and updates the page text.
 - Table of contents order is defined explicitly in `lib/docs.ts` (Getting
   started, Building the compiler, Using the compiler, Interpreting results,
   Differences from Erlang/OTP, then remaining files alphabetically by translated
