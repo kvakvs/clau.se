@@ -1,248 +1,248 @@
 {
-  "runAt": "2026-10-15T15:06:24+02:00",
+  "runAt": "2026-10-16T07:03:04+02:00",
   "host": {
     "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
     "cpus": 32,
     "os": "Windows 11 (10.0.26200)"
   },
   "otp": "29, ERTS 17.1",
-  "commit": "6ed3851c",
+  "commit": "3a50cd77",
   "runs": 5,
   "kernels": [
     {
       "name": "datagen.bigint_factorial",
-      "otp": 67.9936,
-      "otpSpread": 9,
-      "clause": 106.6096,
-      "clauseSpread": 12
+      "otp": 69.12,
+      "otpSpread": 5,
+      "clause": 101.5566,
+      "clauseSpread": 10
     },
     {
       "name": "datagen.binary_append",
-      "otp": 0.3072,
-      "otpSpread": 33,
-      "clause": 1.2648,
-      "clauseSpread": 19
+      "otp": 0.2048,
+      "otpSpread": 50,
+      "clause": 0.7363,
+      "clauseSpread": 22
     },
     {
       "name": "datagen.list_of_tuples",
-      "otp": 38.5024,
-      "otpSpread": 19,
-      "clause": 59.8223,
-      "clauseSpread": 10
+      "otp": 39.2192,
+      "otpSpread": 3,
+      "clause": 53.2355,
+      "clauseSpread": 3
     },
     {
       "name": "datagen.list_to_tuple",
       "otp": 3.4816,
-      "otpSpread": 18,
-      "clause": 7.8669,
-      "clauseSpread": 27
+      "otpSpread": 3,
+      "clause": 5.571,
+      "clauseSpread": 2
     },
     {
       "name": "datagen.map_put",
       "otp": 0.6144,
-      "otpSpread": 33,
-      "clause": 2.0102,
-      "clauseSpread": 7
+      "otpSpread": 17,
+      "clause": 1.5794,
+      "clauseSpread": 4
     },
     {
       "name": "datagen.string_build",
-      "otp": 5.4272,
-      "otpSpread": 19,
-      "clause": 60.506,
-      "clauseSpread": 10
+      "otp": 5.12,
+      "otpSpread": 6,
+      "clause": 35.2903,
+      "clauseSpread": 4
     },
     {
       "name": "dataproc.binary_match",
       "otp": 0.3072,
       "otpSpread": 33,
-      "clause": 4.5145,
-      "clauseSpread": 11
+      "clause": 0.364,
+      "clauseSpread": 12
     },
     {
       "name": "dataproc.comprehension",
-      "otp": 2.048,
-      "otpSpread": 15,
-      "clause": 5.0211,
-      "clauseSpread": 13
+      "otp": 1.9456,
+      "otpSpread": 16,
+      "clause": 1.9443,
+      "clauseSpread": 24
     },
     {
       "name": "dataproc.int_to_list",
-      "otp": 7.9872,
-      "otpSpread": 26,
-      "clause": 38.7872,
-      "clauseSpread": 12
+      "otp": 7.68,
+      "otpSpread": 4,
+      "clause": 21.1422,
+      "clauseSpread": 10
     },
     {
       "name": "dataproc.map_foldl",
       "otp": 2.7648,
-      "otpSpread": 26,
-      "clause": 9.2037,
-      "clauseSpread": 12
+      "otpSpread": 15,
+      "clause": 9.805,
+      "clauseSpread": 4
     },
     {
       "name": "dataproc.map_update",
-      "otp": 0.7168,
-      "otpSpread": 14,
-      "clause": 5.6046,
-      "clauseSpread": 17
+      "otp": 0.6144,
+      "otpSpread": 50,
+      "clause": 5.2916,
+      "clauseSpread": 8
     },
     {
       "name": "dataproc.sort",
-      "otp": 3.9936,
-      "otpSpread": 23,
-      "clause": 12.5655,
-      "clauseSpread": 15
+      "otp": 3.6864,
+      "otpSpread": 17,
+      "clause": 11.1871,
+      "clauseSpread": 5
     },
     {
       "name": "dataproc.term_to_binary",
-      "otp": 3.072,
-      "otpSpread": 53,
-      "clause": 41.6154,
-      "clauseSpread": 19
+      "otp": 3.2768,
+      "otpSpread": 22,
+      "clause": 12.682,
+      "clauseSpread": 4
     },
     {
       "name": "file.large_read",
-      "otp": 8.0896,
-      "otpSpread": 19,
-      "clause": 39.829,
-      "clauseSpread": 15
+      "otp": 8.3968,
+      "otpSpread": 6,
+      "clause": 42.1315,
+      "clauseSpread": 10
     },
     {
       "name": "file.large_write",
-      "otp": 34.0992,
-      "otpSpread": 33,
-      "clause": 87.5445,
-      "clauseSpread": 56
+      "otp": 35.7376,
+      "otpSpread": 21,
+      "clause": 97.4568,
+      "clauseSpread": 20
     },
     {
       "name": "file.read_file",
-      "otp": 45.056,
-      "otpSpread": 25,
-      "clause": 238.0519,
-      "clauseSpread": 24
+      "otp": 46.2848,
+      "otpSpread": 6,
+      "clause": 237.698,
+      "clauseSpread": 3
     },
     {
       "name": "file.read_line",
-      "otp": 57.856,
-      "otpSpread": 30,
-      "clause": 177.6455,
-      "clauseSpread": 23
+      "otp": 59.1872,
+      "otpSpread": 7,
+      "clause": 162.0737,
+      "clauseSpread": 3
     },
     {
       "name": "file.small_files",
-      "otp": 439.0912,
-      "otpSpread": 34,
-      "clause": 436.2571,
-      "clauseSpread": 27
+      "otp": 428.8512,
+      "otpSpread": 9,
+      "clause": 432.0638,
+      "clauseSpread": 3
     },
     {
       "name": "gc.explicit_collect",
-      "otp": 10.6496,
-      "otpSpread": 43,
-      "clause": 26.6748,
-      "clauseSpread": 33
+      "otp": 10.8544,
+      "otpSpread": 6,
+      "clause": 14.0524,
+      "clauseSpread": 27
     },
     {
       "name": "gc.grow_shrink",
-      "otp": 16.9984,
-      "otpSpread": 125,
-      "clause": 41.6486,
-      "clauseSpread": 11
+      "otp": 17.6128,
+      "otpSpread": 87,
+      "clause": 31.9882,
+      "clauseSpread": 14
     },
     {
       "name": "gc.long_lived_churn",
-      "otp": 7.9872,
-      "otpSpread": 19,
-      "clause": 13.4238,
-      "clauseSpread": 24
-    },
-    {
-      "name": "gc.short_processes",
-      "otp": 41.472,
-      "otpSpread": 63,
-      "clause": 139.0728,
-      "clauseSpread": 38
-    },
-    {
-      "name": "msg.fan_in",
-      "otp": 105.3696,
-      "otpSpread": 35,
-      "clause": 98.3205,
-      "clauseSpread": 239
-    },
-    {
-      "name": "msg.large_message",
-      "otp": 6.9632,
-      "otpSpread": 88,
-      "clause": 54.2299,
-      "clauseSpread": 18
-    },
-    {
-      "name": "msg.ping_pong",
-      "otp": 75.0592,
-      "otpSpread": 14,
-      "clause": 75.6428,
-      "clauseSpread": 13
-    },
-    {
-      "name": "msg.ring",
-      "otp": 50.8928,
-      "otpSpread": 18,
-      "clause": 69.1188,
+      "otp": 7.7824,
+      "otpSpread": 13,
+      "clause": 7.2488,
       "clauseSpread": 9
     },
     {
+      "name": "gc.short_processes",
+      "otp": 41.1648,
+      "otpSpread": 53,
+      "clause": 133.9098,
+      "clauseSpread": 22
+    },
+    {
+      "name": "msg.fan_in",
+      "otp": 105.7792,
+      "otpSpread": 33,
+      "clause": 97.1671,
+      "clauseSpread": 159
+    },
+    {
+      "name": "msg.large_message",
+      "otp": 6.8608,
+      "otpSpread": 57,
+      "clause": 38.6668,
+      "clauseSpread": 8
+    },
+    {
+      "name": "msg.ping_pong",
+      "otp": 74.9568,
+      "otpSpread": 3,
+      "clause": 75.0869,
+      "clauseSpread": 3
+    },
+    {
+      "name": "msg.ring",
+      "otp": 47.616,
+      "otpSpread": 10,
+      "clause": 65.0955,
+      "clauseSpread": 8
+    },
+    {
       "name": "socket.tcp_connect",
-      "otp": 260.608,
-      "otpSpread": 76,
-      "clause": 162.9086,
-      "clauseSpread": 89
+      "otp": 248.2176,
+      "otpSpread": 8,
+      "clause": 142.6513,
+      "clauseSpread": 7
     },
     {
       "name": "socket.tcp_echo",
-      "otp": 322.7648,
-      "otpSpread": 76,
-      "clause": 240.525,
-      "clauseSpread": 107
+      "otp": 306.7904,
+      "otpSpread": 4,
+      "clause": 240.5198,
+      "clauseSpread": 12
     },
     {
       "name": "socket.udp_round_trip",
-      "otp": 336.6912,
-      "otpSpread": 96,
-      "clause": 272.655,
-      "clauseSpread": 118
+      "otp": 335.36,
+      "otpSpread": 20,
+      "clause": 267.8752,
+      "clauseSpread": 3
     }
   ],
   "programs": [
     {
       "name": "bench_datagen",
-      "otp": 0.27,
-      "clause": 0.28
+      "otp": 0.28,
+      "clause": 0.24
     },
     {
       "name": "bench_dataproc",
-      "otp": 0.17,
-      "clause": 0.16
+      "otp": 0.18,
+      "clause": 0.1
     },
     {
       "name": "bench_file",
       "otp": 0.92,
-      "clause": 1.39
+      "clause": 1.34
     },
     {
       "name": "bench_gc",
-      "otp": 0.26,
-      "clause": 0.33
+      "otp": 0.27,
+      "clause": 0.29
     },
     {
       "name": "bench_msg",
-      "otp": 0.51,
-      "clause": 0.46
+      "otp": 0.52,
+      "clause": 0.43
     },
     {
       "name": "bench_socket",
-      "otp": 1.37,
-      "clause": 0.91
+      "otp": 1.35,
+      "clause": 0.88
     }
   ],
   "history": [
@@ -265,6 +265,11 @@
       "date": "2026-10-15",
       "commit": "6ed3851c",
       "ratio": 2.73
+    },
+    {
+      "date": "2026-10-16",
+      "commit": "3a50cd77",
+      "ratio": 2.03
     }
   ]
 }

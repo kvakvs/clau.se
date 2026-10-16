@@ -55,7 +55,7 @@ export const en = {
         id: "processes",
         property: "spawn · send · receive",
         title: "Erlang processes",
-        text: "Processes with their own heaps and garbage collection, on per-worker run queues across scheduler threads, with selective receive, timeouts, links, monitors and registered names.",
+        text: "Processes with their own heaps and generational garbage collection, on per-worker run queues across scheduler threads, with selective receive, timeouts, links, monitors and registered names.",
       },
       {
         id: "library",
@@ -137,7 +137,7 @@ export const en = {
           "LLVM-free C++23 runtime library linked into every program",
           "Arbitrary-precision integers, floats, atoms, tuples, lists, maps, bitstrings, records, funs, pids, ports and references",
           "Processes, messages, selective receive, links, monitors, registered names and timers on several scheduler workers, each with its own run queue",
-          "Per-process heaps with a copying garbage collector, off-heap binaries and large maps, module literal areas and optional memory limits",
+          "Per-process heaps with a generational copying garbage collector, min_heap_size, off-heap binaries and large maps, module literal areas and optional memory limits",
           "Ports for files, standard I/O, subprocesses and TCP/UDP sockets on one event-driven I/O thread",
           "The erlang module: process dictionary, external term format with compression, time and timers, process introspection, spawn options, aliases and hashing",
           "Every OTP 29 export of a Clause library module compiles; functions not implemented yet raise not_implemented when called",
