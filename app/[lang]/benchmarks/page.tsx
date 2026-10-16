@@ -179,34 +179,64 @@ export default async function BenchmarksPage({ params }: Props) {
             {t.programsTitle}
           </h2>
           <p className="mt-2 text-sm text-muted">{t.programsNote}</p>
-          <table className="mt-4 w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-muted">
-                <th scope="col" className="py-2 pr-3 font-medium">
-                  {t.program}
-                </th>
-                <th scope="col" className="py-2 pr-3 text-right font-medium">
-                  {t.otp}
-                </th>
-                <th scope="col" className="py-2 text-right font-medium">
-                  {t.clause}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.programs.map((p) => (
-                <tr key={p.name} className="border-b border-border">
-                  <td className="py-1.5 pr-3 font-mono text-xs">{p.name}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">
-                    {p.otp === null ? "–" : number(p.otp, 2)}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {p.clause === null ? "–" : number(p.clause, 2)}
-                  </td>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[28rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted">
+                  <th scope="col" className="py-2 pr-3 font-medium">
+                    {t.program}
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-right font-medium">
+                    {t.otp}
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-right font-medium">
+                    {t.clause}
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-right font-medium">
+                    {t.ratio}
+                  </th>
+                  <th scope="col" className="w-2/5 px-3 py-2 align-bottom">
+                    <Axis />
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.programs.map((p) => {
+                  const ratio =
+                    p.otp !== null && p.clause !== null && p.otp > 0
+                      ? p.clause / p.otp
+                      : null;
+                  return (
+                    <tr
+                      key={p.name}
+                      className="border-b border-border hover:bg-card"
+                    >
+                      <td className="py-1.5 pr-3 font-mono text-xs">
+                        {p.name}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums">
+                        {p.otp === null ? "–" : number(p.otp, 2)}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums">
+                        {p.clause === null ? "–" : number(p.clause, 2)}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums">
+                        {ratio === null ? "–" : times(ratio)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {ratio !== null && (
+                          <Bar
+                            ratio={ratio}
+                            label={ratio < 1 ? t.barFaster : t.barSlower}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section aria-labelledby="history">
