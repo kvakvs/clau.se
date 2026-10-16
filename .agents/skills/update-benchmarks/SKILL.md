@@ -29,12 +29,13 @@ Keep these when editing the page or its strings:
   than the BEAM JIT (`slowerOnAverage` / `fasterOnAverage`).
 - Unstable runs (spread above `NOISY_SPREAD` percent of the median) are marked
   with the 🔺 emoji, not an asterisk.
-- Both the kernel table and the whole programs table show the Clause/OTP ratio
+- Both the kernel table and the "whole programs" table show the Clause/OTP ratio
   with the `Bar` component on a shared log scale (`Axis`):
   - blue bars (Clause faster) run left of the 1× line, with "faster" in small
     font to the right of the bar, left aligned to the 1× line;
   - red bars (Clause slower) run right of it, with "slower" in small font,
     right aligned to the 1× line.
+  - Expand "Whole programs" table to full page width
 - Kernel names are `<program>.<kernel>`; rows are grouped by program, with
   group titles in `benchmarks.groups`. A program without a title there shows
   its raw name.
