@@ -141,37 +141,36 @@ scripts/             build helper scripts (e.g. docs sync)
 
 ## Documentation Pages
 
-- Source of truth is `../clau/docs` (plus the project README, split into
-  Getting started / Building / Using pages). It is outside this repository, so
+- Source of truth is `../clau/docs` (plus the project README, split into Getting
+  started / Building / Using pages). It is outside this repository, so
   `pnpm sync-docs` copies it into `content/docs/en/` and records the source
-  commit, a dirty flag and the sync date in `content/docs-meta.json`. Commit
-  the copy. Never import from `../clau` directly in app code; never edit
+  commit, a dirty flag and the sync date in `content/docs-meta.json`. Commit the
+  copy. Never import from `../clau` directly in app code; never edit
   `content/docs/en/` by hand.
-- `sync-docs` leaves out internal plan step references (paragraph lead-ins
-  like `Plan 11 step 41T (paths).`, parentheticals like `(OPT0.2A)`); headings
-  and code blocks are never changed.
+- `sync-docs` leaves out internal plan step references (paragraph lead-ins like
+  `Plan 11 step 41T (paths).`, parentheticals like `(OPT0.2A)`); headings and
+  code blocks are never changed.
 - Translations live in `content/docs/<locale>/<same name>.md` with frontmatter
   (`sourceCommit`, `sourceSha256`, `translatedAt`) written by
-  `pnpm docs-stamp <locale> <file>`. How to translate:
-  `.agents/translation.md`.
+  `pnpm docs-stamp <locale> <file>`. How to translate: `.agents/translation.md`.
 - After every sync run `pnpm docs-status`: it lists current, outdated (English
   changed since translation), missing and orphaned translations, and fails on
-  structure mismatches. The site shows an outdated notice on stale
-  translations and falls back to English for missing ones.
+  structure mismatches. The site shows an outdated notice on stale translations
+  and falls back to English for missing ones.
 - Heading anchors come from the English original by position
-  (`lib/doc-structure.ts`, `components/markdown.tsx`), so translations must
-  keep the same headings, code blocks and link targets.
+  (`lib/doc-structure.ts`, `components/markdown.tsx`), so translations must keep
+  the same headings, code blocks and link targets.
 - Front page text (intro, status, feature cards and details) is refreshed from
   `../clau` docs and progress notes with the `/update-doc` skill
-  (`.agents/skills/update-doc/`), which also translates the changed strings
-  and records the source commit in `content/home-meta.json`.
-- Benchmarks page data comes from `pnpm sync-benchmarks`, which reads the
-  newest report of `../clau/benchmarks/history/` into
-  `content/benchmarks.json` (commit it; host name left out).
+  (`.agents/skills/update-doc/`), which also translates the changed strings and
+  records the source commit in `content/home-meta.json`.
+- Benchmarks page data comes from `pnpm sync-benchmarks`, which reads the newest
+  report of `../clau/benchmarks/history/` into `content/benchmarks.json` (commit
+  it; host name left out).
 - Table of contents order is defined explicitly in `lib/docs.ts` (Getting
   started, Building the compiler, Using the compiler, Interpreting results,
-  Differences from Erlang/OTP, then remaining files alphabetically by
-  translated title).
+  Differences from Erlang/OTP, then remaining files alphabetically by translated
+  title).
 - Render each doc page as a static route via `generateStaticParams`. Render
   Markdown on the server at build time (`react-markdown` + `remark-gfm`); no
   client-side Markdown parsing. Relative `.md` links between docs become site
@@ -188,10 +187,10 @@ pnpm build          # must produce the static export in out/
 ```
 
 - Format with Prettier (`prettier-plugin-tailwindcss` to sort classes).
-- Browser testing (launching Chrome or another browser, screenshots) is off.
-  Do not run it unless the user asks. The developer checks pages in the
-  browser: no console errors or hydration warnings, mobile (360px) and
-  desktop widths, light and dark.
+- Browser testing (launching Chrome or another browser, screenshots) is off. Do
+  not run it unless the user asks. The developer checks pages in the browser: no
+  console errors or hydration warnings, mobile (360px) and desktop widths, light
+  and dark.
 
 ## Dependencies
 

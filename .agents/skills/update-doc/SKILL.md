@@ -79,12 +79,12 @@ BEAM, LLVM, Clang, CMake, Clause, `clau`.
   update if the results are too old.
 - Use 🔺 emoji instead of asterisk to mark runs with unstable results.
 - The geometric mean card needs to state whether we're on average slower or faster than BEAM JIT.
-- Create a component for comparison bar diagrams
+- Create a component for `Bar` diagrams
   - The blue bars (where Clause is faster) should say 'faster' in small font to the right
     of the bar left aligned to the zero line
   - The red bars (where Clause is slower) should say 'slower' in small font to the right
     of the bar, right aligned to the zero line
-  - Whole programs chart also needs comparison bar diagrams added
+  - Whole programs chart also needs `Bar` diagrams added
 - Latest benchmarks, summarize differences with latest benchmark report in Clause -O2 and OTP,
   this page can have a top menu item for it. The page is
   `app/[lang]/benchmarks/`, with strings in `benchmarks.*` and data in

@@ -3,9 +3,8 @@
 English originals: `content/docs/en/*.md`, copied from `../clau/docs` (and the
 project README) by `pnpm sync-docs`. Never edit them by hand.
 
-Translations: `content/docs/<locale>/<same file name>.md` for `sv`, `es`,
-`uk`, `fr`, `de`, `pt`. A missing translation falls back to English on the
-site.
+Translations: `content/docs/<locale>/<same file name>.md` for `sv`, `es`, `uk`,
+`fr`, `de`, `pt`. A missing translation falls back to English on the site.
 
 ## Workflow
 
@@ -41,27 +40,27 @@ Heading anchors are taken from the English original by position, and
   identifiers, CLI options, function names such as `spawn/1`, atoms, macros,
   error reasons, environment variables, commit hashes, version numbers, plan
   step numbers (`step 57B`, `phase C`).
-- Product and tool names: Erlang, OTP, ERTS, BEAM, LLVM, Clang, clang-cl,
-  CMake, Ninja, Boost, toml++, Visual Studio, Clause, `clau`.
-- Erlang terms the community keeps in English, written without code
-  formatting unless the original has it: record, native record, map, fun,
-  bitstring, binary, guard, BIF, comprehension, `notimpl`, catch/try/after
-  clause keywords. Ordinary computing terms are translated: process, message,
-  scheduler, worker thread, heap, garbage collector, tail call, compiler,
-  tuple, list, atom, integer, float, pattern, clause, term.
+- Product and tool names: Erlang, OTP, ERTS, BEAM, LLVM, Clang, clang-cl, CMake,
+  Ninja, Boost, toml++, Visual Studio, Clause, `clau`.
+- Erlang terms the community keeps in English, written without code formatting
+  unless the original has it: record, native record, map, fun, bitstring,
+  binary, guard, BIF, comprehension, `notimpl`, catch/try/after clause keywords.
+  Ordinary computing terms are translated: process, message, scheduler, worker
+  thread, heap, garbage collector, tail call, compiler, tuple, list, atom,
+  integer, float, pattern, clause, term.
 - The first use of a translated technical term that readers may search for in
-  English can add the English term in parentheses, as in
-  "sänkning (lowering)". Do this sparingly.
+  English can add the English term in parentheses, as in "sänkning (lowering)".
+  Do this sparingly.
 
 ## Language notes
 
 - Technical, concise, neutral register like the original; no marketing tone.
 - `sv`: Swedish technical prose; "runtime" stays in English.
 - `es`: neutral international Spanish, "tú" form avoided (impersonal style).
-- `uk`: modern Ukrainian technical style, no Russianisms; "runtime" stays
-  in English.
-- `fr`: French typography (space before `;`, `:`, `?`, `!`); "runtime" stays
-  in English.
+- `uk`: modern Ukrainian technical style, no Russianisms; "runtime" stays in
+  English.
+- `fr`: French typography (space before `;`, `:`, `?`, `!`); "runtime" stays in
+  English.
 - `de`: impersonal style (no "Sie"/"du" where avoidable); compound nouns with
   hyphens for English parts (`Runtime-Bibliothek`).
 - `pt`: European Portuguese (ficheiro, registar, ecrã).
