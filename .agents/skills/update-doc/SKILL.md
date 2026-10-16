@@ -65,21 +65,6 @@ All in `messages/en.ts` first; it is the source of truth:
 (paths).` and parenthetical references such as `(plan step 37)`,
   `(OPT0.2A)`. Extend its patterns when a new form shows up in the copy.
 
-## Benchmarks Page
-
-- Use 🔺 emoji instead of asterisk to mark runs with unstable results.
-- The geometric mean card needs to state whether we're on average slower or faster than BEAM JIT.
-- The blue bars (where Clause is faster) should say 'faster' in small font to the right
-  of the bar left aligned to the zero line
-- The red bars (where Clause is slower) should say 'slower' in small font to the right
-  of the bar, right aligned to the zero line
-- Latest benchmarks, summarize differences with latest benchmark report in Clause -O2 and OTP,
-  this page can have a top menu item for it. The page is
-  `app/[lang]/benchmarks/`, with strings in `benchmarks.*` and data in
-  `content/benchmarks.json`, written by `pnpm sync-benchmarks` from the newest
-  report in `../clau/benchmarks/history/reports/` (gitignored, so only on the
-  host that ran it; if missing, keep the committed JSON and say so).
-
 Only claim what `docs/` or `00-finished.md` shows as delivered. Items that are
 open in `01-todo.md` or listed as unfinished are not features, those can only be mentioned as planned; at most they appear in `home.status` as remaining work. When a source says a feature is
 limited to a subset, describe it as a subset.
@@ -87,6 +72,25 @@ limited to a subset, describe it as a subset.
 Style: technical, concise, neutral; no marketing words ("blazing",
 "powerful", "seamless"). Technical names stay as written: Erlang, OTP, ERTS,
 BEAM, LLVM, Clang, CMake, Clause, `clau`.
+
+## Benchmarks Page
+
+- IMPORTANT: Updating benchmarks requires recent benchmark results within last 3 hours. Skip the
+  update if the results are too old.
+- Use 🔺 emoji instead of asterisk to mark runs with unstable results.
+- The geometric mean card needs to state whether we're on average slower or faster than BEAM JIT.
+- Create a component for comparison bar diagrams
+  - The blue bars (where Clause is faster) should say 'faster' in small font to the right
+    of the bar left aligned to the zero line
+  - The red bars (where Clause is slower) should say 'slower' in small font to the right
+    of the bar, right aligned to the zero line
+  - Whole programs chart also needs comparison bar diagrams added
+- Latest benchmarks, summarize differences with latest benchmark report in Clause -O2 and OTP,
+  this page can have a top menu item for it. The page is
+  `app/[lang]/benchmarks/`, with strings in `benchmarks.*` and data in
+  `content/benchmarks.json`, written by `pnpm sync-benchmarks` from the newest
+  report in `../clau/benchmarks/history/reports/` (gitignored, so only on the
+  host that ran it; if missing, keep the committed JSON and say so).
 
 ## Steps
 

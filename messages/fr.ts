@@ -57,7 +57,7 @@ export const fr = {
         id: "processes",
         property: "spawn · send · receive",
         title: "Processus Erlang",
-        text: "Processus dotés de leur propre tas et ramasse-miettes, répartis sur des files d'exécution par worker entre les threads ordonnanceurs, avec receive sélectif, délais d'attente, liens, moniteurs et noms enregistrés.",
+        text: "Processus dotés de leur propre tas et ramasse-miettes générationnel, répartis sur des files d'exécution par worker entre les threads ordonnanceurs, avec receive sélectif, délais d'attente, liens, moniteurs et noms enregistrés.",
       },
       {
         id: "library",
@@ -139,7 +139,7 @@ export const fr = {
           "Bibliothèque runtime en C++23 sans LLVM, liée à chaque programme",
           "Entiers en précision arbitraire, flottants, atomes, tuples, listes, maps, bitstrings, records, funs, pids, ports et références",
           "Processus, messages, receive sélectif, liens, moniteurs, noms enregistrés et minuteries sur plusieurs threads ordonnanceurs, chacun avec sa propre file d'exécution",
-          "Tas par processus avec ramasse-miettes par copie, binaires et grandes maps hors tas, zones de littéraux de module et limites de mémoire optionnelles",
+          "Tas par processus avec ramasse-miettes générationnel par copie, min_heap_size, binaires et grandes maps hors tas, zones de littéraux de module et limites de mémoire optionnelles",
           "Ports pour les fichiers, les E/S standard, les sous-processus et les sockets TCP/UDP sur un unique thread d'E/S événementiel",
           "Le module erlang : dictionnaire de processus, format de terme externe avec compression, temps et minuteries, introspection des processus, options de spawn, alias et hachage",
           "Chaque export OTP 29 d'un module de bibliothèque Clause se compile ; les fonctions pas encore implémentées lèvent not_implemented à l'appel",

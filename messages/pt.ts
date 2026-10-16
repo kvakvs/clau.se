@@ -57,7 +57,7 @@ export const pt = {
         id: "processes",
         property: "spawn · send · receive",
         title: "Processos Erlang",
-        text: "Processos com heap e recolha de lixo próprios, em filas de execução por worker distribuídas pelas threads do escalonador, com receive seletivo, tempos limite, links, monitores e nomes registados.",
+        text: "Processos com heap e recolha de lixo geracional próprios, em filas de execução por worker distribuídas pelas threads do escalonador, com receive seletivo, tempos limite, links, monitores e nomes registados.",
       },
       {
         id: "library",
@@ -139,7 +139,7 @@ export const pt = {
           "Biblioteca de runtime em C++23 sem LLVM, ligada a cada programa",
           "Inteiros de precisão arbitrária, vírgula flutuante, átomos, tuplos, listas, maps, bitstrings, records, funs, pids, portas e referências",
           "Processos, mensagens, receive seletivo, links, monitores, nomes registados e temporizadores em várias threads do escalonador, cada uma com a sua própria fila de execução",
-          "Heap por processo com coletor de lixo por cópia, binaries e maps grandes fora do heap, áreas de literais de módulo e limites de memória opcionais",
+          "Heap por processo com coletor de lixo geracional por cópia, min_heap_size, binaries e maps grandes fora do heap, áreas de literais de módulo e limites de memória opcionais",
           "Portas para ficheiros, E/S padrão, subprocessos e sockets TCP/UDP numa única thread de E/S orientada a eventos",
           "O módulo erlang: dicionário de processo, formato externo de termos com compressão, tempo e temporizadores, introspeção de processos, opções de spawn, aliases e hashing",
           "Todas as exportações do OTP 29 de um módulo da biblioteca do Clause compilam; as funções ainda não implementadas lançam not_implemented quando chamadas",

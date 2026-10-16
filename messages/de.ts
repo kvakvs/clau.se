@@ -57,7 +57,7 @@ export const de = {
         id: "processes",
         property: "spawn · send · receive",
         title: "Erlang-Prozesse",
-        text: "Prozesse mit eigenem Heap und eigener Garbage Collection, auf Run-Queues pro Worker verteilt über Scheduler-Threads, mit selektivem receive, Timeouts, Links, Monitoren und registrierten Namen.",
+        text: "Prozesse mit eigenem Heap und eigener generationeller Garbage Collection, auf Run-Queues pro Worker verteilt über Scheduler-Threads, mit selektivem receive, Timeouts, Links, Monitoren und registrierten Namen.",
       },
       {
         id: "library",
@@ -139,7 +139,7 @@ export const de = {
           "LLVM-freie C++23-Laufzeitbibliothek, in jedes Programm gelinkt",
           "Ganzzahlen beliebiger Genauigkeit, Gleitkommazahlen, Atome, Tupel, Listen, Maps, Bitstrings, Records, Funs, Pids, Ports und Referenzen",
           "Prozesse, Nachrichten, selektives receive, Links, Monitore, registrierte Namen und Timer auf mehreren Scheduler-Threads, jeder mit eigener Run-Queue",
-          "Heap pro Prozess mit kopierendem Garbage Collector, Binärdaten und großen Maps außerhalb des Heaps, Literalbereichen pro Modul und optionalen Speicherlimits",
+          "Heap pro Prozess mit generationellem kopierendem Garbage Collector, min_heap_size, Binärdaten und großen Maps außerhalb des Heaps, Literalbereichen pro Modul und optionalen Speicherlimits",
           "Ports für Dateien, Standard-I/O, Unterprozesse und TCP/UDP-Sockets auf einem ereignisgesteuerten I/O-Thread",
           "Das Modul erlang: Prozess-Dictionary, externes Termformat mit Kompression, Zeit und Timer, Prozess-Introspektion, spawn-Optionen, Aliase und Hashing",
           "Jeder Export von OTP 29 eines Clause-Bibliotheksmoduls lässt sich kompilieren; noch nicht implementierte Funktionen lösen beim Aufruf not_implemented aus",

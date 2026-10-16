@@ -57,7 +57,7 @@ export const sv = {
         id: "processes",
         property: "spawn · send · receive",
         title: "Erlang-processer",
-        text: "Processer med egna heapar och skräpsamling, på körköer per arbetstråd fördelade över schemaläggartrådar, med selektiv receive, tidsgränser, länkar, monitorer och registrerade namn.",
+        text: "Processer med egna heapar och generationsbaserad skräpsamling, på körköer per arbetstråd fördelade över schemaläggartrådar, med selektiv receive, tidsgränser, länkar, monitorer och registrerade namn.",
       },
       {
         id: "library",
@@ -139,7 +139,7 @@ export const sv = {
           "Runtime-bibliotek i C++23 utan LLVM, länkat i varje program",
           "Heltal med godtycklig precision, flyttal, atomer, tupler, listor, maps, bitsträngar, records, funs, pids, portar och referenser",
           "Processer, meddelanden, selektiv receive, länkar, monitorer, registrerade namn och timrar på flera schemaläggartrådar, var och en med egen körkö",
-          "Heap per process med kopierande skräpsamlare, binärer och stora maps utanför heapen, literalområden per modul och valfria minnesgränser",
+          "Heap per process med generationsbaserad kopierande skräpsamlare, min_heap_size, binärer och stora maps utanför heapen, literalområden per modul och valfria minnesgränser",
           "Portar för filer, standard-I/O, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd",
           "Modulen erlang: processordbok, externt termformat med komprimering, tid och timrar, processinspektion, spawn-alternativ, alias och hashning",
           "Varje OTP 29-export i en Clause-biblioteksmodul kompileras; funktioner som ännu inte är implementerade ger not_implemented när de anropas",

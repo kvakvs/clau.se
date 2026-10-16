@@ -4,8 +4,9 @@
 //
 // docs/*.md are copied without their internal plan step references (see
 // stripPlanReferences). The project README.md is split into the
-// "Getting started", "Building the compiler" and "Using the compiler" pages;
-// its links are rewritten to be relative to docs/ like the other files.
+// "Getting started", "Building the compiler" (with "Testing") and "Using the
+// compiler" pages; its links are rewritten to be relative to docs/ like the
+// other files.
 // Translations in content/docs/<locale>/ are left alone; run
 // `pnpm docs-status` afterwards to see which of them are now outdated.
 
@@ -21,7 +22,7 @@ const metaFile = path.join(root, "content", "docs-meta.json");
 
 // README "Build" section is split before this line: everything above it
 // lists prerequisites, everything from it on describes the build itself.
-const BUILD_MARKER = "From the repository root:";
+const BUILD_MARKER = /^(?:Configure and build f|F)rom the repository root:/m;
 
 // The notes name the internal plan steps (and their dates) that delivered each
 // part: "Plan 11 step 41T (`path`). Text", "(plan step 37)", "(OPT0.2A)".
@@ -37,7 +38,32 @@ const LEAD_IN = new RegExp(
   String.raw`^(?:Decision of )?(?:[Pp]lan(?: \d+)? )?[Ss]teps? ${STEP_IDS}(?: \(([^()]*)\))?(?:[.:]\s*|, (?=[a-z]))`,
 );
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_TEXT = String.raw`\d{4}-\d{2}-\d{2}`;
 const INLINE_RULES = [
+  // "(decision of plan 11 step 57A, 2026-10-08)"
+  [
+    new RegExp(
+      String.raw`\s*\([Dd]ecision of ${PLAIN_REF}(?:,\s+${DATE_TEXT})?\)`,
+      "g",
+    ),
+    "",
+  ],
+  // "chosen in plan 11 step 17 (2026-10-05) after ..."
+  [
+    new RegExp(
+      String.raw`\s+in\s+[Pp]lan\s+\d+\s+[Ss]teps?\s+${STEP_IDS}(?:\s+\(${DATE_TEXT}\))?`,
+      "g",
+    ),
+    "",
+  ],
+  // "..., [step 71](../.agents/11-plan.md#step-71))"
+  [
+    new RegExp(
+      String.raw`[,;]\s+\[${STEP_REF}\]\(\.\.\/\.agents\/[^)]*\)(?=\))`,
+      "g",
+    ),
+    "",
+  ],
   // "(plan step 41T, [lists module](#lists-module))", "(step 57G3; ..."
   [new RegExp(String.raw`\(${PLAIN_REF}[,;]\s`, "g"), "("],
   // "(revision 10, OPT0.1A)", "(..., step 41V)", "(... of step 41T)"
@@ -75,9 +101,13 @@ const sections = splitSections(
 );
 const build = sections.get("Build") ?? "";
 const usage = sections.get("Usage") ?? "";
-const projects = sections.get("Projects") ?? "";
+// Sections appended to a page under their own heading, when the README has them.
+const subsection = (title) => {
+  const body = sections.get(title);
+  return body?.trim() ? `\n## ${title}\n\n${body}` : "";
+};
 
-const markerAt = build.indexOf(BUILD_MARKER);
+const markerAt = build.search(BUILD_MARKER);
 const derived = {
   "getting-started.md": [
     "Getting started",
@@ -85,12 +115,9 @@ const derived = {
   ],
   "building.md": [
     "Building the compiler",
-    markerAt >= 0 ? build.slice(markerAt) : build,
+    (markerAt >= 0 ? build.slice(markerAt) : build) + subsection("Testing"),
   ],
-  "usage.md": [
-    "Using the compiler",
-    usage + (projects ? `\n## Projects\n\n${projects}` : ""),
-  ],
+  "usage.md": ["Using the compiler", usage + subsection("Projects")],
 };
 
 for (const [file, [title, body]] of Object.entries(derived)) {
