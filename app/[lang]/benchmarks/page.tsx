@@ -173,107 +173,101 @@ export default async function BenchmarksPage({ params }: Props) {
         </div>
       </section>
 
-      <div className="mt-12 grid gap-10 md:grid-cols-2">
-        <section aria-labelledby="programs">
-          <h2 id="programs" className="text-2xl font-semibold">
-            {t.programsTitle}
-          </h2>
-          <p className="mt-2 text-sm text-muted">{t.programsNote}</p>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[28rem] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted">
-                  <th scope="col" className="py-2 pr-3 font-medium">
-                    {t.program}
-                  </th>
-                  <th scope="col" className="py-2 pr-3 text-right font-medium">
-                    {t.otp}
-                  </th>
-                  <th scope="col" className="py-2 pr-3 text-right font-medium">
-                    {t.clause}
-                  </th>
-                  <th scope="col" className="py-2 pr-3 text-right font-medium">
-                    {t.ratio}
-                  </th>
-                  <th scope="col" className="w-2/5 px-3 py-2 align-bottom">
-                    <Axis />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.programs.map((p) => {
-                  const ratio =
-                    p.otp !== null && p.clause !== null && p.otp > 0
-                      ? p.clause / p.otp
-                      : null;
-                  return (
-                    <tr
-                      key={p.name}
-                      className="border-b border-border hover:bg-card"
-                    >
-                      <td className="py-1.5 pr-3 font-mono text-xs">
-                        {p.name}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right tabular-nums">
-                        {p.otp === null ? "–" : number(p.otp, 2)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right tabular-nums">
-                        {p.clause === null ? "–" : number(p.clause, 2)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right tabular-nums">
-                        {ratio === null ? "–" : times(ratio)}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        {ratio !== null && (
-                          <Bar
-                            ratio={ratio}
-                            label={ratio < 1 ? t.barFaster : t.barSlower}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section aria-labelledby="history">
-          <h2 id="history" className="text-2xl font-semibold">
-            {t.historyTitle}
-          </h2>
-          <p className="mt-2 text-sm text-muted">{t.historyNote}</p>
-          <table className="mt-4 w-full border-collapse text-sm">
+      <section aria-labelledby="programs" className="mt-12">
+        <h2 id="programs" className="text-2xl font-semibold">
+          {t.programsTitle}
+        </h2>
+        <p className="mt-2 text-sm text-muted">{t.programsNote}</p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted">
                 <th scope="col" className="py-2 pr-3 font-medium">
-                  {t.date}
+                  {t.program}
                 </th>
-                <th scope="col" className="py-2 pr-3 font-medium">
-                  {t.commit}
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t.otp}
                 </th>
-                <th scope="col" className="py-2 text-right font-medium">
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t.clause}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
                   {t.ratio}
+                </th>
+                <th scope="col" className="w-2/5 px-3 py-2 align-bottom">
+                  <Axis />
                 </th>
               </tr>
             </thead>
             <tbody>
-              {data.history.map((day) => (
-                <tr key={day.date} className="border-b border-border">
-                  <td className="py-1.5 pr-3 tabular-nums">{day.date}</td>
-                  <td className="py-1.5 pr-3 font-mono text-xs">
-                    {day.commit}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {times(day.ratio)}
-                  </td>
-                </tr>
-              ))}
+              {data.programs.map((p) => {
+                const ratio =
+                  p.otp !== null && p.clause !== null && p.otp > 0
+                    ? p.clause / p.otp
+                    : null;
+                return (
+                  <tr
+                    key={p.name}
+                    className="border-b border-border hover:bg-card"
+                  >
+                    <td className="py-1.5 pr-3 font-mono text-xs">{p.name}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">
+                      {p.otp === null ? "–" : number(p.otp, 2)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">
+                      {p.clause === null ? "–" : number(p.clause, 2)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">
+                      {ratio === null ? "–" : times(ratio)}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {ratio !== null && (
+                        <Bar
+                          ratio={ratio}
+                          label={ratio < 1 ? t.barFaster : t.barSlower}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="history" className="mt-12">
+        <h2 id="history" className="text-2xl font-semibold">
+          {t.historyTitle}
+        </h2>
+        <p className="mt-2 text-sm text-muted">{t.historyNote}</p>
+        <table className="mt-4 w-full max-w-xl border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted">
+              <th scope="col" className="py-2 pr-3 font-medium">
+                {t.date}
+              </th>
+              <th scope="col" className="py-2 pr-3 font-medium">
+                {t.commit}
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                {t.ratio}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.history.map((day) => (
+              <tr key={day.date} className="border-b border-border">
+                <td className="py-1.5 pr-3 tabular-nums">{day.date}</td>
+                <td className="py-1.5 pr-3 font-mono text-xs">{day.commit}</td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {times(day.ratio)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
       <section aria-labelledby="setup" className="mt-12">
         <h2 id="setup" className="text-2xl font-semibold">
