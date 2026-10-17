@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 6ed3851c
-sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 57dcb1da3315eb173341c8100e17e37df776b01f85f4c06585c1b7e5d3503daf
+translatedAt: 2026-10-17
 ---
 # Preprocesador
 
@@ -13,11 +13,11 @@ expandidos nunca se vuelven a convertir en texto fuente.
 
 `PreprocessorSession` devuelve las formas expandidas (incluidos los atributos
 `-file` implícitos), diagnósticos estructurados e instantáneas inmutables de
-funcionalidades por forma; `features()` expone el estado final de la sesión para
-el analizador sintáctico. Es una interfaz interna, no un formato de etapa
+características por forma; `features()` expone el estado final de la sesión
+para el analizador sintáctico. Es una interfaz interna, no un formato de etapa
 público. `DirectiveReader` es la API anterior, solo sintáctica.
 
-## Comportamiento soportado
+## Comportamiento admitido
 
 - Macros de objeto y sobrecargadas por aridad, sustitución en bruto, argumentos
   de bloque/fun anidados, conversión a cadena con la grafía canónica de tokens
@@ -33,7 +33,7 @@ público. `DirectiveReader` es la API anterior, solo sintáctica.
   fuente).
 - Evaluación de guards en `-if`/`-elif` con enteros arbitrarios y el catálogo de
   BIF de guard de OTP; no se ejecutan llamadas arbitrarias.
-- Funcionalidades de OTP 29.1: `maybe_expr` (activada por defecto, controla
+- Características de OTP 29.1: `maybe_expr` (activada por defecto, controla
   `maybe`/`else`) y `compr_assign` (experimental, desactivada). Un `all`
   inicial selecciona ambas; `-feature(all, ...)` en el código fuente no es
   válido, como en epp. Otros nombres son errores.
@@ -55,14 +55,14 @@ público. `DirectiveReader` es la API anterior, solo sintáctica.
   macros. Los archivos se decodifican como UTF-8 o como Latin-1 declarado; se
   aplican las reglas de rutas del anfitrión independientemente de la CPU de
   destino.
-- Los includes comparten el estado de macros/funcionalidades/módulo; cada
+- Los includes comparten el estado de macros/características/módulo; cada
   archivo tiene su propia pila de condicionales y su correspondencia de archivo
   lógico.
 - Las condiciones validan todas las ramas antes de la evaluación en
-  cortocircuito. La sintaxis inválida es un error; las variables no vinculadas,
-  los resultados no booleanos y las excepciones de evaluación seleccionan false.
-  El acceso a campos/índices de records en condiciones falla; un acceso a record
-  no seleccionado por el cortocircuito es válido.
+  cortocircuito. La sintaxis no válida es un error; las variables no
+  vinculadas, los resultados no booleanos y las excepciones de evaluación
+  seleccionan false. El acceso a campos/índices de records en condiciones falla;
+  un acceso a record no seleccionado por el cortocircuito es válido.
 - La construcción de records en una condición recibe un diagnóstico controlado
   (`record construction requires record expansion`); epp de OTP 29.1 falla en
   ese caso.
@@ -90,10 +90,10 @@ mientras la recuperación continúa en el siguiente límite de forma.
 
 ## Pruebas
 
-Los goldens de tokens (`semantic/*.erl.tokens`) registran los tipos de token de
-epp, los valores decodificados (flotantes como bits binary64) y el orden de los
-diagnósticos; la redacción no tiene por qué coincidir con la de OTP. Los
-fragmentos locales `semantic/headers/*.hrl` sustituyen a las cabeceras de OTP
-que antes se copiaban. `preprocessor_workflow` cubre árboles de include reales,
-el orden de las opciones, el entorno, Latin-1 y casos de condiciones a través
-de la CLI.
+Los goldens de tokens (`tests/fixtures/preprocessor/semantic/*.erl.tokens`)
+registran los tipos de token de epp, los valores decodificados (flotantes como
+bits binary64) y el orden de los diagnósticos; la redacción no tiene por qué
+coincidir con la de OTP. Las cabeceras incluidas (`semantic/headers/*.hrl`) son
+de autoría local, no copiadas de OTP.
+`preprocessor_workflow` cubre árboles de include reales, el orden de las
+opciones, el entorno, Latin-1 y casos de condiciones a través de la CLI.

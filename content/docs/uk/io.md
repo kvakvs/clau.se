@@ -1,43 +1,43 @@
 ---
 source: docs/io.md
-sourceCommit: 6ed3851c
-sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
+translatedAt: 2026-10-17
 ---
 # Вивід на консоль (`io`)
 
-`io:format/1,2` і `io:put_chars/1` пишуть у
-стандартний вивід. Це вбудовані функції runtime модуля `io` у каталозі мосту
+`io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` і `io:nl/0,1` — це
+вбудовані функції runtime модуля `io` у каталозі мосту
 ([вбудовані функції](builtins.md)); runtime реалізує правила OTP
-`io_lib_format` і `io_lib_pretty` на C++ ([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)).
+`io_lib_format` і `io_lib_pretty` на C++
+([io_format.cpp](../runtime/src/builtins/io_format.cpp),
+[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Функції введення
+`io` написані на Erlang у [бібліотеці](library.md#contents).
 
 ## Виклики
 
 - `io:format(Format)` — це `io:format(Format, [])`. Обидва повертають `ok`.
   `io:fwrite/1,2,3` — те саме, що `io:format/1,2,3`; `io:nl/0,1` пишуть
   символ нового рядка.
-- Пристрої `io:format/3`, `io:fwrite/3`, `io:put_chars/2`
-  і `io:nl/1`: `standard_io` і `user` — це стандартний вивід,
-  `standard_error` — стандартний потік помилок (спершу скидається стандартний
-  вивід, тож обидва зберігають порядок). Pid або атом, зареєстрований за ним,
-  є сервером I/O: текст надсилається йому як UTF-8 через `file:write/2`
-  (відкритий файл модуля `file` з Clause), і виклик повертає те, що повертає
-  він. Незареєстрований атом дає `badarg`, мертвий pid — `error:terminated`,
-  сам викликач — `error:calling_self`, будь-який інший терм —
-  `function_clause`, як в OTP.
-- `io:put_chars(Chardata)` пише chardata: символи Unicode, бінарні дані
-  (binary) в UTF-8 і вкладені списки, що закінчуються на `[]` або binary.
-  Будь-що інше (атом, сурогат, некоректний UTF-8, bitstring) породжує
-  `badarg`.
+- Пристрої `io:format/3`, `io:fwrite/3`, `io:put_chars/2` і `io:nl/1`:
+  `standard_io` і `user` — це стандартний вивід, `standard_error` —
+  стандартний потік помилок (спершу скидається стандартний вивід, тож обидва
+  зберігають порядок). Pid або атом, зареєстрований за ним, є сервером I/O:
+  текст надсилається йому як UTF-8 через `file:write/2` (відкритий файл модуля
+  `file` з Clause), і виклик повертає те, що повертає він. Незареєстрований
+  атом дає `badarg`, мертвий pid — `error:terminated`, сам викликач —
+  `error:calling_self`, будь-який інший терм — `function_clause`, як в OTP.
+- `io:put_chars(Chardata)` пише chardata: символи Unicode, binary в UTF-8 і
+  вкладені списки, що закінчуються на `[]` або binary. Будь-що інше (атом,
+  сурогат, некоректний UTF-8, bitstring) породжує `badarg`.
 - Текст будується повністю, а потім записується як UTF-8, як це робить
   пристрій стандартного виводу OTP у режимі `-noshell` (кодування `unicode`).
   Помилка нічого не записує. Відхилений запис — це збій runtime
   `output_failure` (код виходу 70).
 - Кваліфіковані виклики, `fun io:format/2`, `apply(io, format, Args)` і
-  `M:format(...)` усі доходять до вбудованих функцій. Інші функції `io`
-  зберігають діагностику `unknown module io`. Модуль пакета з ім'ям `io` не
-  замінює вбудовані функції (`io` в OTP є «липким», sticky).
+  `M:format(...)` усі доходять до вбудованих функцій. Модуль пакета з ім'ям
+  `io` не замінює вбудовані функції (`io` в OTP є «липким», sticky,
+  [реєстрація](builtins.md#registration)).
 
 ## Формати
 

@@ -123,7 +123,7 @@ export const pt = {
           "Inferência de tipos com tipos de funções por cláusula; uma especificação que contradiz os tipos de argumentos inferidos é um erro de compilação, as restantes contradições são avisos",
           "A inferência abrange apenas o código alcançado pela função de entrada; os resultados para o OTP e para os diretórios de bibliotecas configurados ficam em cache por módulo",
           "LLVM O0, O2 e Os; objetos, IR e bitcode por módulo; instantâneos de IR e listagens de assembly anotados com o código Erlang",
-          "O código gerado aloca memória, testa tipos, lê tuplos, listas e maps, constrói e faz correspondência de binaries, cria closures e efetua aritmética de vírgula flutuante inline, chamando o runtime apenas nos caminhos lentos",
+          "O código gerado aloca memória, testa tipos, lê tuplos, listas e maps, concatena listas curtas, constrói e faz correspondência de binaries, cria closures e efetua aritmética de vírgula flutuante inline, chamando o runtime apenas nos caminhos lentos",
           "O2 elimina verificações de tipo e de forma comprovadas pela inferência, com um número limitado de variantes especializadas por tipo",
           "Otimização em tempo de ligação entre módulos com --lto",
           "Os executáveis omitem as exportações que a função de entrada não consegue alcançar; --keep-exports mantém-nas todas",
@@ -139,7 +139,7 @@ export const pt = {
           "Biblioteca de runtime em C++23 sem LLVM, ligada a cada programa",
           "Inteiros de precisão arbitrária, vírgula flutuante, átomos, tuplos, listas, maps, bitstrings, records, funs, pids, portas e referências",
           "Processos, mensagens, receive seletivo, links, monitores, nomes registados e temporizadores em várias threads do escalonador, cada uma com a sua própria fila de execução",
-          "Heap por processo com coletor de lixo geracional por cópia, min_heap_size, binaries e maps grandes fora do heap, áreas de literais de módulo e limites de memória opcionais",
+          "Heap por processo com coletor de lixo geracional por cópia, min_heap_size, binaries partilhados fora do heap, áreas de literais de módulo e limites de memória opcionais",
           "Portas para ficheiros, E/S padrão, subprocessos e sockets TCP/UDP numa única thread de E/S orientada a eventos",
           "O módulo erlang: dicionário de processo, formato externo de termos com compressão, tempo e temporizadores, introspeção de processos, opções de spawn, aliases e hashing",
           "Todas as exportações do OTP 29 de um módulo da biblioteca do Clause compilam; as funções ainda não implementadas lançam not_implemented quando chamadas",
@@ -185,7 +185,7 @@ export const pt = {
     featured: {
       gettingStarted: {
         title: "Primeiros passos",
-        text: "Pré-requisitos: CMake, um compilador C++23, Clang, o SDK do LLVM, Boost e toml++.",
+        text: "Pré-requisitos: CMake, um compilador C++23, Clang, o SDK do LLVM 23, Boost e toml++; o CMake descarrega as restantes bibliotecas. O Erlang/OTP é opcional.",
       },
       building: {
         title: "Compilar o compilador",

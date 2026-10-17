@@ -1,17 +1,13 @@
 ---
 source: docs/native-records.md
-sourceCommit: 6ed3851c
-sourceSha256: 5383c5a0c72bed06730432be7a2605262122d7580d5a4e6124e01661d7e93086
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
+translatedAt: 2026-10-17
 ---
 # Native records
 
-Det avgränsar OTP 29:s record-former
-utöver vanliga tupel-records och fastställer deras representation, operationer
-och fel. Step 31B implementerade runtime-cellerna och `CLAUSE_record_v1`;
-31C kompilerar lokala native records, 31D kvalificerade och importerade former
-med `-export_record`/`-import_record`, 31E anonyma former. Tupel-records
-beskrivs i [termer](terms.md#records).
+OTP 29:s record-former utöver vanliga tupel-records: deras representation,
+operationer och fel. Tupel-records beskrivs i [termer](terms.md#records).
 
 OTP 29 markerar native records som experimentella. Fakta nedan kommer från de
 fastlåsta `maint-29`-källorna (`erl_lint`, `erl_expand_records`, `v3_core`,
@@ -20,18 +16,19 @@ fastlåsta `maint-29`-källorna (`erl_lint`, `erl_expand_records`, `v3_core`,
 
 ## Omfattning
 
-Alla tre former utöver tupel-records är valda. De delar en representation, så
-de behöver inget separat representationsbeslut:
+Alla tre former utöver tupel-records är implementerade och delar en
+representation:
 
-| Form | Syntax | Steg |
-| --- | --- | --- |
-| Native record, lokalt | `-record #r{...}.`, `#r{...}`, `X#r.f`, `X#r{...}`, mönster, `is_record/1,2,3` | 31C |
-| Kvalificerade och importerade | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, mönster; `-export_record`, `-import_record` | 31D |
-| Härledda (anonyma) | `X#_.f`, `X#_{...}`, mönstret `#_{...}` | 31E |
+| Form | Syntax |
+| --- | --- |
+| Native record, lokalt | `-record #r{...}.`, `#r{...}`, `X#r.f`, `X#r{...}`, mönster, `is_record/1,2,3` |
+| Kvalificerade och importerade | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, mönster; `-export_record`, `-import_record` |
+| Härledda (anonyma) | `X#_.f`, `X#_{...}`, mönstret `#_{...}` |
 
-Inte valt: reflektionsmodulen `records` (ett bibliotek, med bibliotekarbetet i
-step 39), `term_to_binary` (`RECORD_EXT`) och uppgradering av kod under drift
-(D01). Anrop till `records:*` förblir diagnostiken `unknown module`.
+Tillhandahålls inte: reflektionsmodulen `records` (anrop till `records:*` ger
+diagnostiken `unknown module`), `term_to_binary` av native records
+(`error:notsup`, [externt termformat](builtins.md#external-term-format)) och
+uppgradering av kod under drift.
 
 ## Representation
 
@@ -51,7 +48,7 @@ step 39), `term_to_binary` (`RECORD_EXT`) och uppgradering av kod under drift
   som OTP:s infångade definition gör. Varje operation efter konstruktion läser
   instansens deskriptor, aldrig koden som kör den.
 - Kopiering, skräpsamling, genomgång och verifiering behandlar cellen som en
-  tupel vars första nyttolastord är ospårat. Admission kräver en deskriptor
+  tupel vars första nyttolastord är ospårat. Godkännande kräver en deskriptor
   registrerad av en modul i samma runtime.
 
 ## Operationer
@@ -78,8 +75,8 @@ step 39), `term_to_binary` (`RECORD_EXT`) och uppgradering av kod under drift
   värdena i källkodsordning, till skillnad från en uppdatering av ett
   tupel-record. Tomma uppdateringar kontrolleras ändå.
 - Guards: endast fältåtkomst (ett fel får guarden att misslyckas) och
-  `is_record`. Konstruktion i en guard ger `creating a record in a guard is only supported
-  for tuple records`; uppdatering ger `illegal guard expression`.
+  `is_record`. Konstruktion i en guard ger `creating a record in a guard is only supported for
+  tuple records`; uppdatering ger `illegal guard expression`.
 - `is_record(X)` är sant endast för native records. `is_record(X, r)` med ett
   lokalt native `r` testar modul `M` och namn `r`; med `r` importerat från `m`
   testar den modul `m`. `is_record(X, m, r)` med atomer testar modul och namn;
@@ -113,20 +110,16 @@ Meddelanden följer `erl_lint`:
 ## Utskrift och ordning
 
 - `erlang:display/1` skriver ut `#m:r{a=1,b=2}`: inga mellanslag, fält i
-  definitionsordning. OTP skriver ut fält i atomtabellens indexordning, som
-  beror på i vilken ordning atomer skapades och inte går att återskapa; detta
-  är en dokumenterad skillnad, som för map-nycklar.
+  definitionsordning (OTP: atomtabellens indexordning,
+  [skillnader](differences.md#maps)).
 - Termordning: tupel < native record < map. Records jämförs efter modul, namn,
   exportflagga (falskt först), antal fält, fältnamn i definitionsordning, sedan
   värden i definitionsordning. `=:=` kräver dessutom samma fältordning; `==`
   jämför värden numeriskt (OTP:s kompilator viker vissa `==` på records till
-  `=:=`; runtime-regeln följs).
+  `=:=`, [skillnader](differences.md#maps); runtime-regeln följs).
 
 ## Behållna skillnader
 
-| OTP | Clause |
-| --- | --- |
-| Fältordningen för `display` följer atomindex | Definitionsordning |
-| Extern konstruktion för en modul som inte är laddad misslyckas tills den laddas | Varje modul i batchen laddas vid start; en modul utanför batchen misslyckas alltid |
-| Kompilatorn kan vika `==` mellan records till `=:=` (`#r{a=1} == #r{a=1.0}` är falskt) | Runtime-`==` (sant) |
-| Okända fält vid åtkomst/uppdatering/i mönster, kvalificerad konstruktion i den egna modulen utan värden, oanvända records eller records definierade i headerfiler: varningar | Inga varningar |
+Fältordning vid utskrift, vikning av `==`, extern konstruktion för moduler som
+inte är laddade och saknade varningar för records finns beskrivna i
+[skillnader](differences.md#maps).

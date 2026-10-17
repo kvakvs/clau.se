@@ -76,8 +76,10 @@ scripts/             build helper scripts (e.g. docs sync)
 - Accessibility: semantic elements (`header`, `nav`, `main`, `footer`, `button`,
   `a`), visible focus styles, `aria-label` on icon-only buttons, `lang`
   attribute on `<html>` updated to the active locale.
-- Use `next/link` for internal navigation, plain `<a>` with
-  `rel="noopener noreferrer"` for external links.
+- Use plain `<a>` for internal links, not `next/link` or `router.push`: every
+  navigation is a full page load, so the build drops the RSC payload files
+  (`scripts/prune-export.mjs` deletes `out/**/*.txt`, about 4 per page). Add
+  `rel="noopener noreferrer"` to external links.
 
 ## Tailwind CSS
 

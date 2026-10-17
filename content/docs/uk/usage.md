@@ -1,178 +1,87 @@
 ---
 source: docs/usage.md
-sourceCommit: 6ed3851c
-sourceSha256: d4118cc040e610cc84df916720e96a6009b90b6a1cbfe086434dc5800fe49461
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 06562916f7abbce822d9a5ca87d42cc0b3306de611e06ebce33ca5b2bd10d101
+translatedAt: 2026-10-17
 ---
 # Використання компілятора
 
-```sh
-./build/debug/bin/clau --parse-check examples/project/src/main.erl
-./build/debug/bin/clau --print-pp -I include -DDEBUG examples/project/src/main.erl
-./build/debug/bin/clau --print-ast examples/project/src/main.erl
-```
-
-У macOS `./run-macos.sh --parse-check examples/project/src/main.erl` спочатку
-виконує збирання, а потім запускає найновіший виконуваний файл, передаючи всі
-аргументи без змін. Він приймає перевизначення через змінні середовища
-`TOOL_BUILD_DIR`, `BUILD_TYPE` і `JOBS`.
-
-```text
-clau [options] <source.erl>...
-  --project <path>        Read a TOML project instead of positional sources
-  --target <name>         Select a target; repeat for more (default: all)
-  --new-project <filename>  Create an annotated starter; append .toml when needed
-  --preprocess-check       Check preprocessing only
-  --parse-check            Preprocess and check syntax
-  --print-pp               Print expanded Erlang source
-  --print-ast              Print an indented syntax tree
-  --print-source           Print each module as Erlang source
-  --print-abstr            Print each module as OTP abstract format forms
-  --parse-transform <mod>  Apply a parse transform to every module
-  --transform-path <dir>   Directory of precompiled transform modules (.beam)
-  --erl <path|none>        Host Erlang/OTP 29 erl that runs parse transforms
-  --print-inputs           List the batch's sources, including modules added by reference; do not compile
-  --print-env              Print the resolved compile environment as TOML and exit
-  --print-types            Print each module as source annotated with inferred types
-  --print-ir               Print verified IR with Erlang source comments before LLVM optimization
-  --print-optimized-ir     Print verified IR with Erlang source comments after LLVM optimization
-  --print-asm              Print each module's assembly with IR and Erlang source comments
-  --emit obj|llvm-ir|llvm-bc  Write one artifact per module
-  --artifact-dir <dir>     Override the artifact root (requires --emit)
-  --target-triple <triple>  Select the machine/OS/ABI
-  -O0 / -O2 / -Os         Generic O0 (default) / speed / size optimization
-  --no-type-specialization  Disable compiler variants at either optimization level
-  -g                      Emit Erlang line tables; executables keep them for debuggers
-  --lto                   Link modules as bitcode with link-time optimization (LLD targets)
-  --keep-exports          Keep every export of an executable callable (default: unreachable ones left out)
-  --build-dir <dir>       Keep temporary files and caches below <dir> (projects default: <manifest-dir>/build)
-  --no-cache              Neither read nor write build caches
-  --cache-inference-in-dirs <pattern>  Cache inference results of modules in matching directories (besides OTP's)
-  --verbose               Trace files and compilation phases to stderr
-  --print-stage-times     Print preprocess/parse/transform time per file, compile time per batch and link time to stderr
-  -I, --include <dir>      Add an include directory (last supplied searched first)
-  -D, --define <name[=term]>  Define a macro (default value: true)
-  --app-dir <app=dir>      Set an include_lib application directory
-  --enable-feature <name>  Enable a language feature
-  --disable-feature <name> Disable a language feature
-  -h, --help              Show all options
-  --version               Show version
-  --                      Treat remaining arguments as input paths
-```
-
-Шляхи з пробілами та значення макросів із пунктуацією оболонки беріть у лапки:
+Зберіть програму з вихідних файлів; точкою входу є єдиний модуль, що
+експортує `main/1`, який отримує аргументи командного рядка як рядки:
 
 ```sh
-./build/debug/bin/clau --parse-check -I include '-DVERSION={1,0}' \
-  --app-dir myapp=examples/project examples/project/src/main.erl
+clau -O2 -o demo examples/compile/answer.erl examples/compile/client.erl
+./demo
+clau -o app --entry app:start src/*.erl     # app:start/1, else app:start/0
 ```
 
-Режими перевірки нічого не виводять у разі успіху; діагностика йде в stderr.
-Режими друку пишуть у stdout і можуть поєднуватися: `--print-pp --print-ast`
-друкує вихідний код перед деревом для кожного вхідного файлу. Додавання
-`--preprocess-check` не вимикає розбору, запитаного через `--parse-check` або
-`--print-ast`. Помилки можуть залишити частково надрукований вивід.
+У Windows `-o` додає `.exe`, коли шлях не має розширення. Без `-o` позиційні
+вхідні файли компілюються в пам'яті й видають лише діагностику. Вибір точки
+входу, аргументи, код завершення та компонування описано у
+[виконуваних файлах](executables.md), а [приклад скомпільованого модуля](../examples/compile/)
+показує хост на C++, який сам компонує згенеровані об'єкти.
 
-Без дії перевірки/друку вхідні файли та `--project` проходять увесь конвеєр
-аж до перевірених нативних об'єктних буферів у пам'яті. Позиційні вхідні файли
-утворюють один пакет; кожна ціль проєкту утворює власний пакет. `--emit` записує
-артефакти в `build/aot` або `--artifact-dir`; проєкти додають закодовану назву
-цілі й використовують корінь за замовчуванням відносно маніфесту. Імена файлів
-кодують ідентичність модуля. `-o PATH` компонує позиційні вхідні файли або одну
-вибрану ціль проєкту у виконуваний файл за допомогою Clang і бібліотеки runtime
-(точка входу: `--entry MODULE[:FUNCTION]`, `entry` з маніфесту або єдиний
-модуль, що експортує `main/1`). Без `-o` цілі проєкту з ключем `output` або
-`entry` компонуються у свій `output` з TOML (за замовчуванням
-`build/<target>`), а публікація відбувається лише після компонування всіх
-вибраних цілей. Контракт щодо точки входу, аргументів і коду завершення див. у
-[виконуваних файлах](executables.md).
+Проєкти описують цілі в TOML; кожна ціль із ключем `output` або `entry`
+компонується у свій вихідний файл (типово `build/<target>`), а вихідні файли
+замінюються лише після успіху всіх вибраних цілей:
 
 ```sh
-clau -O2 -o demo answer.erl client.erl && ./demo
-clau -O2 --emit obj answer.erl client.erl
-clau --print-ir --print-optimized-ir -O2 answer.erl
-clau --print-asm -O2 answer.erl
-clau --print-types answer.erl client.erl
+clau --new-project myapp                        # writes an annotated myapp.toml
+clau --project myapp.toml                       # build every target
+clau --project examples/project/project.toml --target app --parse-check
 ```
 
-Перегляд IR дозволяє обидва етапи разом і зупиняється перед генерацією
-об'єктного коду. Кілька знімків є окремими модулями; для окремих файлів
-асемблера використовуйте `--emit llvm-ir`. `--print-asm` друкує асемблер цілі для
-кожного модуля, де кожна послідовність інструкцій має коментар з інструкцією
-IR і рядком Erlang, з яких вона походить
-([лістинги асемблера](compile.md#assembly-listings)). Перегляд типів
-зупиняється перед LLVM і друкує кожен модуль як вихідний код із виведеними
-сигнатурами функцій та завершальними коментарями `% Type` до найзовнішнього
-виразу кожного рядка. Він приймає параметри препроцесування/проєкту/
-докладності, але відхиляє інші дії, призначення виводу і політику бекенду. Див.
-[параметри компіляції](compile.md).
+Маніфест, пошук вихідних файлів, ігноровані вихідні файли, каталоги збирання й
+кеші описано в [проєктах](projects.md).
 
-`--verbose` друкує `[pp] <filename>` для вихідних файлів і розв'язаних включень
-препроцесора та `[parse] <filename>`, коли кожен вихідний файл надходить до
-парсера. Вкладені та бібліотечні включення трасуються під час завантаження;
-неактивні включення пропускаються. Парсер споживає розгорнуті токени поступово,
-тож його траса може передувати трасам включень. `[comp]` додає семантичні фази
-та фази бекенду, а також обмежені рішення щодо спеціалізації в момент їхнього
-початку. Трасування йде в stderr у кожному режимі, зокрема для проєктів.
+Поширені параметри (`clau --help` перелічує всі):
 
-`--print-stage-times` друкує `[time] <stage> <subject>: <milliseconds> ms` у
-stderr після завершення кожного етапу: `preprocess` (читання й
-препроцесування), `parse` і, для модулів із parse transforms, `transform`
-(запуск `erl` хоста й імпорт його форм) для кожного вихідного файлу, `compile`
-(від аналізу до генерації об'єктного коду) один раз на пакет із кількістю
-модулів і ціллю проєкту, і `link` для кожного виконуваного файлу з його
-остаточним шляхом. Парсер забирає форми з препроцесора, тож два часи для
-кожного файлу вимірюються окремо, хоча етапи чергуються.
+| Параметр | Призначення |
+| --- | --- |
+| `-o, --output PATH`, `--entry M[:F[/A]]` | Скомпонувати виконуваний файл і вибрати точку входу |
+| `--project PATH`, `--target NAME` | Зібрати проєкт TOML або вибрані цілі |
+| `-O0`, `-O2`, `-Os`, `--no-type-specialization` | Оптимізація (типово O0; O2 додає спеціалізацію за типами) |
+| `-g`, `--lto`, `--keep-exports` | Таблиці рядків для налагодження, оптимізація під час компонування, збереження недосяжних експортів |
+| `-I DIR`, `-D NAME[=TERM]`, `--app-dir APP=DIR` | Шляхи включень, макроси, корені `include_lib` |
+| `--enable-feature F`, `--disable-feature F` | Мовні можливості OTP |
+| `--parse-transform M`, `--transform-path DIR`, `--erl PATH\|none` | Parse transforms і OTP хоста, що їх виконує |
+| `--emit obj\|llvm-ir\|llvm-bc`, `--artifact-dir DIR` | Записати один артефакт на модуль (типовий корінь `build/aot`) |
+| `--target-triple TRIPLE`, `--linker PATH`, `--runtime-library PATH` | Ціль, драйвер компонувальника й архів runtime |
+| `--build-dir DIR`, `--no-cache`, `--cache-inference-in-dirs PAT` | Тимчасові файли й кеші збирання |
+| `--verbose`, `--print-stage-times` | Трасування фаз; час кожного етапу в stderr |
 
-Коди виходу: **0** — успіх (зокрема з попередженнями), **1** — помилки
-вихідного коду/проєкту, **2** — помилки використання або невідомі назви цілей.
-Кожен вхідний файл має незалежний стан препроцесування; будь-яка помилка
-вихідного коду робить усю команду невдалою.
+Дії перегляду друкують у stdout і не компілюють виконуваних файлів:
 
-Синтаксичні перевірки не перевіряють семантику і не виконують parse transform.
-Режими перевірки/друку не створюють вихідних файлів і відхиляють `-o`/`--output`.
-Компіляція за замовчуванням без `-o` не записує виконуваного файлу.
+| Параметр | Друкує |
+| --- | --- |
+| `--preprocess-check`, `--parse-check` | Нічого; лише діагностику |
+| `--print-pp`, `--print-ast`, `--print-source`, `--print-abstr` | Препроцесований вихідний код, синтаксичне дерево, вихідний код, абстрактний формат OTP |
+| `--print-inputs` | Кожен вихідний файл пакета, зокрема бібліотечні модулі, додані за посиланням |
+| `--print-env` | Розв'язане середовище компіляції як TOML |
+| `--print-types` | Вихідний код, анотований виведеними типами |
+| `--print-ir`, `--print-optimized-ir`, `--print-asm` | IR до/після оптимізації LLVM, асемблер із коментарями IR та Erlang |
 
-Докладніше див. [препроцесування](preprocessor.md),
-[використання парсера](parser.md) і [стан валідації](validation.md).
+`clau` завершується з кодом 0 у разі успіху (зокрема з попередженнями), 1 —
+для помилок вихідного коду чи проєкту і 2 — для помилок використання.
+Докладніше: [компіляція](compile.md), [препроцесування](preprocessor.md),
+[парсер](parser.md).
 
-## Проєкти
+Parse transforms (`-compile({parse_transform, M})`) виконуються на
+Erlang/OTP 29, встановленому на хості (`erl` у `PATH` або `--erl`), як це
+робив би `erlc`; OTP потрібен лише для компіляції, але ніколи для виконуваного
+файлу. Transforms, окрім власних transforms OTP, треба спершу скомпілювати в
+`.beam` ([parse transforms](transforms.md)).
 
-Запустіть доданий приклад із двома цілями:
+### Параметри runtime
+
+Програми читають параметри runtime зі змінної середовища `CLAUSE_FLAGS` і з
+початкових аргументів командного рядка, аж до першого іншого аргументу або
+`--`:
 
 ```sh
-./build/debug/bin/clau --parse-check --project examples/project/project.toml
-./build/debug/bin/clau --print-ast --project examples/project/project.toml --target app
-./build/debug/bin/clau --preprocess-check --project examples/project/project.toml --target tests --target app
+./demo --schedulers 4 --max-heap 100000000 -- arg1 arg2
 ```
 
-Створіть анотований проєкт в існуючому каталозі:
-
-```sh
-mkdir -p build/project-demo
-./build/debug/bin/clau --new-project build/project-demo/demo
-mkdir -p build/project-demo/src
-cp examples/project/src/main.erl build/project-demo/src/main.erl
-./build/debug/bin/clau --parse-check --project build/project-demo/demo.toml
-```
-
-Створення записує лише запитаний файл TOML і відмовляється перезаписувати
-наявні файли. Початковий шаблон містить одну ціль `app`, що використовує `src`,
-з усіма параметрами фронтенду за замовчуванням. Перед перевіркою додайте
-вихідні файли.
-
-Шляхи в маніфесті задаються відносно файлу TOML; шляхи в CLI — відносно
-каталогу виклику. За замовчуванням виконуються всі цілі. Повторюйте `--target`,
-щоб вибрати впорядковану підмножину; повторні вибори виконуються один раз.
-`sources` підтримує буквальні імена файлів і шаблони `*`, `?`, `**`;
-`source_dirs` рекурсивно знаходить файли `.erl`. Шляхи пошуку вихідного коду
-лише знаходять явно перелічені файли. Шляхи включень із CLI мають пріоритет,
-корені застосунків із CLI замінюють однойменні, налаштування можливостей із CLI
-застосовуються останніми, а дублікати визначень макросів лишаються помилками.
-
-Див. [формат проєктів і робочі процеси](projects.md). Проєкти підтримують кожну
-дію CLI; генерація виконуваних файлів лишається нереалізованою.
-
-[Каталог допущених guard](guards.md) містить перевірені `is_integer/3`,
-кваліфіковані виклики і застарілі перевірки верхнього рівня; ідентичності
-процесу/вузла і native record зберігають явну діагностику можливостей.
+`--schedulers N`, `--max-atoms N`, `--max-heap BYTES`, `--max-stack BYTES`,
+`--max-memory BYTES` і `--profile FILE` описано в
+[параметрах runtime](executables.md#runtime-options).

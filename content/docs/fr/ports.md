@@ -1,38 +1,20 @@
 ---
 source: docs/ports.md
-sourceCommit: 6ed3851c
-sourceSha256: 60dc15d155f211fa34c0d05254cd2430ae96643f87d84d0c0ed2da0965711e49
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 59defde90218e0d1374492f8e7fccd5a737dec02f9c4fc9f5f94fc392a26789f
+translatedAt: 2026-10-17
 ---
 # Ports
 
-Elle remplace la décision du
-step 53 (pas de ports, [processus](processes.md#ports)) : les programmes
-disposent des ports tels qu'OTP les définit, et les E/S externes passent par
-eux. Les steps 57B–57F l'implémentent ; chaque section indique son step. Ce
-contrat fixe la représentation, le modèle de pilotes et le thread d'E/S avant
-qu'une source puisse ouvrir un port.
-
-Implémenté : les identités, la table des ports, les builtins et messages de
-ports, les liens, moniteurs, noms et signaux de sortie des ports, et les ports
-`fd` en sortie seule (`runtime/src/scheduler/ports.cpp`,
-`runtime/src/builtins/erlang/ports.cpp`, `runtime/src/ports/` ; golden OTP
-`executables_port_identities`) ; le thread d'E/S et l'entrée des ports `fd`
-avec découpage en flux, en paquets et en lignes
-(`runtime/src/ports/io*.cpp` ; golden OTP `executables_port_input`) ; les ports
-de sous-processus, `os:type/0`, `os:getenv/1` et `os:cmd/1`
-(`runtime/src/ports/spawn*.cpp`, `library/stdlib/os.erl` ; golden OTP
-`executables_port_spawn`) ; le pilote de fichiers, le sous-ensemble `file` de
-la bibliothèque et l'entrée standard via `io:get_line`/`io:get_chars`
-(`runtime/src/ports/file.cpp`, `library/stdlib/{file,io}.erl` ;
-golden OTP `executables_file_io`) ; les sockets (golden OTP
-`executables_sockets`) ; un thread d'E/S unique piloté par les événements
-pour tous les types de ports (`runtime/src/ports/reactor.cpp` ;
-golden OTP `executables_many_ports`, test du runtime `runtime_port_io`) ; les
-tâches de ports sur les workers de l'ordonnanceur
-(`runtime/src/scheduler/ports.cpp` ; golden OTP `executables_port_fairness`) ;
-les ports occupés et l'entrée bornée (goldens OTP
-`executables_busy_ports`, `executables_slow_owner`).
+Les programmes disposent des ports tels qu'OTP les définit, et les E/S externes
+passent par eux. La table des ports, les règles de sortie et les tâches de
+ports se trouvent dans `runtime/src/scheduler/ports.cpp`, les builtins dans
+`runtime/src/builtins/erlang/ports.cpp`, les pilotes et le thread d'E/S dans
+`runtime/src/ports/`. Goldens OTP : `executables_port_identities`,
+`executables_port_input`, `executables_port_spawn`, `executables_file_io`,
+`executables_sockets`, `executables_many_ports`, `executables_port_fairness`,
+`executables_busy_ports`, `executables_slow_owner` ; test du runtime
+`runtime_port_io`.
 
 ## Identité
 
@@ -48,7 +30,7 @@ les ports occupés et l'entrée bornée (goldens OTP
   dans OTP ; les ports se comparent par numéro.
 - L'identité d'un port fermé reste valide : `is_port/1` reste vrai,
   `port_info/1,2` répondent `undefined`, les envois vers lui sont abandonnés.
-- Les ports sont des immédiats, donc la copie, la collecte et les messages ne
+- Les ports sont des immédiats, donc la copie, le ramassage et les messages ne
   nécessitent rien de nouveau.
 
 ## Table des ports et propriété
@@ -85,22 +67,25 @@ les ports occupés et l'entrée bornée (goldens OTP
 
 ## Builtins et messages de ports
 
-| Builtin ou message | Step |
-| --- | --- |
-| `is_port/1` vrai pour les ports, `port_to_list/1`, `list_to_port/1`, `ports/0` | 57B |
-| `port_info/1,2` (`name`, `links`, `id`, `connected`, `input`, `output`, `os_pid`, `monitors`, `monitored_by`, `registered_name`) | 57B |
-| `port_close/1`, `port_connect/2`, `port_command/2,3` | 57B |
-| `Port ! {Pid, {command, Data}}`, `{Pid, close}`, `{Pid, {connect, New}}` | 57B |
-| `link/1`, `unlink/1`, `monitor(port, P)`, `exit/2` sur des ports ; `register/2` d'un port | 57B |
-| `port_control/3`, `port_call/3` | 57B (badarg pour les pilotes sans contrôle) ; utilisés par les pilotes de 57E/57F |
-| `open_port({fd, In, Out}, Opts)` | 57B pour la sortie ; entrée à partir de 57C |
-| `open_port({spawn, Command} \| {spawn_executable, File}, Opts)` | 57D |
-| Pilotes internes de la bibliothèque du projet (`file`, sockets) | 57E, 57F |
+- `is_port/1` (vrai pour les ports), `port_to_list/1`, `list_to_port/1`,
+  `ports/0`.
+- `port_info/1,2` : `name`, `links`, `id`, `connected`, `input`, `output`,
+  `os_pid`, `monitors`, `monitored_by`, `registered_name`, `queue_size`
+  ([ports occupés](#busy-ports)).
+- `port_close/1`, `port_connect/2`, `port_command/2,3` ; les messages
+  `Port ! {Pid, {command, Data}}`, `{Pid, close}`, `{Pid, {connect, New}}`.
+- `link/1`, `unlink/1`, `monitor(port, P)`, `exit/2` sur des ports ;
+  `register/2` d'un port.
+- `port_control/3`, `port_call/3` : `badarg` pour les pilotes sans contrôle ;
+  le pilote `file` et les pilotes de sockets sont pilotés par
+  `port_control/3`.
+- `open_port({fd, In, Out}, Opts)`, `open_port({spawn, Command}, Opts)`,
+  `open_port({spawn_executable, File}, Opts)`, et les pilotes internes de la
+  bibliothèque du projet (`file`, sockets).
 
-Les builtins remplacent les diagnostics `[ports] notimpl` du step 53 ; la
-fonctionnalité `ports` devient implémentée en 57B. Les erreurs suivent OTP :
-`badarg` pour un port fermé ou invalide et pour de mauvais arguments, la
-raison POSIX (`enoent`, `eacces`) comme `error` pour une ouverture qui échoue.
+Les erreurs suivent OTP : `badarg` pour un port fermé ou invalide et pour de
+mauvais arguments, la raison POSIX (`enoent`, `eacces`) comme `error` pour une
+ouverture qui échoue.
 
 Les messages d'un port vont à son processus connecté :
 `{Port, {data, Data}}`, `{Port, eof}` (option `eof`),
@@ -118,8 +103,8 @@ connexion).
 | `eof` | `{Port, eof}` en fin d'entrée ; le port reste ouvert jusqu'à sa fermeture |
 | `exit_status` | `{Port, {exit_status, S}}` lorsque le programme se termine (ports spawn) |
 | `use_stdio` (par défaut), `nouse_stdio`, `stderr_to_stdout`, `in`, `out`, `hide` | Comme dans OTP (`hide` n'a aucun effet) |
-| `{args, List}`, `{arg0, A}`, `{env, Env}`, `{cd, Dir}` | Ports spawn (57D) |
-| `{busy_limits_port, {Low, High} \| disabled}` | Octets de sortie en file qui rendent le port occupé ([ports occupés](#busy-ports), 57G3) |
+| `{args, List}`, `{arg0, A}`, `{env, Env}`, `{cd, Dir}` | Ports spawn ([sous-processus](#subprocesses)) |
+| `{busy_limits_port, {Low, High} \| disabled}` | Octets de sortie en file qui rendent le port occupé ([ports occupés](#busy-ports)) |
 
 Sans `eof`, la fin de l'entrée ferme le port avec la raison `normal`, après le
 message `exit_status` lorsqu'il a été demandé. Les options inconnues donnent
@@ -132,16 +117,18 @@ il ouvre la ressource, accepte la sortie (`port_command`), répond à
 `port_control/3` lorsqu'il prend en charge le contrôle, signale l'entrée et
 les erreurs sous forme d'événements et se ferme. Pilotes :
 
-- `fd` : descripteurs existants, sortie écrite de façon synchrone (57B),
-  entrée via le thread d'E/S (57C).
-- `spawn` : un programme enfant dont stdin et stdout sont des tubes (57D).
+- `fd` : descripteurs existants, sortie écrite de façon synchrone, entrée via
+  le thread d'E/S.
+- `spawn` : un programme enfant dont stdin et stdout sont des tubes
+  ([sous-processus](#subprocesses)).
 - `file` : un fichier ouvert du module `file` de la bibliothèque du projet ;
   ses opérations sont des appels synchrones à `port_control/3` qui peuvent
   bloquer le worker exécutant l'appelant pendant la durée des E/S disque,
-  comme le font les ordonnanceurs dirty I/O d'OTP (57E).
+  comme le font les ordonnanceurs dirty I/O d'OTP
+  ([fichiers](#standard-io-and-files)).
 - `tcp_inet`, `udp_inet` : sockets de `gen_tcp`, `gen_udp` et `inet` de la
   bibliothèque du projet, sur Boost.Asio ; les connexions, acceptations et
-  réceptions sont asynchrones (57F, [sockets](#sockets-57f)).
+  réceptions sont asynchrones ([sockets](#sockets)).
 
 Les pilotes internes de `file` et des sockets sont ouverts avec
 `{spawn_driver, Name}` sous des noms propres à Clause, et leurs opérations
@@ -151,10 +138,10 @@ modules de la bibliothèque, pas les protocoles `prim_inet`/`efile` d'OTP.
 ## Thread d'E/S
 
 Un thread d'E/S par runtime (`detail::Reactor`,
-`runtime/src/ports/reactor.hpp`) exécute un `io_context` de
-Boost.Asio : un port de complétion d'E/S sous Windows, `epoll` sous Linux,
-`kqueue` sous macOS. Le premier port qui en a besoin le démarre ; il sert tous
-les types de ports, de sorte qu'un port ne coûte aucun thread propre :
+`runtime/src/ports/reactor.hpp`) exécute un `io_context` de Boost.Asio : un
+port de complétion d'E/S sous Windows, `epoll` sous Linux, `kqueue` sous
+macOS. Le premier port qui en a besoin le démarre ; il sert tous les types de
+ports, de sorte qu'un port ne coûte aucun thread propre :
 
 - Tubes des programmes lancés : tubes nommés en mode overlapped sous Windows
   (`windows::stream_handle` ; les tubes anonymes ne peuvent pas être en mode
@@ -171,7 +158,7 @@ les types de ports, de sorte qu'un port ne coûte aucun thread propre :
   sous Linux et macOS, un gestionnaire de `SIGCHLD` (`signal_set`) et
   `waitpid(WNOHANG)` récupèrent chaque programme surveillé, y compris après la
   fermeture de son port.
-- Sockets ([sockets](#sockets-57f)).
+- Sockets ([sockets](#sockets)).
 - Exception : un handle d'entrée `fd` sous Windows (une console ou un tube
   anonyme hérité) ne peut pas être en mode overlapped, il est donc lu par un
   thread bloquant qui lui est propre, comme le font libuv et ERTS ; fermer le
@@ -179,18 +166,27 @@ les types de ports, de sorte qu'un port ne coûte aucun thread propre :
 
 `runtime/src/ports/io*.cpp` contiennent les E/S des ports
 (`detail::IoService`) : ses méthodes ne font que poster du travail vers le
-thread d'E/S, où réside tout l'état des E/S.
+thread d'E/S, où réside tout l'état des E/S. Le thread d'E/S transmet l'entrée
+telle qu'elle a été lue : octets bruts, fin d'entrée, erreur de lecture, code
+de sortie d'un programme. Les événements de sockets (messages, connexions
+acceptées) sont transmis de la même façon.
 
-- Le thread d'E/S transmet l'entrée telle qu'elle a été lue : octets bruts,
-  fin d'entrée, erreur de lecture, code de sortie d'un programme. Les
-  événements de sockets (messages, connexions acceptées) sont transmis de la
-  même façon.
+Le prototype `tests/prototypes/poller/` (`run.py --wsl`) montre le réveil sous
+Windows (port de complétion) et sous Linux WSL (`poll()`) : un thread
+d'ordonnanceur inactif se réveille 9 à 91 µs après l'entrée, et l'arrêt
+stoppe le thread d'E/S sans entrée.
+
+À la fin du programme, chaque port est fermé (les programmes enfants voient la
+fin de l'entrée ; ils ne sont pas tués, comme dans OTP) et le thread d'E/S
+s'arrête : il est joint en dehors du mutex de l'exécuteur, car une livraison
+en cours prend ce mutex ; un lecteur `fd` Windows bloqué dans une lecture qui
+ne peut pas être annulée est détaché et ne délivre plus rien.
 
 ## Tâches de ports
 
-Un port est ordonnancé comme un processus : ce que le thread d'E/S
-transmet attend dans le port, et le port attend dans la file des ports de
-l'exécuteur jusqu'à ce qu'un worker de l'ordonnanceur exécute sa tâche.
+Un port est ordonnancé comme un processus : ce que le thread d'E/S transmet
+attend dans le port, et le port attend dans la file des ports de l'exécuteur
+jusqu'à ce qu'un worker de l'ordonnanceur exécute sa tâche.
 
 - Les workers prennent tour à tour une tâche de port et une tranche de temps
   de processus tant que les deux files ont du travail, de sorte qu'un port
@@ -217,26 +213,14 @@ l'exécuteur jusqu'à ce qu'un worker de l'ordonnanceur exécute sa tâche.
   agissent immédiatement sur le worker de l'expéditeur, comme le fait ERTS
   pour un port qui n'est pas occupé : un port `fd` écrit sa sortie
   immédiatement sur le worker de l'appelant ; les pilotes de tubes et de
-  sockets mettent la sortie en file et laissent le thread d'E/S l'écrire
-  (57D, 57F, 57G1) ; un port occupé suspend l'expéditeur
-  ([ports occupés](#busy-ports)).
-
-Le prototype `tests/prototypes/poller/` (`run.py --wsl`) montre le réveil sous
-Windows (port de complétion) et sous Linux WSL (`poll()`) : un thread
-d'ordonnanceur inactif se réveille 9 à 91 µs après l'entrée, et l'arrêt
-stoppe le thread d'E/S sans entrée.
-
-À la fin du programme, chaque port est fermé (les programmes enfants voient la
-fin de l'entrée ; ils ne sont pas tués, comme dans OTP) et le thread d'E/S
-s'arrête : il est joint en dehors du mutex de l'exécuteur, car une livraison
-en cours prend ce mutex ; un lecteur `fd` Windows bloqué dans une lecture qui
-ne peut pas être annulée est détaché et ne délivre plus rien.
+  sockets mettent la sortie en file et laissent le thread d'E/S l'écrire ; un
+  port occupé suspend l'expéditeur ([ports occupés](#busy-ports)).
 
 ## Ports occupés
 
-La sortie qu'un pilote met en file pour le thread d'E/S (tubes des
-programmes lancés) est comptée par rapport aux limites d'occupation du port,
-le `busy_limits_port` d'OTP (par défaut : haute 8 192 octets, basse 4 096 ;
+La sortie qu'un pilote met en file pour le thread d'E/S (tubes des programmes
+lancés) est comptée par rapport aux limites d'occupation du port, le
+`busy_limits_port` d'OTP (par défaut : haute 8 192 octets, basse 4 096 ;
 `{busy_limits_port, {Low, High}}` ou `disabled` comme option de
 `open_port/2`, limites d'au moins 1, une limite basse supérieure à la haute
 étant abaissée à celle-ci) :
@@ -310,16 +294,15 @@ stdin et stdout sont des tubes du port :
 
 ## E/S standard et fichiers
 
-- `io:format`, `io:put_chars` et `erlang:display` continuent d'écrire
-  directement sur la sortie standard ([io](io.md)). L'entrée standard est lue
-  par un unique processus serveur de la bibliothèque, enregistré sous
-  `clause_stdin` et démarré à la première utilisation, qui possède un port
-  `{fd, 0, 1}` : `io:get_line/1,2` écrit l'invite, puis renvoie la ligne
-  suivante avec son saut de ligne, le reste de l'entrée sans saut de ligne à
-  la fin, puis `eof` ; `io:get_chars/2,3` renvoie jusqu'à `N` caractères,
-  puis `eof`. Les requêtes de plusieurs processus sont servies dans l'ordre
-  d'arrivée. L'entrée est renvoyée sous forme d'octets (un élément de liste
-  par octet).
+- `io:format`, `io:put_chars` et `erlang:display` écrivent directement sur la
+  sortie standard ([io](io.md)). L'entrée standard est lue par un unique
+  processus serveur de la bibliothèque, enregistré sous `clause_stdin` et
+  démarré à la première utilisation, qui possède un port `{fd, 0, 1}` :
+  `io:get_line/1,2` écrit l'invite, puis renvoie la ligne suivante avec son
+  saut de ligne, le reste de l'entrée sans saut de ligne à la fin, puis
+  `eof` ; `io:get_chars/2,3` renvoie jusqu'à `N` caractères, puis `eof`. Les
+  requêtes de plusieurs processus sont servies dans l'ordre d'arrivée.
+  L'entrée est renvoyée sous forme d'octets (un élément de liste par octet).
 - Le module `file` de la bibliothèque pilote le pilote de fichiers du runtime,
   `{spawn_driver, "clause_file"}`, avec `port_control/3`. Ses opérations
   (`ports/file.cpp` : open, read, write, position, read_line, close, et les
@@ -329,7 +312,10 @@ stdin et stdout sont des tubes du port :
   `ports/file_paths.cpp`) sont des appels système synchrones sur le worker de
   l'appelant, en dehors du mutex de l'exécuteur ; leurs réponses commencent
   par un octet de statut (0 ok, 1 erreur suivie de sa raison POSIX, 2 fin de
-  fichier). Le protocole est propre à Clause.
+  fichier). Le protocole est propre à Clause. read_line lit 64 Ko en avance
+  et renvoie des lignes depuis ce tampon ; toute autre opération sur le
+  fichier recule d'abord sur les octets qu'elle n'a pas renvoyés, de sorte que
+  les positions restent exactes.
 - `file:open/2` renvoie le pid d'un serveur d'E/S qui possède un port de
   fichier et est lié au processus qui l'ouvre (modes `read`, `write`,
   `append`, `exclusive`, `binary` ; les autres modes sont ignorés, comme OTP
@@ -341,11 +327,10 @@ stdin et stdout sont des tubes du port :
   locales ou universelles ou en secondes POSIX
   (`{time, local | universal | posix}` ; `raw` est accepté). Sous Windows,
   `inode`, `uid` et `gid` valent 0 et `major_device` est le numéro du lecteur,
-  comme OTP les rapporte.
-  `read/2`, `read_line/1`, `write/2`, `position/2` et `io:get_line/2`,
-  `io:get_chars/3` sur ce pid sont des requêtes à ce serveur ; après
-  `close/1`, les requêtes renvoient `{error, terminated}` et `close/1` reste
-  `ok`.
+  comme OTP les rapporte. `read/2`, `read_line/1`, `write/2`, `position/2` et
+  `io:get_line/2`, `io:get_chars/3` sur ce pid sont des requêtes à ce
+  serveur ; après `close/1`, les requêtes renvoient `{error, terminated}` et
+  `close/1` reste `ok`.
 - Protocole d'E/S d'OTP : le serveur de l'entrée standard et le serveur de
   chaque fichier ouvert répondent à `{io_request, From, ReplyAs, Request}` par
   `{io_reply, ReplyAs, Reply}`, qu'envoient `io:request/1,2` et
@@ -381,26 +366,23 @@ stdin et stdout sont des tubes du port :
   chemin absent et `enotdir` pour un fichier. `consult/1` et la famille
   `eval`/`script` restent des bouchons : ils exigent l'analyseur généré
   d'OTP.
-- Fichiers, décision : le `file` de Clause est la couche fichiers ; `filelib`
-  et `filename` d'OTP sont de l'Erlang ordinaire qui s'exécute dessus lorsque
-  le chemin de recherche d'un programme contient les sources d'OTP
+- Le `file` de Clause est la couche fichiers ; `filelib` et `filename` d'OTP
+  sont de l'Erlang ordinaire qui s'exécute dessus lorsque le chemin de
+  recherche d'un programme contient les sources d'OTP
   (`filelib:fold_files/5` exige `re`) ; `erl_prim_loader` est fourni au-dessus
   de `file` avec les réponses `error` nues d'OTP et un chemin de chargement
   `["."]` (`set_path/1`), ses fonctions de chargement et d'archives étant
-  refusées jusqu'au step 71 ; `prim_file` et `prim_buffer` restent absents,
-  de sorte que les appelants `raw_file_io*` d'OTP n'entrent jamais dans un
-  programme.
+  refusées jusqu'au plan step 71 ; `prim_file` et `prim_buffer` restent
+  absents, de sorte que les appelants `raw_file_io*` d'OTP n'entrent jamais
+  dans un programme.
 - Les erreurs suivent OTP : `{error, enoent}`, `eexist`, `eisdir` (un
   répertoire ouvert ou lu comme un fichier), `einval` (une position
   négative), `ebadf` (lecture d'un fichier en écriture seule ou écriture d'un
   fichier en lecture seule), `badarg` pour les noms et données incorrects.
   Les noms de fichiers sont des chaînes, des binaries ou des atomes, encodés
   en UTF-8.
-- Un module référencé par le programme qui est un builtin du catalogue
-  (`io:format`) n'entraîne plus le module de bibliothèque de ce nom dans le
-  programme ; seul un appel à l'une de ses fonctions Erlang le fait.
 
-## Sockets (57F)
+## Sockets
 
 Une socket est un port, comme avec le backend `inet_drv` d'OTP :
 `is_port(Socket)` est vrai et les messages du mode actif sont
@@ -435,10 +417,10 @@ Implémentation (`runtime/src/ports/sockets.cpp`) :
   envoyé auparavant, de sorte qu'une réponse arrivée la première est renvoyée
   au lieu d'être perdue.
 - Les messages de sockets sont décrits hors tas (`ports/value.hpp`) et
-  construits dans le tas du destinataire lors de leur livraison, selon les
-  règles de l'exécuteur décrites dans [thread d'E/S](#io-thread). Une
-  connexion acceptée devient un nouveau port appartenant à l'appelant
-  d'`accept` et lié à lui, avec le mode de la socket d'écoute.
+  construits dans le tas du destinataire lors de leur livraison
+  ([tâches de ports](#port-tasks)). Une connexion acceptée devient un nouveau
+  port appartenant à l'appelant d'`accept` et lié à lui, avec le mode de la
+  socket d'écoute.
 - `controlling_process/2` arrête la livraison active, déplace vers le nouveau
   propriétaire les messages de la socket déjà envoyés à l'ancien, puis
   reconnecte le port, comme le fait `inet` d'OTP ; seul le propriétaire peut
@@ -462,8 +444,8 @@ Implémentation (`runtime/src/ports/sockets.cpp`) :
   opération de socket), `getaddr/2`, `getaddrs/2` (le résolveur du système,
   `getaddrinfo`) et `gethostbyname/1,2` (`h_name` est le nom demandé, sans
   alias) répondent via un port de socket ouvert pour la requête.
-- Décidé en 41R : les `gen_tcp`, `gen_udp` et `inet` de Clause sont la couche
-  réseau et s'étendent vers les listes d'exports d'OTP selon les besoins des
+- Les `gen_tcp`, `gen_udp` et `inet` de Clause sont la couche réseau et
+  s'étendent vers les listes d'exports d'OTP selon les besoins des
   programmes ; les modules `socket` et `net` d'OTP (l'API NIF des sockets)
   sont absents, de même que `prim_socket`, `prim_net`, `prim_inet` et
   `socket_registry`.

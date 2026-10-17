@@ -1,8 +1,8 @@
 ---
 source: docs/specialization.md
-sourceCommit: 6ed3851c
-sourceSha256: 896b741de11f8f1f7f9098670798d1de273c0e4be02cb7ebfadca90e184b0e36
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 30fb2421aad552fe8985671c5251c1200101aa35c3ee76024120620bcf97ef7a
+translatedAt: 2026-10-17
 ---
 # Especialización por tipos
 
@@ -39,19 +39,19 @@ anónimos no reciben demostraciones.
 | elemento de tupla | una prueba de forma o un hecho que demuestra la tupla | carga en línea del elemento |
 | patrón de lista | hecho: seguro una celda cons | se elimina la prueba de forma (si no, una prueba de etiqueta primaria en cada nivel) |
 | cabeza, cola | una prueba de cons o un hecho que demuestra la celda | cargas en línea |
-| literal exacto `[]`, `{}`, entero pequeño, átomo | siempre (en todos los niveles desde OPT0.2A) | comparación de palabras: los inmediatos iguales son una sola palabra |
+| literal exacto `[]`, `{}`, entero pequeño, átomo | siempre (en todos los niveles) | comparación de palabras: los inmediatos iguales son una sola palabra |
 | generador de lista | hecho de la entrada del generador: una lista propia | prueba de cons y lecturas de celdas en línea en cada iteración |
 
-Los hechos llegan a los patrones de las cabeceras de función (argumentos
-unidos de los llamantes), a los encajes en el cuerpo (el lado derecho) y a las
+Los hechos llegan a los patrones de las cabeceras de función (argumentos unidos
+de los llamantes), a los encajes en el cuerpo (el lado derecho) y a las
 cláusulas de case/try (el valor examinado o el valor del cuerpo de try); los
 hechos de elemento, cabeza y cola siguen a las extracciones. Una lectura en
 línea se guarda en una ranura raíz como la salida de un servicio, de modo que
 el lowering de marcos la conserva como término a través de los puntos seguros
 ([regla de recarga](runtime-heap.md#reload-rule)). Las únicas conversiones de
 punteros en el código generado son estas lecturas demostradas y las cargas de
-cabecera de las pruebas de forma de tupla en línea (`proven.cell`).
-Las constantes de disposición provienen de [`abi/term.hpp`](abi.md#terms); el
+cabecera de las pruebas de forma de tupla en línea (`proven.cell`). Las
+constantes de disposición provienen de [`abi/term.hpp`](abi.md#terms); el
 runtime las verifica frente a sus disposiciones privadas de celdas.
 
 ## Variantes
@@ -64,10 +64,10 @@ runtime las verifica frente a sus disposiciones privadas de celdas.
   comparación exacta de etiqueta baja de una palabra de argumento en cualquier
   parte del cuerpo (el array de argumentos nunca se escribe, y una recolección
   nunca cambia un entero pequeño).
-- Límites: 3 variantes por función, 32 por módulo, 128 por objetivo. El
+- Límites: 3 variantes por función, 32 por módulo, 128 por destino. El
   crecimiento estimado y luego el real (clon + guards + despacho + respaldo)
-  deben mantenerse dentro de 2x el número de instrucciones genéricas por función
-  y por módulo.
+  deben mantenerse dentro de 2x el número de instrucciones genéricas por
+  función y por módulo.
 - Los cuerpos genéricos se conservan siempre. Los borradores que exceden el
   presupuesto se descartan en silencio; el programa nunca falla a causa de la
   especialización.
@@ -81,18 +81,17 @@ specs ni flags de fast-math.
 
 ## Efecto actual
 
-Las demostraciones actúan sobre código fuente real: las funciones locales
-cuyos llamantes pasan enteros pequeños, tuplas y listas pierden sus
-comprobaciones de etiqueta, de forma y de servicio
+Las demostraciones actúan sobre código fuente real: las funciones locales cuyos
+llamantes pasan enteros pequeños, tuplas y listas pierden sus comprobaciones de
+etiqueta, de forma y de servicio
 ([`proofs`](../tests/fixtures/executables/proofs/proofs.erl), comprobado por la
 prueba de CTest `codegen_proofs` y ejecutado como el golden de ejecutables
 `executables_proofs`). Una variante debe ahorrar más instrucciones de las que
-cuesta su despacho; una única prueba de etiqueta eliminada de un argumento
-rara vez lo consigue, así que las variantes de código fuente normalmente se
-planifican y después las rechaza el límite de crecimiento. Fixtures
-específicos de LLVM inyectan comprobaciones de etiqueta repetidas para
-ejercitar aciertos, respaldos y la reversión por crecimiento con ejecución
-nativa.
+cuesta su despacho; una única prueba de etiqueta eliminada de un argumento rara
+vez lo consigue, así que las variantes de código fuente normalmente se
+planifican y después las rechaza el límite de crecimiento. Fixtures específicos
+de LLVM inyectan comprobaciones de etiqueta repetidas para ejercitar aciertos,
+respaldos y la reversión por crecimiento con ejecución nativa.
 
 Los goldens de ejecutables se ejecutan con todas las políticas en el modo
 completo; el modo rápido ejecuta `-O0` (genérico) y `-O2` con especialización
@@ -101,8 +100,4 @@ completo; el modo rápido ejecuta `-O0` (genérico) y `-O2` con especialización
 `codegen_measurements` escribe `measurements/<config>/measurements.json` en el
 directorio de compilación de las pruebas de codegen (tiempo de compilación,
 bytes de IR/objeto, variantes, lecturas demostradas, tiempo nativo). Los
-tiempos son descriptivos, nunca umbrales. Muestra de Windows x64 / LLVM 23.1.2
-(2026-09-29, antes de las demostraciones): la carga de trabajo de código fuente
-produce 232,876 bytes de IR / 40,498 bytes de objeto en O0 y 204,408 / 35,886
-con ambas políticas de O2, cero variantes; el fixture sintético añadió 30
-instrucciones a una función de 55 instrucciones para una variante aceptada.
+tiempos son descriptivos, nunca umbrales.

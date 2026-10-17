@@ -1,30 +1,26 @@
 ---
 source: docs/transforms.md
-sourceCommit: 6ed3851c
-sourceSha256: 2c6d8c271fd5fd640bb4c93eaff0872914f396898bfe9df527ca51055d033c11
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
+translatedAt: 2026-10-17
 ---
 # Parse-Transforms
 
 ## Parse-Transforms verwenden
 
 - **Voraussetzung:** Erlang/OTP 29 auf dem Host installiert, nur zum
-  Kompilieren von Modulen, die einen Transform verwenden. `clau` nimmt
-  `--erl PATH`, sonst `erl` aus `PATH`, sonst unter Windows
-  `%ProgramFiles%\Erlang OTP\bin\erl.exe`. `--erl none` führt nie Host-Code
-  aus: Module, die einen Transform brauchen, scheitern.
+  Kompilieren von Modulen, die einen Transform verwenden
+  ([OTP des Hosts](#host-otp)). `--erl none` führt nie Host-Code aus: Module,
+  die einen Transform brauchen, scheitern.
 - **Einen Transform aufrufen** im Quelltext mit
   `-compile({parse_transform, Module}).` (oder innerhalb einer Liste
   `-compile([...])`) oder für jedes Modul des Befehls mit
   `--parse-transform Module` (wiederholbar; diese laufen zuerst, wie
   `erlc +'{parse_transform,M}'`).
-- **Transform-Module** werden als `.beam`-Dateien in Verzeichnissen von
-  `--transform-path` (wiederholbar) und den `transform_paths` des Projekts
-  gefunden, dann als `Module.erl` unter den Quellen des Batches und den
-  `source_search_paths` (bei jedem Build vom OTP des Hosts kompiliert,
-  zusammen mit den Modulen, die sie von dort aufrufen; `ignore_dirs` und
-  `ignore_modules` gelten), dann unter den Modulen von OTP (`ms_transform`,
-  `qlc`).
+- **Transform-Module** werden als `.beam`-Dateien auf den Transform-Pfaden
+  gefunden, dann als Projektquellen, die bei jedem Build vom OTP des Hosts
+  kompiliert werden, dann unter den Modulen von OTP
+  ([Transform-Module](#transform-modules)).
 - **Vorkompilieren** muss man einen Transform, der aus einer anderen
   Bibliothek stammt (immer), oder einen Projekt-Transform, den der
   Host-Compiler mit den Include-Verzeichnissen und Defines des Ziels nicht
@@ -45,10 +41,9 @@ exportiert das geparste Modul als Formen im
 [Abstract Format](https://www.erlang.org/doc/apps/erts/absform.html) von OTP,
 führt das Transform-Modul auf einem auf dem Host installierten Erlang/OTP 29
 aus, importiert die zurückgegebenen Formen als neue Syntax des Moduls und
-kompiliert diese. OTP wird nur gebraucht, während ein Modul kompiliert wird,
-das einen Transform verwendet; erzeugte Programme brauchen es nie. Entschieden
-in plan step 73A; umgesetzt durch die Steps 73B–73G
-(`compiler/src/transforms/`).
+kompiliert diese (`compiler/src/transforms/`). OTP wird nur gebraucht, während
+ein Modul kompiliert wird, das einen Transform verwendet; erzeugte Programme
+brauchen es nie.
 
 ## Verhalten von OTP
 
@@ -89,12 +84,12 @@ Aus dem festgelegten `lib/compiler/src/compile.erl` (`transform_module`,
   endet mit `{eof, Location}`, dem Ende der Hauptdatei. Präprozessor- und
   Parse-Fehler bleiben als Formen `{error, E}` in der Liste, und `erl_lint`
   meldet sie nach den Transforms.
-- Formen von OTP 29, die `absform.md` nicht aufführt: `{attribute, A, native_record,
-  {Name, Fields}}`; Record-Namen `{Module, Name}` (qualifiziert) und `[]`
-  (`#_`) in Ausdrücken `record`/`record_field`; `{type, A, record, [{tuple, A,
-  [Module, Name]} | Fields]}` für qualifizierte Record-Typen; `{zip, A,
-  Qualifiers}` als Qualifier von Comprehensions; `{mc, ...}`, `m_generate` und
-  die `_strict`-Generatoren.
+- Formen von OTP 29, die `absform.md` nicht aufführt: `{attribute, A,
+  native_record, {Name, Fields}}`; Record-Namen `{Module, Name}`
+  (qualifiziert) und `[]` (`#_`) in Ausdrücken `record`/`record_field`;
+  `{type, A, record, [{tuple, A, [Module, Name]} | Fields]}` für qualifizierte
+  Record-Typen; `{zip, A, Qualifiers}` als Qualifier von Comprehensions;
+  `{mc, ...}`, `m_generate` und die `_strict`-Generatoren.
 - `erlc +to_abstr` schreibt die Formen nach den Transforms (und `erl_lint`)
   nach `File.abstr`, ein `~p.`-Term pro Form; `erlc File.abstr`
   (`compile:file(F, [from_abstr])`) kompiliert eine solche Datei ohne
@@ -121,9 +116,8 @@ Aus dem festgelegten `lib/compiler/src/compile.erl` (`transform_module`,
 6. Die vordefinierten Funktionen hinzufügen, dann wie üblich linten, analysieren
    und kompilieren.
 
-Transforms laufen, wenn ein Modul kompiliert wird, und für `--print-ast`,
-`--print-source` und `--print-abstr`, die das transformierte Modul ausgeben.
-`--preprocess-check`, `--parse-check` und `--print-pp` führen sie nicht aus.
+Die Aktionen, die Transforms ausführen, stehen unter
+[Parse-Transforms verwenden](#using-parse-transforms).
 
 ## Austausch
 
@@ -132,11 +126,11 @@ Transforms laufen, wenn ein Modul kompiliert wird, und für `--print-ast`,
   UTF-8-Atome, große Ganzzahlen und kein Parsen von Text in Erlang. Das Format
   selbst (Tags, Layouts, Grenzprüfungen) liegt einmal in
   `abi/include/clause/abi/external_term.hpp`, unabhängig von jeder
-  Termdarstellung, sodass künftige `term_to_binary/1`, `binary_to_term/1` und
-  die Distribution der Runtime es wiederverwenden. Das Termmodell des
-  Compilers von Clause umfasst Atome, Ganzzahlen, Gleitkommazahlen, echte und
-  unechte Listen, Tupel, Maps und Bitstrings; Pids, Ports, Referenzen und Funs
-  werden mit einer Diagnose abgewiesen.
+  Termdarstellung; `term_to_binary` und `binary_to_term` der Runtime teilen es
+  ([External Term Format](builtins.md#external-term-format)). Das Termmodell
+  des Compilers von Clause umfasst Atome, Ganzzahlen, Gleitkommazahlen, echte
+  und unechte Listen, Tupel, Maps und Bitstrings; Pids, Ports, Referenzen und
+  Funs werden mit einer Diagnose abgewiesen.
 - `.abstr`-Text ist die Syntax von
   [`file:consult/1`](https://www.erlang.org/doc/apps/kernel/file.html#consult/1):
   ein Term pro Form, jeder endet mit `.`. `--print-abstr` gibt die Formen jedes
@@ -293,8 +287,3 @@ source_search_paths = ["transforms"]  # transforms/pt_rewrite.erl, compiled for 
 parse_transforms = ["pt_dep"]         # applied to every module of the target
 transform_paths = ["deps/*/ebin"]     # deps/ptdep/ebin/pt_dep.beam, built with erlc first
 ```
-
-Transform-Module aus den `sources` eines Ziels heraushalten, wenn das Programm
-sie nicht aufruft: Als gewöhnliche Module würden sie auch von Clause kompiliert,
-und ihre Aufrufe in `erl_parse` oder `erl_syntax` brauchen Module, die Clause
-nicht mitliefert.

@@ -18,6 +18,7 @@ committed JSON, say so and stop.
 IMPORTANT: update only from results recorded within the last 3 hours. If the
 newest report is older, skip the update, report its timestamp and stop
 without touching `content/benchmarks.json`.
+SUBAGENTS: When using subagents, switch to a faster model such as Sonnet.
 
 ## Page requirements
 

@@ -1,17 +1,18 @@
 ---
 source: docs/io.md
-sourceCommit: 6ed3851c
-sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
+translatedAt: 2026-10-17
 ---
 # Sortie console (`io`)
 
-`io:format/1,2` et `io:put_chars/1` écrivent
-sur la sortie standard. Ce sont des builtins du runtime du module `io` dans le
-catalogue du pont ([builtins](builtins.md)) ; le runtime implémente en C++ les
-règles `io_lib_format` et `io_lib_pretty` d'OTP
+`io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` et `io:nl/0,1` sont
+des builtins du runtime du module `io` dans le catalogue du pont
+([builtins](builtins.md)) ; le runtime implémente en C++ les règles
+`io_lib_format` et `io_lib_pretty` d'OTP
 ([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)).
+[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Les fonctions d'entrée
+de `io` sont écrites en Erlang dans la [bibliothèque](library.md#contents).
 
 ## Appels
 
@@ -36,9 +37,9 @@ règles `io_lib_format` et `io_lib_pretty` d'OTP
   `unicode`). Une erreur n'écrit rien. Une écriture refusée est l'échec du
   runtime `output_failure` (code de sortie 70).
 - Les appels qualifiés, `fun io:format/2`, `apply(io, format, Args)` et
-  `M:format(...)` atteignent tous les builtins. Les autres fonctions de `io`
-  conservent le diagnostic `unknown module io`. Un module du lot nommé `io` ne
-  remplace pas les builtins (le module `io` d'OTP est sticky).
+  `M:format(...)` atteignent tous les builtins. Un module du lot nommé `io` ne
+  remplace pas les builtins (le module `io` d'OTP est sticky,
+  [enregistrement](builtins.md#registration)).
 
 ## Formats
 
@@ -78,8 +79,8 @@ règles `io_lib_format` et `io_lib_pretty` d'OTP
   imprimables, l'`io:printable_range()` par défaut), les binaries
   imprimables, les atomes et les nombres sont du texte.
 - Ce qui tient sur le reste de la ligne est écrit en entier. Les listes et les
-  tuples sont coupés entre les éléments, alignés après le délimiteur
-  ouvrant ; les tuples étiquetés (`{atom, ...}`) s'alignent après
+  tuples sont coupés entre les éléments, alignés après le crochet ou
+  l'accolade ; les tuples étiquetés (`{atom, ...}`) s'alignent après
   l'étiquette, ou sont indentés de 4 (ou 1) lorsque cela dépasserait la moitié
   de la ligne ; les paires de map et les champs de native record qui ne tiennent
   pas placent la valeur sur la ligne suivante ; les binaries longs sont coupés

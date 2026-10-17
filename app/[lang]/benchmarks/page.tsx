@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { isLocale } from "@/lib/i18n";
@@ -294,12 +293,12 @@ export default async function BenchmarksPage({ params }: Props) {
         </dl>
         <p className="mt-6 max-w-3xl text-sm text-muted">
           {t.reproduce}{" "}
-          <Link
+          <a
             href={`/${lang}/docs/validation/#benchmarks`}
             className="text-accent hover:underline"
           >
             {t.notes}
-          </Link>
+          </a>
         </p>
       </section>
     </>

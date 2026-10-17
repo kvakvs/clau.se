@@ -1,8 +1,8 @@
 ---
 source: docs/compile.md
-sourceCommit: 6ed3851c
-sourceSha256: 3702a6fe367aab0776ef6b6345f19e09f34fcd9bd96ff7e67047a19b92c95805
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 070de594787444f6afefbf3760848986bda8c85ff204932e596a67502385ae50
+translatedAt: 2026-10-17
 ---
 # Compilation
 
@@ -10,65 +10,54 @@ translatedAt: 2026-10-15
 en objets natifs. `-o/--output` lie les entrées positionnelles (ou une cible de
 projet sélectionnée), leur objet de démarrage d'[entrée](executables.md) et le
 runtime en un exécutable ([édition de liens](executables.md#linking)) ; les
-compilations de projet lient les cibles exécutables vers les sorties de leur
+builds de projet lient les cibles exécutables vers les sorties de leur
 manifeste ([projets](projects.md#executables)). Les objets émis peuvent aussi
 s'exécuter via un harnais C++ lié au runtime (voir l'exemple ci-dessous).
 
 ## Sous-ensemble de source accepté
 
-Modules nommés avec exports et clauses de fonction ordonnées. Les têtes et les
-correspondances dans les corps acceptent les variables, `_`, les alias, les noms
-répétés et les motifs sur atomes, entiers arbitraires, flottants finis, tuples,
-listes/chaînes, maps, bitstrings et records ordinaires sous forme de tuples. Les
-corps sont des séquences de correspondances, constructeurs, opérateurs/BIF de
-garde vérifiés, `erlang:display/1` ([affichage](terms.md#printing)), `halt/0,1`
-([code de sortie](executables.md#exit-status)), les fonctions qui lèvent
-`error/1,2,3`, `exit/1`, `throw/1` et `erlang:raise/3`
-([ABI](abi.md#failure-channel-revision-2)), les autres
-[builtins du pont](builtins.md) (`erlang:function_exported/3`) et les funs de
-builtins, `case`/`if`, `catch Expr`,
-`try ... of ... catch Class:Reason:Stack ... after` avec
-[traces de pile](abi.md#stack-traces), `maybe ... else ... end`, les
+Modules nommés du langage OTP 29 ordinaire : clauses de fonction ordonnées avec
+[motifs](patterns.md) et [guards](guards.md) ; correspondances, constructeurs,
+opérateurs et builtins ([builtins](builtins.md)) ; `case`, `if`, `receive`,
+`catch`, `try ... of ... catch Class:Reason:Stack ... after` avec
+[traces de pile](abi.md#stack-traces), `maybe ... else ... end` ;
 comprehensions de liste, de binary et de map
-([motifs](patterns.md#comprehensions)) et les appels directs locaux ou distants
-littéraux au sein du lot, y compris la récursion sur soi, mutuelle et entre
-modules sur des cadres de processus explicites avec de vrais appels terminaux
+([motifs](patterns.md#comprehensions)) ; records tuples et
+[native records](native-records.md) ; [funs](funs.md), appels locaux, distants
+et dynamiques (`M:F(...)`, `apply/2,3`) ; [processus](processes.md) et
+[ports](ports.md). Les appels s'exécutent sur des cadres de processus
+explicites avec de vrais appels terminaux
 ([modèle d'exécution](execution-model.md#implementation)) ; la récursion non
-terminale est bornée par la pile du processus (sans plafond par défaut), non par
-la pile native. Les gardes prennent en charge tout le catalogue admis. Voir
-[motifs](patterns.md), [gardes](guards.md) et [termes](terms.md).
+terminale est bornée par la pile du processus (sans plafond par défaut), non
+par la pile native. Les modules qu'un lot nomme sans les déclarer proviennent
+de la [bibliothèque](library.md). Les qualificateurs de correspondance dans les
+comprehensions de la fonctionnalité expérimentale `compr_assign` sont rejetés
+avec `[heap expressions] notimpl`.
 
-Les valeurs fonctionnelles `fun F/A`, `fun M:F/A`, les funs anonymes et nommées
-avec variables capturées, les appels de funs et les appels dynamiques
-(`M:F(...)`, `apply/2,3`) s'exécutent ([funs](funs.md)). Rejetés avec
-diagnostics, même dans les fonctions inutilisées :
-`receive`, funs de builtins,
-processus et messagerie.
 Attributs acceptés : `module`, `export`, `file`, `record` tuple et natif,
-`export_record`, `import_record`, formes type/spec,
-`doc`/`moduledoc`, `behaviour`/`behavior` ([behaviours](semantic.md#behaviours)),
-tout attribut informatif (`vsn`, `author`, `copyright`, `deprecated`,
-`dialyzer`, `-name(Term)` défini par l'utilisateur ; conservés pour
+`export_record`, `import_record`, formes type/spec, `doc`/`moduledoc`,
+`behaviour`/`behavior` ([behaviours](semantic.md#behaviours)), tout attribut
+informatif (`vsn`, `author`, `copyright`, `deprecated`, `dialyzer`,
+`-name(Term)` défini par l'utilisateur ; conservés pour
 [`module_info(attributes)`](semantic.md#predefined-functions)),
 `-import(Module, [F/A, ...])` ([imports](semantic.md#imports)) et `-compile`
-avec des options qui ne changent rien à ce qu'émet Clause : `{no_auto_import, ...}`,
-les options d'avertissement (`nowarn_*`, `warn_*`,
+avec des options qui ne changent rien à ce qu'émet Clause :
+`{no_auto_import, ...}`, les options d'avertissement (`nowarn_*`, `warn_*`,
 `{nowarn_unused_function, [...]}`) et les indications d'optimisation, de
 débogage et de rapport (`inline`, `{inline, [F/A]}`, `{inline_size, N}`,
 `{inline_effort, N}`, `inline_list_funcs`, `debug_info`, `deterministic`,
 `report*`, `verbose`, ...). `{parse_transform, Module}` exécute la
 transformation sur l'Erlang/OTP de l'hôte avant l'analyse
-([parse transforms](transforms.md)). `on_load`, `nifs`, `export_all`, les autres
-options `compile` et les modules paramétrés sont rejetés ; le diagnostic les
-nomme, par exemple
+([parse transforms](transforms.md)). `on_load`, `nifs`, `export_all`, les
+autres options `compile` et les modules paramétrés sont rejetés ; le
+diagnostic les nomme, par exemple
 `[behavior-changing attributes] notimpl [module="m" operation="-compile option export_all"]`.
-Chaque module reçoit `module_info/0,1`.
-Les sources commençant par `#!` suivent les
-[règles des escripts](executables.md#escripts) (module implicite et export de
-`main/1`, `-mode` accepté).
-Les formes type/spec sont analysées mais ne modifient jamais le code généré. Les
-modes purement syntaxiques (`--parse-check`, `--print-ast`, `--print-source`,
-...) acceptent la grammaire complète.
+Chaque module reçoit `module_info/0,1`. Les sources commençant par `#!`
+suivent les [règles des escripts](executables.md#escripts) (module implicite et
+export de `main/1`, `-mode` accepté). Les formes type/spec sont analysées mais
+ne modifient jamais le code généré. Les modes purement syntaxiques
+(`--parse-check`, `--print-ast`, `--print-source`, ...) acceptent la grammaire
+complète.
 
 ## Exécuter l'exemple de module compilé
 
@@ -94,8 +83,8 @@ Il affiche `42`, `-7`, `record`, `map`, `binary`, `list`, `integer`, `other`,
 un par ligne. Le harnais enregistre explicitement les modules, crée un contexte
 et décode les résultats ; c'est un hôte d'exemple, pas un point d'entrée de
 production. Sous Unix, utiliser `build/debug/bin/clau`, `clang++` et
-`-DGENERATED_DIR="$PWD/build/example-aot"` (les exécutions natives n'y sont pas
-encore validées).
+`-DGENERATED_DIR="$PWD/build/example-aot"`. Le test CTest `codegen_examples`
+exécute ces commandes sous chaque politique.
 
 Autres actions sur les mêmes sources :
 
@@ -109,9 +98,10 @@ Autres actions sur les mêmes sources :
 ## Affichage du format abstrait
 
 `--print-abstr` (une action du frontend) affiche chaque module analysé sous
-forme des formes du [format abstrait](https://www.erlang.org/doc/apps/erts/absform.html)
-d'OTP qu'`epp` remettrait à un parse transform, un terme `file:consult/1` par
-ligne, les mêmes termes qu'écrit `erlc +to_abstr` ([transforms](transforms.md)).
+forme des formes du
+[format abstrait](https://www.erlang.org/doc/apps/erts/absform.html) d'OTP
+qu'`epp` remettrait à un parse transform, un terme `file:consult/1` par ligne,
+les mêmes termes qu'écrit `erlc +to_abstr` ([transforms](transforms.md)).
 
 ## Affichage du source
 
@@ -122,13 +112,13 @@ texte avec des annotations de type. L'afficheur (`print_source`,
 `compiler/src/printing/source_*`) est réutilisable :
 
 - Les formes se suivent dans l'ordre du source, avec une ligne vide autour de
-  chaque fonction ; la forme `-file` que le préprocesseur ajoute avant un module
-  est omise, celles qui entourent les fichiers inclus sont conservées.
-- Le texte est la syntaxe analysée : les macros sont développées, les inclusions
-  intégrées, et les commentaires, l'orthographe et la mise en page d'origine ont
-  disparu. Les clauses et les expressions de bloc (`case`, `if`, `receive`,
-  `try`, `maybe`, `begin`, funs de plus d'une ligne) occupent des lignes
-  indentées de quatre colonnes ; tout le reste tient sur une ligne. Les
+  chaque fonction ; la forme `-file` que le préprocesseur ajoute avant un
+  module est omise, celles qui entourent les fichiers inclus sont conservées.
+- Le texte est la syntaxe analysée : les macros sont développées, les
+  inclusions intégrées, et les commentaires, l'écriture et la mise en page
+  d'origine ont disparu. Les clauses et les expressions de bloc (`case`, `if`,
+  `receive`, `try`, `maybe`, `begin`, funs de plus d'une ligne) occupent des
+  lignes indentées de quatre colonnes ; tout le reste tient sur une ligne. Les
   parenthèses ne proviennent que des groupes du source lui-même.
 - Le texte affiché se réanalyse en le même arbre syntaxique, et l'afficher de
   nouveau donne le même texte (CTest `printing_source` sur les fixtures
@@ -139,7 +129,7 @@ texte avec des annotations de type. L'afficheur (`print_source`,
   Seules les expressions occupant des lignes entières portent des notes (les
   expressions de corps et la valeur examinée d'un `case` ; une par ligne, la
   plus externe), de sorte que les longues expressions imbriquées restent
-  lisibles et que le texte reste de l'Erlang. Les motifs et les gardes n'en
+  lisibles et que le texte reste de l'Erlang. Les motifs et les guards n'en
   portent aucune.
 
 ## Options
@@ -153,7 +143,7 @@ texte avec des annotations de type. L'afficheur (`print_source`,
 | `--no-cache` | Ne lit ni n'écrit les [caches de build](projects.md#build-caches) |
 | `--cache-inference-in-dirs PATTERN` | Répétable : les modules des répertoires correspondants gardent leurs résultats d'inférence dans le cache de build, en plus des répertoires d'applications OTP implicites ([cache d'inférence](projects.md#inference-cache)) |
 | `--build-dir DIR` | Où Clause garde ses fichiers temporaires (sous `DIR/tmp`) ; remplace le `build_dir` de chaque cible de projet sélectionnée ; sans cette option, les entrées positionnelles n'en ont pas ([répertoire de build](projects.md#build-directory)) |
-| `--entry MODULE[:FUNCTION]` | Fonction d'entrée/1 de l'exécutable ; validée dans tous les modes de compilation et ajoute l'artefact de démarrage `clausev1_start` ([exécutables](executables.md#startup-object)) ; les inspections d'IR et d'assembleur laissent alors de côté ce qu'elle ne peut atteindre ([vivacité des exports](executables.md#export-liveness)) |
+| `--entry MODULE[:FUNCTION[/ARITY]]` | Fonction d'entrée/1 de l'exécutable (sinon fonction/0 ; `/0` ou `/1` en sélectionne une) ; validée dans tous les modes de compilation et ajoute l'artefact de démarrage `clausev1_start` ([exécutables](executables.md#startup-object)) ; les inspections d'IR et d'assembleur laissent alors de côté ce qu'elle ne peut atteindre ([vivacité des exports](executables.md#export-liveness)) |
 | `--target-triple TRIPLE` | Machine cible ; `--target` sert à sélectionner une cible de projet |
 | `-O0` / `-O2` / `-Os` | Code générique par défaut + LLVM O0 / spécialisation bornée + LLVM O2 / LLVM Os, sans spécialisation, une section par symbole et élimination par l'éditeur de liens du code et des données non référencés |
 | `--no-type-specialization` | Désactive les variantes quel que soit l'ordre des options |
@@ -176,8 +166,8 @@ texte avec des annotations de type. L'afficheur (`print_source`,
   sous le répertoire du manifeste. Les racines explicites sont relatives à
   l'invocation.
 - Les noms sont en hexadécimal réversible : `answer` →
-  `clausev1_616e73776572__0.obj` (`.o` pour ELF/Mach-O, `.ll`, `.bc`) ; l'objet
-  de démarrage est `clausev1_start.obj`.
+  `clausev1_616e73776572__0.obj` (`.o` pour ELF/Mach-O, `.ll`, `.bc`) ;
+  l'objet de démarrage est `clausev1_start.obj`.
 - Tous les lots sont compilés et préparés avant publication. Les échecs ne
   publient rien et conservent les sorties précédentes ; le remplacement est
   atomique par fichier, pas par lot.
@@ -188,7 +178,8 @@ texte avec des annotations de type. L'afficheur (`print_source`,
   séparés par des en-têtes de commentaire échappés et ne forment pas un module
   analysable. Utiliser `--emit llvm-ir` comme entrée pour des outils. Les
   commentaires de ligne source montrent le texte d'origine (macros non
-  développées) et survivent à l'optimisation grâce aux emplacements de débogage.
+  développées) et survivent à l'optimisation grâce aux emplacements de
+  débogage.
 
 ## Listings d'assembleur
 
@@ -320,24 +311,24 @@ ni n'écrit rien.
 
 ## Backend
 
-- Un contexte LLVM et une machine cible par lot. Le triplet de l'hôte utilise le
-  CPU et les fonctionnalités de l'hôte ; les triplets étrangers utilisent le CPU
-  générique. PIC, petit modèle de code.
-- Backends : X86, ARM, AArch64 (intersection avec le SDK). Les backends inconnus
-  ou absents échouent ; il n'y a pas de repli sur l'hôte.
+- Un contexte LLVM et une machine cible par lot. Le triplet de l'hôte utilise
+  le CPU et les fonctionnalités de l'hôte ; les triplets étrangers utilisent le
+  CPU générique. PIC, petit modèle de code.
+- Backends : X86, ARM, AArch64 (intersection avec le SDK). Les backends
+  inconnus ou absents échouent ; il n'y a pas de repli sur l'hôte.
 - La vérification s'exécute avant et après l'optimisation ; elle contrôle la
   validité de l'IR, pas la correction Erlang.
-- Budgets par cible : 1 024 modules, 250 000 nœuds d'AST par module, 1 000 000
-  par lot. Sortie sérialisée : 64 Mio par module, 256 Mio par lot. Dépasser un
-  budget est un diagnostic de ressource ordinaire.
+- Budgets par cible : 16 384 modules, 1 500 000 nœuds d'AST par module,
+  16 000 000 par lot. Sortie sérialisée : 64 Mio par module, 256 Mio par lot.
+  Dépasser un budget est un diagnostic de ressource ordinaire.
 
 ## SDK LLVM
 
 LLVM stable **23.1.x**, au minimum 23.1.1. LLVM est une dépendance de l'hôte :
 l'architecture, la bibliothèque standard C++ et le CRT Windows doivent
 correspondre à ceux de l'outil de compilation. Le code du projet conserve les
-exceptions/RTTI ; aucune exception ne doit traverser LLVM lors du déroulement de
-la pile. Le runtime n'utilise jamais LLVM.
+exceptions/RTTI ; aucune exception ne doit traverser LLVM lors du déroulement
+de la pile. Le runtime n'utilise jamais LLVM.
 
 - La découverte parcourt les préfixes standard (`/usr`, `/usr/local`,
   `/opt/homebrew`, `/opt/local`, `/opt/llvm`, Linuxbrew,
@@ -351,15 +342,13 @@ la pile. Le runtime n'utilise jamais LLVM.
 - Une sonde d'édition de liens au moment de la configuration vérifie la
   compatibilité ABI.
 
-Configuration Windows x64 de référence (2026-09-29) : clang-cl 23.1.2 de l'hôte
-dans `C:/Program Files/LLVM/bin`, SDK
+Configuration Windows x64 de référence : clang-cl 23.1.2 de l'hôte dans
+`C:/Program Files/LLVM/bin`, SDK
 `thirdparty/clang+llvm-23.1.2-x86_64-pc-windows-msvc`, outils Visual Studio 18
 x64, Windows SDK 10.0.26100.0, Ninja, `/MT`, `_ITERATOR_DEBUG_LEVEL=0`. La
 sélection automatique applique `/MT` et les réglages d'itérateur ; un
-`LLVM_DIR` explicite ne le fait pas, et la sonde d'édition de liens échoue alors.
-
-Référence macOS historique : `llvm` 23.1.1_1 de Homebrew (arm64,
-`libLLVM.23.1.dylib` partagée, assertions désactivées) avec AppleClang 21.
+`LLVM_DIR` explicite ne le fait pas, et la sonde d'édition de liens échoue
+alors.
 
 ## PCRE2
 
@@ -398,9 +387,8 @@ ajoute à chaque édition de liens ; une bibliothèque partagée rend les
 exécutables dépendants d'elle à l'exécution. Par plateforme : Windows utilise
 le téléchargement (aucun PCRE2 système n'y est recherché en pratique) ; Linux
 et macOS utilisent un PCRE2 10.47 ou plus récent installé s'il est présent,
-sinon le téléchargement. Toujours lié dans le runtime pour l'instant (décidé le
-2026-10-14) ; ne le lier qu'aux programmes qui appellent `re`, ou en faire une
-bibliothèque chargée dynamiquement, est différé.
+sinon le téléchargement. PCRE2 est toujours lié dans le runtime, y compris dans
+les programmes qui n'appellent jamais `re`.
 
 ## zlib
 

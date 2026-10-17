@@ -1,25 +1,23 @@
 ---
 source: docs/validation.md
-sourceCommit: 6ed3851c
-sourceSha256: 908ac8c879d3df66cb4e8e52800e07da92013325c177e1556378cadd0597b50f
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 54f5af0873d1220b42924fb4323bb6d19263b4e6301ffc0aa412ca04dcd9e835
+translatedAt: 2026-10-17
 ---
 # Validering
 
 ## Nuvarande baslinje
 
-Plan 11 step 1, 2026-10-03, commit `b1a471f`, Windows x64: clang-cl 23.1.2,
-LLVM SDK 23.1.2 (`/MT`, `_ITERATOR_DEBUG_LEVEL=0`), Lizard 1.24.0, clang-tidy
-22.1.8, OTP-pin `21776803ecd1` med orakel OTP 29.1.1 / ERTS 17.1.
+Senast registrerade grindresultat på Windows x64-utvecklingsvärden (clang-cl och
+LLVM SDK 23.1.2, `/MT`, `_ITERATOR_DEBUG_LEVEL=0`); senare steg registrerar sina
+i `.agents/00-finished.md`:
 
 | Kontroll | Resultat |
 | --- | --- |
-| Färsk kombinerad Debug-CTest | 125/125, noll överhoppade (729 s seriellt; 85 s med `-j 16`) |
-| CTest i snabbläge (`debug-fast`) | 122 tester, cirka 60 s |
-| `check-quality` | Godkänt; Lizard CCN 10, clang-tidy över 258 produktionsenheter |
-| Valfria OTP-granskningstester | 14/14 |
-| `regenerate.py --corpus all --check` | 19/19 korpusar återskapas |
-| Främmande O0/O2-objekt | 7 mål inspekterade (Linux x86/x64/ARM/AArch64, Windows x86/x64, Apple Silicon) |
+| Färsk kombinerad Debug-CTest (2026-10-14) | 299/300 godkända; felet är den kända IR-storleksgränsen i `codegen_measurements`; `codegen_resource_cli` är inaktiverat |
+| `check-quality-all` (samma körning) | Rent; Lizard CCN 10 |
+| Valfria OTP-granskningstester (2026-10-14, pin `d199a49a01a2`, orakel OTP 29.1.1) | 17/17 |
+| `regenerate.py --corpus all --check` (samma) | 19/19 korpusar återskapas |
 
 ## Köra grinden
 
@@ -37,32 +35,45 @@ cmake --build build/debug --target check-quality-all  # whole tree
 
 - `CLAUSE_TEST_MODE=fast` kör golden-korpusar vid O0 positionellt plus
   O2-projekt utan specialisering, kör mutationer en gång och hoppar över
-  `full_only`-tester. Fullt läge (standard) kör alla kombinationer av
-  drivrutin/policy.
+  `full_only`-tester (separata konsumentprojekt som `runtime_generated_link`,
+  mätningar, granskningen `library_freshness` mot värdens OTP). Fullt läge
+  (standard) kör alla kombinationer av drivrutin/policy.
+- Långa tester som drivs av ett Python- eller CMake-skript har en fast
+  CTest-`COST`: CTest lär sig ett omslags kostnad från dess egen lilla CPU-tid
+  och skulle starta dem sist.
 - `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplicerar gränserna per körning för
   golden-köraren (60 s) och köraren för semantiska fall (15 s) för
   instrumenterade byggen.
 - `check-quality`, `make format` och `make-format.bat` omfattar filer som
   ändrats sedan `HEAD` plus ospårade filer; `cmake/quality_scope.py` lägger till
-  översättningsenheter som inkluderar en ändrad header. Ändringar i
-  `.clang-tidy`, `cmake/` eller produktions-CMake väljer allt.
+  översättningsenheter som inkluderar en ändrad header (från Ninjas
+  beroendedata för valfri konfiguration) och, för clang-tidy, enheter vars
+  kompileringskommando skiljer sig från det som den senaste godkända körningen
+  registrerade (`build/debug/quality/tidy-commands.json`), så att en ändring av
+  en byggregel bara kontrollerar om de enheter den ändrar. Ändringar i
+  `.clang-tidy` eller tidy-skripten väljer allt, liksom ändringar av byggregler
+  före den första registrerade körningen.
+- `CLAUSE_OPTIMIZED_COMPILER` (standard ON) kompilerar `clau` och
+  kompilatorbiblioteken optimerade även i Debug-byggen, med bibehållen
+  felsökningsinformation och Debug-budgetarna för inferens; testerna tillbringar
+  det mesta av sin tid i `clau`. När en kompilatorkrasch behöver stegas igenom,
+  konfigurera med `-DCLAUSE_OPTIMIZED_COMPILER=OFF`, bygg om och kör det
+  misslyckade testet igen.
 - Testprogram har ingen felsökningsinformation (inga PDB:er); konfigurera med
   `-DCLAUSE_TEST_DEBUG_INFO=ON` för att bygga om dem för en debugger. Nästlade
   native-konsumenter länkar föräldrabyggets runtime via
   `ClauseRuntimeTargets.cmake` i stället för att kompilera den igen; endast
   `runtime_link` bygger runtime fristående.
 - Tröskelvärden och undertryckningar höjs aldrig för att klara grinden. Två
-  undantag för tredjepartskod är konfigurerade (plan 11 steps 63-64,
-  användarens beslut): `cmake/tidy_filter.py` tar bort rapporter från den
-  statiska analysatorn som ligger i Boost-headers (falska positiva för
-  limb-lagring i Boost.Multiprecision på Linux som en omskrivning av den
-  anropande koden bara flyttar) och räknar dem i utdata, och
-  `bugprone-exception-escape` ignorerar `bad_array_new_length` (MSVC:s
-  flyttkonstruktorer för map/set allokerar; ett allokeringsfel är ändå
-  fatalt).
+  undantag för tredjepartskod är konfigurerade (användarens beslut):
+  `cmake/tidy_filter.py` tar bort rapporter från den statiska analysatorn som
+  ligger i Boost-headers (falska positiva för limb-lagring i
+  Boost.Multiprecision på Linux som en omskrivning av den anropande koden bara
+  flyttar) och räknar dem i utdata, och `bugprone-exception-escape` ignorerar
+  `bad_array_new_length` (MSVC:s flyttkonstruktorer för map/set allokerar; ett
+  allokeringsfel är ändå fatalt).
 - clang-tidy kontrollerar projektets headers på varje värd: headerfiltret
-  godtar avgränsarna `/` och `\` (Windows-sökvägar matchade aldrig före step
-  63).
+  godtar avgränsarna `/` och `\`.
 
 ### Linux
 
@@ -82,9 +93,8 @@ ctest --preset debug -j 16
 ```
 
 `check-quality` (Lizard, clang-tidy) körs endast på Windows-värden för
-utveckling; andra värdar bygger och kör testerna. Step 63 körde den en gång på
-Linux, vilket hittade det som Windows-körningen inte kunde se (källfiler
-endast för POSIX, libstdc++:s `std::optional`), och lämnade den ren.
+utveckling; andra värdar bygger och kör testerna (den var ren på Linux en gång,
+se [historik](#history)).
 
 ### Andra mål
 
@@ -109,23 +119,19 @@ LLVM SDK finns för de värdarna):
   drivrutiner och projektdrivrutiner vid O0/O2 med specialisering på/av, lokala
   och fjärranrop.
 - Incheckade Erlang-indata är skrivna lokalt
-  (`tests/fixtures/patternmatch/fragments/`, preprocessorns `semantic/headers/`).
-  En granskning 2026-10-03 tog bort alla kopierade OTP-filer; jämförelse med
-  fönster om 60 token mot 4 150 Erlang-filer och 1 190 C/C++-filer från OTP
-  hittade ingen kvarvarande överlappning utöver en genererad heltalstupel.
-  `fixture_sources` upprätthåller isoleringen.
-- Sex programfixturer för slutmålet (`tests/fixtures/programs/`)
-  innehåller goldens för stdout/slutstatus från OTP och dagens
-  kompileringsdiagnostik; `programs_compile` kontrollerar dem utan OTP och
+  (`tests/fixtures/patternmatch/fragments/`, preprocessorns `semantic/headers/`);
+  `fixture_sources` upprätthåller isoleringen från OTP:s källkod.
+- Sex programfixturer för slutmålet (`tests/fixtures/programs/`) innehåller
+  goldens för stdout/slutstatus från OTP och deras kompileringsdiagnostik;
+  `programs_compile` kontrollerar dem utan OTP och
   `tests/compiler/programs/regenerate.py --check` återskapar dem under OTP
   ([fixturkarta](../tests/fixtures/programs/README.md)).
-- Goldens för termutskrift (`tests/fixtures/printing/`)
-  innehåller OTP:s `~w`- och `erlang:display/1`-text för 9 542 värden plus OTP:s
-  stdout från kompilerade display-anrop;
-  `tests/compiler/printing/regenerate.py --check` återskapar dem
-  ([fixturanteckningar](../tests/fixtures/printing/README.md)).
-- Golden-fall för körbara filer (`tests/fixtures/executables/`)
-  är källkataloger plus en `golden.json` med stdout/slutstatus från OTP och ett
+- Goldens för termutskrift (`tests/fixtures/printing/`) innehåller OTP:s
+  `~w`- och `erlang:display/1`-text för 9 542 värden plus OTP:s stdout från
+  kompilerade display-anrop; `tests/compiler/printing/regenerate.py --check`
+  återskapar dem ([fixturanteckningar](../tests/fixtures/printing/README.md)).
+- Golden-fall för körbara filer (`tests/fixtures/executables/`) är
+  källkataloger plus en `golden.json` med stdout/slutstatus från OTP och ett
   handskrivet stderr-mönster; `tests/compiler/executables/run.py` länkar och kör
   vart och ett under matrisen av policyer/drivrutiner (CTest
   `executables_<case>`), och `regenerate.py --check` återskapar dem under OTP
@@ -157,8 +163,9 @@ Fall som beror på filsystemets förmågor (länkar, skiftlägesalias) rapporter
 ## Plattforms- och sanitizer-status
 
 - Native-exekvering av genererad kod: Windows x64; Linux x86-64. Resultat för
-  32-bitars och ARM finns i historiken.
-- Apple Silicon: väntande.
+  32-bitars och ARM (runtime-tester och korslänkade goldens) finns i
+  historiken.
+- Apple Silicon: inte validerat sedan backend tillkom.
 - ASan, UBSan och LeakSanitizer för kompilatorn och runtime: Linux x86-64, en
   kombinerad Debug-konfiguration
   (`-fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=undefined`),
@@ -172,9 +179,8 @@ Fall som beror på filsystemets förmågor (länkar, skiftlägesalias) rapporter
   i stället för att kasta.
 - ThreadSanitizer: Linux x86-64, samma instrumenteringsräckvidd med
   `-fsanitize=thread`; fullständig CTest och samtidighetstesterna fem gånger
-  vardera rapporterar ingen kapplöpning efter åtgärden av låsordningen i
-  `Executor::clear`. Också utanför räckvidden: de två tester som ersätter
-  `operator new`.
+  vardera rapporterar ingen kapplöpning. Också utanför räckvidden: de två
+  tester som ersätter `operator new`.
 - På Windows står det förbyggda LLVM SDK fortfarande i konflikt med
   instrumenterad kod (`annotate_string` 0 mot 1).
 - ASan enbart för runtime godkänns på Windows med Release-sonder,
@@ -250,77 +256,26 @@ CTest-körningar utan överhoppningar.
 | --- | --- | ---: | ---: | --- |
 | 2026-09-19 | Parserfas VI (macOS arm64, OTP 29.1 `751f87b7`, orakel 29.0.5) | 46 | alla | 344/344 produktioner belagda; korpus med 10 filer |
 | 2026-09-20 | Projekt (macOS arm64) | 64 | alla | Debug, enbart kompilator, ASan+UBSan |
-| 2026-09-28 | Testmigrering till CLI-arbetsflöden | 74/75 | — | Baslinje 78/93; stackspill i `parser_hardening` åtgärdades senare med 8 MiB stack |
-| 2026-09-28 | Reparation av Windows-grinden | 75 | alla | Lizard + clang-tidy rena |
+| 2026-09-28 | Testmigrering till CLI-arbetsflöden; reparation av Windows-grinden | 75 | alla | Stackspill i `parser_hardening` åtgärdat med 8 MiB stack; Lizard + clang-tidy rena |
 | 2026-09-29 | Kompilatormilstolpe steg 1–46 | 103 | 182 | Enbart kompilator 80, enbart runtime 16, runtime-ASan 16 |
-| 2026-10-01 | PG1 semantisk matris och bevis | 104 | — | Källhashar fastlåsta |
-| 2026-10-01 | PG2 felkanal | 108 | — | ABI rev 2 |
-| 2026-10-01 | PG3 atomer | 109 | 189 | ABI rev 3 |
-| 2026-10-01 | PG4 bindningar med räckvidd | 111 | 191 | 26 legalitetsfall |
-| 2026-10-02 | PG5 mönstersemantik | 113 | 196 | 92 legalitetsmoduler |
-| 2026-10-02 | PG6 matchning av omedelbara värden | 114 | 199 | 34 anrop |
-| 2026-10-02 | PG7 guards för omedelbara värden | 119 | 205 | 1 689 anrop |
-| 2026-10-02 | PG8 kontrollflöde i guards | 120 | 207 | 2 075 anrop |
-| 2026-10-02 | PG9 ordnade klausuler | 121 | 208 | 1 020 anrop |
-| 2026-10-02 | PG10 matchningar i kroppar | 122 | 209 | 1 666 anrop |
-| 2026-10-02 | PG11 stabil heap och rötter | 123 | 213 | ABI rev 4 |
-| 2026-10-02 | PG12 tupler/listor/strängar | 125 | 221 | 4 801 anrop |
-| 2026-10-02 | PG13 godtyckliga heltal | 127 | 231 | 16 065 anrop |
-| 2026-10-02 | PG14 flyttal | 129 | 238 | 14 436 anrop |
-| 2026-10-02 | PG15 maps | 131 | 244 | 8 010 anrop |
-| 2026-10-02 | PG15a OTP-fria goldens | 118 | 244 | 14 korpusar, 49 959 värden; granskningar valfria |
-| 2026-10-02 | PG16 bitstrings | 120 | 253 | 8 826 anrop |
-| 2026-10-03 | PG17 tupel-records | 121 | 257 | 1 025 utfall, 29 semantiska fall |
-| 2026-10-03 | PG18 guard-katalog | 122 | 257 | 81 rader, 5 033 utfall |
-| 2026-10-03 | PG19 bindningsfakta | 123 | 258 | 822 utfall, 976 dominanskontroller |
-| 2026-10-03 | PG20 avslutning | 124 | 258 | 19 korpusar, 67 634 värden, 1 969 seedade utfall |
-| 2026-10-03 | Granskning av OTP-källkod | 125 | 258 | Kopierade OTP-filer ersatta med lokala fragment |
-| 2026-10-03 | Plan 11 step 1 baslinje | 125 | 258 | Se nuvarande baslinje |
-| 2026-10-03 | Plan 11 step 2 programfixturer | 126 | 258 | Sex OTP-goldens; snabbläge 123 tester; fullt `-j 16` 83 s |
-| 2026-10-03 | Plan 11 step 4 termutskrift | 128 snabba | 265 | 9 542 `~w`/display-goldens; 154 kompilerade display-anrop i alla policyer; clang-tidy kört med ett jobb (samtidiga körningar kraschade verktyget på oförändrade enheter) |
-| 2026-10-04 | Plan 11 step 8 körare för körbara filer (phase B stängd) | 138 (135 snabba) | 272 | Fallen `demo`, `exits` under åtta kombinationer av policy/drivrutin; fullt `-j 16` 235 s |
-| 2026-10-04 | Plan 11 step 8I klassisk heap (phase C stängd) | 144 (140 snabba) | 276 | Fullt `-j 16` 370 s: 143/144, `codegen_dependency` fick timeout efter 120 s under last och klarade sig ensamt på 29 s; Lizard-all 0 varningar; tidy-all godkänt med ett jobb efter ett tyst avslut med två jobb |
-| 2026-10-04 | Plan 11 step 9 `case` och `begin` | 146 (142 snabba) | 114 ändrade | Snabbt 142/142; berörda tester 7/7 i fullt läge; Lizard 0 varningar; tidy godkänt med ett jobb efter ett tyst avslut med två jobb |
-| 2026-10-05 | Plan 11 step 10 `if` | 147 (143 snabba) | 114 ändrade | Snabbt 143/143; berörda tester 8/8 i fullt läge; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 11 raises i källkod | 148 (144 snabba) | 124 ändrade | Snabbt 144/144; berörda tester 22/22 i fullt läge; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 12 `catch Expr` | 149 (145 snabba) | 277 | Snabbt 145/145; berörda tester 25/25 i fullt läge; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 13 `try ... of ... catch` | 150 (146 snabba) | 189 ändrade | Snabbt 146/146; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 14 `try ... after` | 153 (149 snabba) | 2 ändrade | Snabbt 149/149; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 15 stackspår och `raise/3` | 154 (150 snabba) | 129 ändrade | Snabbt 150/150; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 16 `maybe` (phase D stängd) | 155 (151 snabba) | 277 | Snabbt 151/151; fullt `-j 16` 155/155 på 259 s; Lizard-all 0 varningar; tidy-all godkänt |
-| 2026-10-05 | Plan 11 step 18 rekursiva anropsgrafer | 156 (152 snabba) | 91 ändrade | Snabbt 152/152; berörda tester 13/13 i fullt läge; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 19 explicita ramar och svansanrop | 157 (153 snabba) | 278 | Snabb och fullständig CTest godkända (med fallet från step 20: 154/154, 158/158); clang-cl-konfigurering; Lizard 0 varningar; tidy godkänt |
-| 2026-10-05 | Plan 11 step 20 djup rekursion i kroppar och stackbudget | 158 (154 snabba) | 278 | Snabbt 154/154; fullt 158/158; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 21 list-comprehensions | 159 (155 snabba) | ändrade | Snabbt 155/155; berörda tester i fullt läge; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 22 binary- och map-comprehensions (phase E stängd) | 160 (156 snabba) | alla | Snabbt 156/156; fullt `-j 12` 160/160 på 275 s; Lizard-all 0 varningar; tidy-all godkänt efter åtgärd av fyra fynd i ny kod |
-| 2026-10-06 | Plan 11 step 23 rotinventering, `SafePoint`, levande register | 160 (156 snabba) | 50 ändrade | Snabbt 156/156; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 26 skräpsamling från genererad kod | 161 (157 snabba) | 63 ändrade | Snabbt 157/157; fullt `-j 12` 161/161 på 107 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 27 heaputtömning efter skräpsamling | 162 (158 snabba) | 50 ändrade | Snabbt 158/158; fullt `-j 12` 162/162 på 108 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 27 korrigering: inga minnestak som standard | 162 (158 snabba) | 50 ändrade | Fullt `-j 12` 158/162 på 120 s, 4 `codegen_failure_*` åtgärdade genom att förvänta `out_of_memory`, sedan 10/10 berörda; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 27 uppföljning: inga tak för binaries eller antal processer, `--max-atoms` | 164 (160 snabba) | 281 | Snabbt 160/160; fullt `-j 12` 164/164 på 105 s; Lizard 0 varningar; tidy-all godkänt |
-| 2026-10-06 | Plan 11 step 28 grafkopior mellan heapar, delade buffertar utanför heapen | 166 (162 snabba) | 71 ändrade | Snabbt 162/162; fullt `-j 12` 166/166 på 130 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-07 | Plan 11 step 29 uppdateringar av records | 167 (163 snabba) | 38 ändrade | Snabbt 163/163; Lizard 0 varningar; tidy godkänt; records-korpusen återskapas under OTP |
-| 2026-10-07 | Plan 11 step 30 `record_info/2` | 168 (164 snabba) | 42 ändrade | Snabbt 164/164; fullt `-j 12` 168/168 på 119 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-07 | Plan 11 step 31B celler för native records och `CLAUSE_record_v1` (ABI 6) | 169 (165 snabba) | 283 ändrade | Snabbt 165/165; fullt `-j 12` 169/169 på 122 s; Lizard 0 varningar; tidy godkänt efter två åtgärder |
-| 2026-10-07 | Plan 11 step 31C lokala native records | 170 (166 snabba) | 285 ändrade | Snabbt 166/166; fullt `-j 12` 170/170 på 146 s; Lizard och tidy godkända efter komplexitetsåtgärder |
-| 2026-10-07 | Plan 11 step 31D kvalificerade och importerade native records | 171 (167 snabba) | 124 ändrade | Snabbt 167/167; fullt `-j 12` 171/171 på 129 s; Lizard 0 varningar; tidy godkänt efter tre åtgärder |
-| 2026-10-07 | Plan 11 step 31E anonyma native records (step 31 stängt) | 172 (168 snabba) | 33 ändrade | Snabbt 168/168; fullt `-j 12` 172/172 på 124 s; Lizard 0 varningar; tidy godkänt efter en åtgärd |
-| 2026-10-07 | Plan 11 step 32 funktionsvärden `fun F/A`, `fun M:F/A` (ABI 7) | 173 (169 snabba) | 289 ändrade | Snabbt 169/169; fullt `-j 12` 173/173 på 122 s; Lizard och tidy godkända efter komplexitetsåtgärder |
-| 2026-10-07 | Plan 11 step 33 closures med fångade variabler | 175 (171 snabba) | 134 ändrade | Snabbt 171/171; fullt `-j 12` 175/175 på 126 s; Lizard och tidy godkända efter komplexitetsåtgärder |
-| 2026-10-07 | Plan 11 step 34 namngivna funs | 176 (172 snabba) | 132 ändrade | Snabbt 172/172; fullt `-j 12` 176/176 på 152 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-07 | Plan 11 step 35 dynamiska anrop `M:F(Args)`, `apply/2,3`, `fun M:F/A` vid körning (ABI 8) | 177 (173 snabba) | 290 (analysatorkonfiguration ändrad) | Snabbt 173/173; fullt `-j 12` 177/177 på 142 s; Lizard 0 varningar och tidy godkänt efter en komplexitetsåtgärd och tre tidy-åtgärder |
-| 2026-10-09 | Plan 11 step 63 Linux x86-64 (WSL2 Ubuntu 25.04, glibc 2.41, LLVM 23.1.2 SDK clang, libstdc++ 14, GDB 16.2) | 235 | 338 | Fullständig CTest 235/235 på 161 s; Lizard och clang-tidy rena (7 analysatorrapporter i Boost-headers ignorerade); Windows-grinden 235/235 med headers kontrollerade |
-| 2026-10-09 | Plan 11 step 64 32-bitars: Windows x86 (WoW64, clang-cl) och Linux i386 (Debian 13 chroot, clang 19) | 42 + 65 goldens | — | Runtime-/ABI-tester 42/42 inbyggt på båda; `cross.py`-goldens 65/65 på båda (körningar av `integer_limit` endast för 64 bitar överhoppade) |
-| 2026-10-09 | Plan 11 step 65 Linux arm64 och armhf (Debian 13 sysroots, qemu-user 9.2) | 42 + 65 goldens | — | Runtime-/ABI-tester 42/42 vardera; goldens 64/65 vardera (`port_spawn` `enoent`: lucka i qemu:s `posix_spawn`), körgräns 900 s |
-| 2026-10-10 | Plan 11 step 67 ASan + UBSan + LeakSanitizer (Linux x86-64) | 235 | — | Ingen sanitizer-rapport; fyra tester med injicerad vägran från värden utanför ASan:s räckvidd; `CLAUSE_TEST_TIMEOUT_SCALE=10` |
-| 2026-10-10 | Plan 11 step 68 ThreadSanitizer (Linux x86-64) | 233 | — | En inverterad låsordning åtgärdad (`Executor::clear`); därefter ingen rapport i fullständig CTest och 15 samtidighetstester x5 |
-| 2026-10-10 | Plan 11 step 65A `-behaviour`/`-behavior` och genererad `behaviour_info/1` | 234 (snabba) | 342 | Ny konfigurering; snabbt 234/234; Lizard 0 varningar; tidy godkänt efter en åtgärd (kastande statisk initiering); nya `lint_diagnostics` (8 OTP-genererade fall) och `executables_behaviours`; OTP `--check` återskapar 60 goldens för körbara filer och 8 lint-goldens; programgoldens återskapade endast för den ändrade orakelhashen |
-| 2026-10-10 | Plan 11 step 65B `module_info/0,1` och informativa attribut | 235 (snabba) | 344 | Ny konfigurering; snabbt 235/235; Lizard 0 varningar; tidy godkänt efter uppdelning av `parse_and_print`; nya `executables_module_info` och lint-fallen `module_info_defined`, `exports_repeated` återskapas under OTP 29.1.1 |
-| 2026-10-10 | Plan 11 step 65C importer, kompileringstips, namngivna avvisningar av attribut | 236 (snabba) | — | Se belägg för plan 65C; `executables_imports` och tre lint-fall för importer återskapas under OTP 29.1.1 |
-| 2026-10-06 | Plan 11 step 27E ERTS-gräns för stora heltal, `error:system_limit` | 165 (161 snabba) | 157 ändrade | Snabbt 161/161; fullt `-j 12` 165/165 på 130 s; Lizard 0 varningar; tidy godkänt; 21 goldens för körbara filer återskapas under OTP |
-| 2026-10-06 | Plan 11 step 27D inga tak för map-storlek eller nyckelarbete | 164 (160 snabba) | 13 ändrade | Snabbt 160/160; fullt `-j 12` 164/164 på 115 s; efter en tidy-åtgärd i `bit_order` godkänns 35 berörda tester; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 27C gräns för tupelaritet 16 777 215 | 164 (160 snabba) | 51 ändrade | Snabbt 160/160; fullt `-j 12` 164/164 på 121 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 27B inga tak för listlängd eller jämförelsearbete | 164 (160 snabba) | 4 ändrade | Snabbt 160/160; fullt `-j 12` 164/164 på 125 s; Lizard 0 varningar; tidy godkänt |
-| 2026-10-06 | Plan 11 step 27A runtime-omfattande minnesgräns och `--max-heap/stack/memory` | 164 (160 snabba) | 49 ändrade | Snabbt 160/160; fullt `-j 12` 164/164 på 118 s; efter en tidy-åtgärd i `ProcessStack::grow` godkänns 42 berörda tester; Lizard 0 varningar; tidy godkänt |
+| 2026-10-01 – 10-03 | Mönster-/guard-planen PG1–PG20 | 104–131 | 189–258 | ABI-revisioner 2–4; PG15a gjorde goldens OTP-fria (granskningar valfria, 131 → 118 tester); stängd vid 19 korpusar, 67 634 värden, 1 969 seedade utfall |
+| 2026-10-03 | Granskning av OTP-källkod | 125 | 258 | Kopierade OTP-filer ersatta med lokala fragment; jämförelse med fönster om 60 token mot 4 150 Erlang-filer och 1 190 C/C++-filer från OTP hittade ingen överlappning utöver en genererad heltalstupel |
+| 2026-10-03 | Plan 11 step 1 baslinje (commit `b1a471f`, pin `21776803ecd1`, Lizard 1.24.0, clang-tidy 22.1.8) | 125 (122 snabba) | 258 | Fullt 729 s seriellt, 85 s `-j 16`; 14/14 granskningar; 19/19 korpusar; främmande O0/O2-objekt inspekterade för 7 mål |
+| 2026-10-03 | Steps 2, 4: programfixturer, termutskrift | 126–128 | 265 | Sex OTP-programgoldens; 9 542 `~w`/display-goldens |
+| 2026-10-04 | Steps 8, 8I: körare för körbara filer, klassisk heap (phases B, C stängda) | 138–144 | 272–276 | Fullt `-j 16` 235–370 s |
+| 2026-10-04 – 10-05 | Steps 9–20: `case`, `if`, raises, `catch`, `try`, stackspår, `maybe` (phase D stängd), rekursion, ramar och svansanrop | 146–158 | 277–278 | Snabba och berörda tester i fullt läge per steg; fullt `-j 16` 155/155 på 259 s vid phase D |
+| 2026-10-06 | Steps 21–28: comprehensions (phase E stängd), rötter och skräpsamling, minnes- och termgränser (27A–27E), grafkopior | 159–166 | 278–281 | Fullt `-j 12` 105–275 s; step 27 tog bort minnestak som standard |
+| 2026-10-07 | Steps 29–35: records, native records (ABI 6), funs (ABI 7), closures, namngivna funs, dynamiska anrop (ABI 8) | 167–177 | 283–290 | Fullt `-j 12` 119–152 s |
+| 2026-10-09 | Step 63 Linux x86-64 (WSL2 Ubuntu 25.04, glibc 2.41, LLVM 23.1.2 SDK clang, libstdc++ 14, GDB 16.2) | 235 | 338 | Fullständig CTest 235/235 på 161 s; Lizard och clang-tidy rena på Linux (7 analysatorrapporter i Boost-headers ignorerade); Windows-grinden 235/235 med headers kontrollerade |
+| 2026-10-09 | Step 64 32-bitars: Windows x86 (WoW64, clang-cl) och Linux i386 (Debian 13 chroot, clang 19) | 42 + 65 goldens | — | Runtime-/ABI-tester 42/42 inbyggt på båda; `cross.py`-goldens 65/65 på båda (körningar av `integer_limit` endast för 64 bitar överhoppade) |
+| 2026-10-09 | Step 65 Linux arm64 och armhf (Debian 13 sysroots, qemu-user 9.2) | 42 + 65 goldens | — | Runtime-/ABI-tester 42/42 vardera; goldens 64/65 vardera (`port_spawn` `enoent`: lucka i qemu:s `posix_spawn`), körgräns 900 s |
+| 2026-10-10 | Step 67 ASan + UBSan + LeakSanitizer (Linux x86-64) | 235 | — | Ingen sanitizer-rapport; fyra tester med injicerad vägran från värden utanför ASan:s räckvidd; `CLAUSE_TEST_TIMEOUT_SCALE=10` |
+| 2026-10-10 | Step 68 ThreadSanitizer (Linux x86-64) | 233 | — | En inverterad låsordning åtgärdad (`Executor::clear`); därefter ingen rapport i fullständig CTest och 15 samtidighetstester x5 |
+| 2026-10-10 | Steps 65A–65C: behaviours, `module_info/0,1`, importer | 234–236 snabba | 342–344 | Lint- och körbara goldens återskapas under OTP 29.1.1 |
+| 2026-10-11 | Steps 73A–73G parse transforms | 242/243 snabba | — | Känt fel i `codegen_resource_cli`, sedan dess inaktiverat |
+| 2026-10-12 | Steps 62D1–62E byggkatalog och cachar | 263/264 | alla | Fullständig CTest, känt fel i `codegen_resource_cli`; `check-quality-all` rent |
+| 2026-10-13 | Steps 58U–58W inferenscache | 278/279 | alla | Fullständig CTest, känt fel i `codegen_measurements`; `check-quality-all` rent |
+| 2026-10-14 | Step 41S `prim_eval` och den nya luerl-körningen (H3 stängd) | 299/300 | alla | Se nuvarande baslinje |
 
-PG = steg i mönster-/guard-planen (arkiverat i `.agents/00-finished.md`).
+PG = steg i mönster-/guard-planen; posterna för plan 11-stegen är arkiverade i
+`.agents/00-finished.md`.

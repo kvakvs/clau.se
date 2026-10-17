@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   isLocale,
   LOCALE_KEY,
@@ -13,7 +13,6 @@ import {
 type Props = { locale: Locale; label: string };
 
 export function LanguageSelect({ locale, label }: Props) {
-  const router = useRouter();
   const pathname = usePathname();
 
   function change(value: string) {
@@ -21,7 +20,9 @@ export function LanguageSelect({ locale, label }: Props) {
     try {
       localStorage.setItem(LOCALE_KEY, value);
     } catch {}
-    router.push(switchLocalePath(pathname, value) + window.location.hash);
+    window.location.assign(
+      switchLocalePath(pathname, value) + window.location.hash,
+    );
   }
 
   return (

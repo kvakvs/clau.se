@@ -1,18 +1,18 @@
 ---
 source: docs/profiling.md
-sourceCommit: 6ed3851c
-sourceSha256: 0690ee91aab12c03c222bc79f4e862db1a91f1a621e36137ecfe1a97145f988a
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: ae0b17c50da6bb2c36a31edf31aaa901aa6c57f3e662ef6fe663d066c1d7159a
+translatedAt: 2026-10-17
 ---
 # Profiling
 
 `--profile FILE` (eine [Runtime-Option](executables.md#runtime-options), auch
 über `CLAUSE_FLAGS`) lässt ein Programm beim Beenden einen Kostenbericht nach
-`FILE` schreiben (Backlog F31). Nichts wird neu kompiliert: Jede ausführbare
-Datei kann profilieren, und ohne die Option läuft sie, gibt aus und schreibt
-Dateien genau wie zuvor. Ein Bericht, der nicht geschrieben werden kann, wird
-auf stderr gemeldet (`clau: cannot write profile FILE`); der Exit-Status bleibt
-der des Programms.
+`FILE` schreiben. Nichts wird neu kompiliert: Jede ausführbare Datei kann
+profilieren, und ohne die Option läuft sie, gibt aus und schreibt Dateien genau
+wie zuvor. Ein Bericht, der nicht geschrieben werden kann, wird auf stderr
+gemeldet (`clau: cannot write profile FILE`); der Exit-Status bleibt der des
+Programms.
 
 ## Zuordnung
 
@@ -66,6 +66,6 @@ zwischen Läufen; Eintritte sind exakt.
 `linking_profiling` linkt `tests/fixtures/linking/profile` bei O0 und O2 und
 führt es ohne Profiling, mit `--profile FILE` und mit
 `CLAUSE_FLAGS=--profile=FILE` aus: Die Ausgabe ist identisch, `spin/2` steht
-nach Eigenzeit an erster Stelle mit genau 2.000.001 Eintritten, der
-rechnende Prozess steht an erster Stelle, und `--profile` ohne Datei scheitert
-mit Exit 70.
+nach Eigenzeit an erster Stelle mit genau 2.000.001 Eintritten, der rechnende
+Prozess steht an erster Stelle, und `--profile` ohne Datei scheitert mit
+Exit 70.

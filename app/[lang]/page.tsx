@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 import { isLocale } from "@/lib/i18n";
 import { GITHUB_URL } from "@/lib/site";
 import { getMessages } from "@/messages";
@@ -30,12 +29,12 @@ export default async function HomePage({ params }: Props) {
             {t.status}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link
+            <a
               href={`/${lang}/docs/`}
               className="rounded-full bg-accent px-5 py-2.5 font-medium text-accent-fg hover:opacity-90"
             >
               {t.ctaDocs}
-            </Link>
+            </a>
             <a
               href={GITHUB_URL}
               rel="noopener noreferrer"

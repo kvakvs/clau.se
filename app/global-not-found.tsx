@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { siteIcons } from "@/lib/site";
 import { themeInitScript } from "@/lib/theme";
 import { en } from "@/messages/en";
@@ -20,12 +19,12 @@ export default function GlobalNotFound() {
         <main className="mx-auto max-w-md px-4 py-16">
           <p className="text-5xl font-semibold text-accent">404</p>
           <h1 className="mt-4 text-2xl font-semibold">{en.notFound.title}</h1>
-          <Link
+          <a
             href="/"
             className="mt-6 inline-block text-accent hover:underline"
           >
             {en.notFound.home}
-          </Link>
+          </a>
         </main>
       </body>
     </html>

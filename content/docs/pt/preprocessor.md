@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 6ed3851c
-sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 57dcb1da3315eb173341c8100e17e37df776b01f85f4c06585c1b7e5d3503daf
+translatedAt: 2026-10-17
 ---
 # Pré-processador
 
@@ -46,9 +46,9 @@ Esta é uma interface interna, não um formato público de fase.
   pesquisa. `include_lib` tenta os caminhos comuns, depois os diretórios de
   aplicações indicados explicitamente e, por fim, os diretórios de releases
   `<app>-<version>` abaixo de cada diretório pesquisado (as versões são
-  dígitos separados por pontos, tal como o code server do OTP as lê; ganha a
-  mais alta). Várias versões de uma mesma aplicação geram um aviso uma vez por
-  execução, indicando o diretório usado; sem code server.
+  dígitos separados por pontos, tal como o servidor de código do OTP as lê;
+  ganha a mais alta). Várias versões de uma mesma aplicação geram um aviso uma
+  vez por execução, indicando o diretório usado; sem servidor de código.
 - Os prefixos de caminho `$VAR` usam um resolvedor injetado; as variáveis não
   definidas ficam literais. Os operandos de include não são expandidos como
   macros. Os ficheiros são descodificados como UTF-8 ou Latin-1 declarado;
@@ -57,7 +57,7 @@ Esta é uma interface interna, não um formato público de fase.
 - Os includes partilham o estado de macros/features/módulo; cada ficheiro tem
   a sua própria pilha de condicionais e o seu mapeamento lógico de ficheiros.
 - As condições validam todos os ramos antes da avaliação em curto-circuito.
-  Sintaxe inválida é um erro; variáveis não associadas, resultados não
+  Sintaxe inválida é um erro; variáveis não vinculadas, resultados não
   booleanos e exceções de avaliação selecionam falso. O acesso a campos/índices
   de records em condições falha; um acesso a record não selecionado em
   curto-circuito é válido.
@@ -78,8 +78,8 @@ Valores por omissão (configuráveis através de `PreprocessorLimits`): 256
 níveis de expansão e 1 000 000 de tokens produzidos por forma, profundidade de
 include 64, aninhamento de expressões 256, mais limites fixos de 4 194 240
 bits para inteiros (o limite do OTP em anfitriões de 64 bits) e 1 000 000 de
-bits para valores bitstring. O esgotamento é um
-diagnóstico de recursos, nunca uma condição falsa silenciosa.
+bits para valores bitstring. O esgotamento é um diagnóstico de recursos,
+nunca uma condição falsa silenciosa.
 
 Os diagnósticos incluem uma categoria estável, a gravidade, intervalos
 físicos, coordenadas lógicas opcionais e intervalos de macros/includes
@@ -88,9 +88,10 @@ a recuperação continua no limite da forma seguinte.
 
 ## Testes
 
-Os goldens de tokens (`semantic/*.erl.tokens`) registam os tipos de tokens do
-epp, os valores descodificados (floats como bits binary64) e a ordem dos
-diagnósticos; a formulação não tem de ser igual à do OTP. Os fragmentos locais
-`semantic/headers/*.hrl` substituem os cabeçalhos do OTP antes copiados.
+Os goldens de tokens (`tests/fixtures/preprocessor/semantic/*.erl.tokens`)
+registam os tipos de tokens do epp, os valores descodificados (floats como
+bits binary64) e a ordem dos diagnósticos; a formulação não tem de ser igual à
+do OTP. Os cabeçalhos incluídos (`semantic/headers/*.hrl`) são de autoria
+local, não copiados do OTP.
 `preprocessor_workflow` cobre árvores de includes reais, a ordem das opções, o
 ambiente, Latin-1 e casos de condições através da CLI.

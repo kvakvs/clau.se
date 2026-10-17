@@ -1,18 +1,18 @@
 ---
 source: docs/profiling.md
-sourceCommit: 6ed3851c
-sourceSha256: 0690ee91aab12c03c222bc79f4e862db1a91f1a621e36137ecfe1a97145f988a
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: ae0b17c50da6bb2c36a31edf31aaa901aa6c57f3e662ef6fe663d066c1d7159a
+translatedAt: 2026-10-17
 ---
 # Perfilado
 
 `--profile FILE` (una [opción del runtime](executables.md#runtime-options),
 también mediante `CLAUSE_FLAGS`) hace que un programa escriba un informe de
-costes en `FILE` al terminar (backlog F31). No se recompila nada: todo
-ejecutable puede perfilarse, y sin la opción se ejecuta, imprime y escribe
-archivos exactamente igual que antes. Un informe que no puede escribirse se
-notifica en stderr (`clau: cannot write profile FILE`); el código de salida
-sigue siendo el del programa.
+costes en `FILE` al terminar. No se recompila nada: todo ejecutable puede
+perfilarse, y sin la opción se ejecuta, imprime y escribe archivos exactamente
+igual. Un informe que no puede escribirse se notifica en stderr
+(`clau: cannot write profile FILE`); el código de salida sigue siendo el del
+programa.
 
 ## Atribución
 
@@ -54,8 +54,8 @@ Processes by time:
 ```
 
 La primera línea también cuenta las porciones de tiempo que ejecutaron los
-workers del planificador y las lecturas de reloj del hilo temporizador de los
-tiempos de espera de `receive`
+hilos de trabajo del planificador y las lecturas de reloj del hilo temporizador
+de los tiempos de espera de receive
 ([rueda de temporizadores](processes.md#receive-timeouts)). Las funciones son
 `module:function/arity` (los funs anónimos por sus nombres generados, cuya
 aridad cuenta los valores capturados); los empates se ordenan por nombre, y

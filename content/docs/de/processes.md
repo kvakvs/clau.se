@@ -1,15 +1,10 @@
 ---
 source: docs/processes.md
-sourceCommit: 6ed3851c
-sourceSha256: 44df8f9eb19f91eec3e5363c50556ce2b7dbcbee643890fa7ddf4afaefb055c9
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: c52f95bbde29faed486345896a09dfa1514cba322d235541606d955fe442ac48
+translatedAt: 2026-10-17
 ---
 # Prozesse
-
-Gestartete Prozesse auf einem kooperativen Executor; Exit-Gründe und
-Fehlerberichte; Senden von Nachrichten; selektives Empfangen;
-Empfangs-Timeouts; Links und Exit-Signale; Monitore; registrierte Namen; Ports
-(keine); Scheduler-Worker; Aufwecken über Worker hinweg und Herunterfahren.
 
 ## Executor
 
@@ -23,15 +18,16 @@ der Executor läuft, bis dieser endet:
   4.000 Reduktionen aus (`CONTEXT_REDS` von OTP) und stellt ihn dann wieder ans
   Ende seiner Warteschlange, sofern er nicht geendet hat.
 - Jeder Funktionseintritt verbraucht eine Reduktion: Aufrufe, Endaufrufe,
-  fun- und dynamische Aufrufe sowie Builtins. Ist keine mehr übrig, findet der
+  Fun- und dynamische Aufrufe sowie Builtins. Ist keine mehr übrig, findet der
   Eintritt nicht statt: Der Prozess merkt sich die Funktion, die er gerade
   betreten wollte, behält ihre Argumente in seinen Registern (sie bleiben
   Wurzeln der Speicherbereinigung) und kehrt zum Executor zurück, der ihn
-  später fortsetzt, indem er den Eintritt wiederholt. Eine Schleife, die keinen
-  Aufruf macht (eine comprehension über eine Liste ohne Aufrufe in ihrem
-  Rumpf), läuft bis zu ihrem Ende, bevor der Prozess abgeben kann. Builtins,
-  deren Arbeit mit einem Listen- oder binary-Argument wächst, laufen in
-  Portionen und geben zwischen ihnen ab ([Portionen](builtins.md#portions)).
+  später fortsetzt, indem er den Eintritt wiederholt
+  ([Ausführungsmodell](execution-model.md#operations)). Auch jeder
+  Schleifenkopf einer Comprehension verbraucht eine, sodass auch eine Schleife
+  ohne Aufrufe abgibt. Builtins, deren Arbeit mit einem Listen- oder
+  Binary-Argument wächst, laufen in Portionen und geben zwischen ihnen ab
+  ([Portionen](builtins.md#portions)).
 - Jeder Prozess besitzt seinen Heap und Stack. Argumente eines neuen Prozesses
   werden in seinen Heap kopiert
   ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)).
@@ -39,8 +35,8 @@ der Executor läuft, bis dieser endet:
   auslöst. Kontext, Heap und Stack eines beendeten Prozesses werden sofort
   freigegeben; seine Pid bleibt ein gültiger Term, und `is_process_alive/1`
   gibt für sie false zurück.
-- Ein Prozess, der in einem `receive` wartet, ist nicht in der Warteschlange;
-  eine Sendung an ihn stellt ihn wieder ans Ende ([Receive](#receive)).
+- Ein Prozess, der in einem `receive` wartet, ist in keiner Warteschlange; eine
+  Sendung an ihn reiht ihn wieder ein ([Receive](#receive)).
 - Endet der Hauptprozess, endet das Programm mit seinem Ergebnis
   ([ausführbare Dateien](executables.md)): Noch eingereihte oder wartende
   Prozesse werden freigegeben, ohne weiterzulaufen, so wie ein OTP-escript
@@ -59,12 +55,11 @@ der Executor läuft, bis dieser endet:
 
 ## Worker
 
-Der Executor führt Prozesse auf
-`RuntimeOptions::schedulers` Worker-Threads aus: dem Thread, der das Programm
-gestartet hat, und je einem weiteren Thread pro zusätzlichem Worker. Programme
-übernehmen die Anzahl aus `--schedulers N` (1 bis 1.024,
-[Runtime-Optionen](executables.md#runtime-options)); Standard ist ein Worker
-pro logischem Prozessor, wie bei `+S` von OTP.
+Der Executor führt Prozesse auf `RuntimeOptions::schedulers` Worker-Threads
+aus: dem Thread, der das Programm gestartet hat, und je einem weiteren Thread
+pro zusätzlichem Worker. Programme übernehmen die Anzahl aus `--schedulers N`
+(1 bis 1.024, [Runtime-Optionen](executables.md#runtime-options)); Standard ist
+ein Worker pro logischem Prozessor, wie bei `+S` von OTP.
 
 - Jeder Worker hat seine eigene Run-Queue, wie jeder ERTS-Scheduler: Ein
   Prozess bleibt bei dem Worker, auf dem er zuletzt lief, sodass sein Heap in
@@ -87,7 +82,7 @@ pro logischem Prozessor, wie bei `+S` von OTP.
   hält. Die Timer- und I/O-Threads, Port-Aufgaben und Worker zwischen
   Zeitscheiben reihen einen Prozess für seinen eigenen Worker ein, oder für
   einen untätigen Worker, wenn sein eigener beschäftigt ist.
-- Ein Executor-Mutex schützt die Warteschlange, die wartenden Prozesse, die
+- Ein Executor-Mutex schützt die Run-Queues, die wartenden Prozesse, die
   Timer, die registrierten Namen, die Links und Monitore jedes Prozesses und
   jeden Prozess, der nicht läuft. Heap, Stack, Mailbox und Fehlerkanal eines
   laufenden Prozesses gehören allein seinem Worker; Erlang-Code läuft ohne die
@@ -96,9 +91,10 @@ pro logischem Prozessor, wie bei `+S` von OTP.
   Prozess, der anderswo läuft. Eine Nachricht an einen Prozess, der auf einem
   anderen Worker läuft, kann noch nicht in dessen Heap gelangen: Sie wird in
   einen eigenen Puffer kopiert und nach früher gepufferten zugestellt, wenn die
-  Zeitscheibe des Empfängers endet. Ein Exit-Signal von `exit/2` oder
-  `exit_signal/2` an einen solchen Prozess tut nichts, und sein Prozess
-  beendet seine Zeitscheibe (`builtins::Blocked`); er wartet, bis die
+  Zeitscheibe des Empfängers endet
+  ([Nachrichtenpuffer](runtime-heap.md#message-buffers)). Ein Exit-Signal von
+  `exit/2` oder `exit_signal/2` an einen solchen Prozess tut nichts, und sein
+  Prozess beendet seine Zeitscheibe (`builtins::Blocked`); er wartet, bis die
   Zeitscheibe des Ziels endet, läuft dann als Erster und wiederholt das Builtin
   mit denselben Argumenten. Das Ziel wird bis dahin festgehalten, sodass das
   wiederholte Builtin es nicht erneut laufend vorfinden kann. Ein Prozess, der
@@ -116,20 +112,21 @@ pro logischem Prozessor, wie bei `+S` von OTP.
 - Das Ende des Hauptprozesses, ein Halt oder ein Runtime-Fehler stoppt das
   Programm, sobald jeder Worker seine aktuelle Zeitscheibe beendet hat; dann
   werden die anderen Prozesse freigegeben.
-- Gemeinsame Runtime-Dienste sind synchronisiert ([Threads](runtime.md#threads)):
-  Atome, der Code-Server, Pid-Nummern und das Speicherkonto.
+- Gemeinsame Runtime-Dienste sind synchronisiert
+  ([Threads](runtime.md#threads)): Atome, der Code-Server, Pid- und
+  Port-Nummern und das Speicherkonto.
 - Die Ausgaben verschiedener Prozesse verschränken sich in der Reihenfolge, in
   der ihre Schreibvorgänge geschehen. Jeder Aufruf von `io:format` und
   `erlang:display` schreibt seinen Text sofort.
 
-Aufwecken und Herunterfahren brauchen keinen weiteren
-Mechanismus, weil jede Änderung am Scheduling-Zustand eines Prozesses unter dem
-Executor-Mutex geschieht:
+Aufwecken und Herunterfahren brauchen keinen weiteren Mechanismus, weil jede
+Änderung am Scheduling-Zustand eines Prozesses unter dem Executor-Mutex
+geschieht:
 
 - Eine Nachricht, `'EXIT'` oder `'DOWN'` für einen wartenden Prozess reiht ihn
-  im selben kritischen Abschnitt ein, der sie zustellt, und weckt einen
-  untätigen Worker. Ein Prozess, der sich noch in der Zeitscheibe befindet, in
-  der er zu warten begann, kann dann keine Nachricht erhalten (seine Sender
+  im selben kritischen Abschnitt ein, der sie zustellt, und weckt einen Worker
+  wie oben beschrieben. Ein Prozess, der sich noch in der Zeitscheibe befindet,
+  in der er zu warten begann, kann dann keine Nachricht erhalten (seine Sender
   warten auf das Ende der Zeitscheibe), daher findet die Zustellung ihn immer
   geparkt vor.
 - Ein Worker, der keinen lauffähigen Prozess findet, schläft, bis ein anderer
@@ -157,9 +154,8 @@ Executor-Mutex geschieht:
 
 ### Empfangs-Timeouts
 
-Plan step 62B hat die geordnete Fristen-Map von step 47, die vor jeder
-Zeitscheibe gelesen wurde, durch ein hierarchisches gehashtes Timer-Rad
-(timer wheel) ersetzt, wie ERTS Timer führt (`scheduler/timer_wheel`):
+Timer liegen in einem hierarchischen gehashten Timer-Rad (timer wheel), wie
+ERTS sie führt (`scheduler/timer_wheel`):
 
 - Ticks sind Millisekunden seit dem Start des Executors. Sechs Ebenen mit je 64
   Slots decken 2^36 Ticks ab, mehr als der längste Timeout (4.294.967.295 ms).
@@ -178,12 +174,11 @@ Zeitscheibe gelesen wurde, durch ein hierarchisches gehashtes Timer-Rad
   werden befragt; wartende Prozesse werden nie durchsucht. Abgelaufene Prozesse
   werden in Tick-Reihenfolge eingereiht.
 - Das Rad wird von den Workern unter dem Executor-Mutex geteilt. `after 0`
-  wartet nie, und `infinity` schaltet nie einen Timer scharf, wie zuvor.
-- Gemessen am Golden `wakeups`: 64 Uhrablesungen für 2.046 Zeitscheiben (68 für
-  1.745 mit einem Worker), wo der alte Executor die Uhr vor jeder Zeitscheibe
-  las; `--profile` meldet beide Zahlen ([Profiling](profiling.md)). Timer lösen
-  weiterhin nur so genau aus wie die zeitgesteuerten Wartevorgänge des Hosts
-  (unter Windows die Standard-Timerauflösung).
+  wartet nie, und `infinity` schaltet nie einen Timer scharf.
+- `--profile` meldet die Zeitscheiben und die Uhrablesungen des Timer-Threads
+  ([Profiling](profiling.md)). Timer lösen nur so genau aus wie die
+  zeitgesteuerten Wartevorgänge des Hosts (unter Windows die
+  Standard-Timerauflösung).
 - `runtime_timer_wheel` schaltet 20.000 Timer über alle Ebenen scharf, hebt
   90 % auf und rückt in ungleichmäßigen Schritten vor: Jeder verbleibende Timer
   löst genau einmal aus, beim ersten Vorrücken, das seinen Tick erreicht, in
@@ -226,11 +221,12 @@ Programms ([ausführbare Dateien](executables.md)).
 
 | `Dest` | Wirkung |
 | --- | --- |
-| Eine Pid eines lebenden Prozesses | `Msg` wird in den Heap des Empfängers kopiert ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)), unter Erhalt seiner gemeinsamen Teile, und an seinen Signal-Eingang angehängt |
+| Eine Pid eines lebenden Prozesses | `Msg` wird flach in den Heap des Empfängers kopiert ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)), wie OTP Nachrichten kopiert, eine große in einen Block, den der Empfänger übernimmt ([Nachrichtenübergabe](runtime-heap.md#message-buffers)), und an seinen Signal-Eingang angehängt |
 | Eine Pid eines beendeten Prozesses | Nichts; die Sendung gelingt |
 | Ein [registrierter Name](#registered-names) | Wie für seine Pid; `badarg`, wenn kein lebender Prozess den Namen hat |
 | `{Name, nonode@nohost}` aus zwei Atomen | Wie für die als `Name` registrierte Pid; nichts, wenn es keine gibt |
 | `{Name, Node}` für jeden anderen Knoten | Nichts (es gibt keine anderen Knoten) |
+| Eine Referenz | Wie für den Besitzer eines aktiven [Alias](#aliases); sonst nichts |
 | Alles andere | `badarg` |
 
 - Nachrichten eines Senders kommen in der Reihenfolge an, in der er sie
@@ -253,7 +249,7 @@ Programms ([ausführbare Dateien](executables.md)).
 Mailbox:
 
 - Die Suche in der Mailbox beginnt bei der ältesten Nachricht. Jede Nachricht
-  wird der Reihe nach gegen die Klauseln gematcht (Muster und guards, die
+  wird der Reihe nach gegen die Klauseln gematcht (Muster und Guards, die
   Bindungen von vor dem `receive` lesen dürfen); die erste Nachricht, die
   irgendeine Klausel matcht, wird entfernt, und der Rumpf dieser Klausel läuft.
   Nachrichten, die keine Klausel matcht, bleiben in ihrer Reihenfolge in der
@@ -272,13 +268,14 @@ Mailbox:
 - `after T -> Body`: `T` wird zuerst ausgewertet, vor der Suche. Würde das
   receive warten, muss `T` `infinity` oder eine Ganzzahl in 0..4294967295
   (Millisekunden) sein, sonst `error:timeout_value`, wonach das nächste receive
-  ab der ältesten Nachricht sucht; eine Nachricht, die sofort matcht, prüft ihn nie, wie in OTP. `after 0` führt `Body` aus, sobald jede
-  Nachricht untersucht wurde. Ein endlicher Timeout beginnt, wenn das receive
-  zum ersten Mal wartet, und wird durch Nachrichten, die keine Klausel matchen,
-  nicht neu gestartet; läuft er ab, läuft `Body` mit den Bindungen von vor dem
-  receive, und das nächste receive sucht ab der ältesten Nachricht. Eine
-  Nachricht, die vor Ablauf des Timeouts ankommt, wird genommen. Ein receive
-  nur mit `after` ist ein Schlafen (das Idiom von `timer:sleep/1`).
+  ab der ältesten Nachricht sucht; eine Nachricht, die sofort matcht, prüft ihn
+  nie, wie in OTP. `after 0` führt `Body` aus, sobald jede Nachricht untersucht
+  wurde. Ein endlicher Timeout beginnt, wenn das receive zum ersten Mal wartet,
+  und wird durch Nachrichten, die keine Klausel matchen, nicht neu gestartet;
+  läuft er ab, läuft `Body` mit den Bindungen von vor dem receive, und das
+  nächste receive sucht ab der ältesten Nachricht. Eine Nachricht, die vor
+  Ablauf des Timeouts ankommt, wird genommen. Ein receive nur mit `after` ist
+  ein Schlafen (das Idiom von `timer:sleep/1`).
 - Erzeugter Code: Ein Schleifenkopf schaut auf die nächste nicht untersuchte
   Nachricht (`CLAUSE_receive_v1` `peek`, in einen Wurzel-Slot), die
   Klauselauswahl nimmt eine gematchte Nachricht (`take`) vor ihrem Rumpf oder
@@ -287,9 +284,9 @@ Mailbox:
   `true` (erneut suchen) oder `false` (Timeout abgelaufen: `restart`, dann der
   `after`-Rumpf) antwortet.
 - Der Executor führt einen Timer pro wartendem Prozess mit endlichem Timeout in
-  einem Timer-Rad ([unten](#receive-timeouts)): Ein abgelaufener stellt den
-  Prozess zurück in die Warteschlange. Timeouts werden auf einer monotonen Uhr
-  in Millisekunden gemessen und lösen nie zu früh aus.
+  einem Timer-Rad ([Empfangs-Timeouts](#receive-timeouts)): Ein abgelaufener
+  reiht den Prozess wieder ein. Timeouts werden auf einer monotonen Uhr in
+  Millisekunden gemessen und lösen nie zu früh aus.
 - Wartet jeder Prozess ohne Timeout auf eine Nachricht, die nichts senden kann,
   wartet das Programm ewig, wie bei OTP. Ein Host-Aufruf (`CLAUSE_invoke_v1`),
   der warten würde, scheitert stattdessen mit `busy`: Während ihm läuft kein
@@ -297,9 +294,8 @@ Mailbox:
 
 ## Links
 
-Ein Link verbindet zwei Prozesse in beide Richtungen (`Signals`
-in jedem Kontext: die verlinkten Pids in Link-Reihenfolge und das Flag
-`trap_exit`).
+Ein Link verbindet zwei Prozesse in beide Richtungen (`Signals` in jedem
+Kontext: die verlinkten Pids in Link-Reihenfolge und das Flag `trap_exit`).
 
 - `link(Pid)` verlinkt den Aufrufer mit einem lebenden Prozess und gibt `true`
   zurück; ein Link mit sich selbst oder ein erneuter Link tut nichts. Für einen
@@ -316,9 +312,9 @@ in jedem Kontext: die verlinkten Pids in Link-Reihenfolge und das Flag
 
 ## Monitore
 
-Ein Monitor ist einseitig: Der überwachende Prozess hält ihn
-(per Referenz, in `Signals`), und der überwachte Prozess bewahrt die Referenz
-und die überwachende Pid, damit er die Nachricht senden kann, wenn er endet.
+Ein Monitor ist einseitig: Der überwachende Prozess hält ihn (per Referenz, in
+`Signals`), und der überwachte Prozess bewahrt die Referenz und die
+überwachende Pid, damit er die Nachricht senden kann, wenn er endet.
 
 - `monitor(process, Pid)` gibt eine neue Referenz zurück. Endet der Prozess,
   erhält der Aufrufer `{'DOWN', Ref, process, Pid, Reason}` mit dessen
@@ -340,14 +336,15 @@ und die überwachende Pid, damit er die Nachricht senden kann, wenn er endet.
   überwachen den als `Name` registrierten Prozess (sofort `noproc`, wenn es
   keinen gibt); sein `'DOWN'` nennt `{Name, nonode@nohost}` statt der Pid.
   `{Name, Node}` für einen anderen Knoten ist `badarg`.
-- `monitor(port, Port | Name)` überwacht einen Port ([Ports](ports.md#port-table-and-ownership)):
+- `monitor(port, Port | Name)` überwacht einen Port
+  ([Ports](ports.md#port-table-and-ownership)):
   `{'DOWN', Ref, port, Port, Reason}`, wenn er sich schließt. Eine Pid für
   `port` oder ein Port für `process` ist `badarg`.
 
 ## Registrierte Namen
 
-Der Executor führt eine Tabelle von Namen (Atomen) zu Pids, und
-jeder Prozess seinen eigenen Namen (`Signals::name`).
+Der Executor führt eine Tabelle von Namen (Atomen) zu Pids, und jeder Prozess
+seinen eigenen Namen (`Signals::name`).
 
 - `register(Name, Pid)` benennt einen lebenden Prozess: `badarg` für
   `undefined`, einen vergebenen Namen, einen Prozess, der schon einen Namen
@@ -371,10 +368,10 @@ werden mit exakter Gleichheit gematcht (`1` und `1.0` sind zwei Schlüssel).
 - Jeder Prozess hat sein eigenes Dictionary; ein gestarteter Prozess beginnt
   leer.
 - Einträge sind Wörter des Prozess-Heaps, die in `ProcessDictionary`
-  ([process_dictionary.hpp](../runtime/include/process_dictionary.hpp)) gehalten
-  und als Wurzeln der Speicherbereinigung besucht werden
-  ([Wurzeln](runtime-heap.md#roots-and-safe-points)); sie werden mit dem Prozess
-  freigegeben.
+  ([process_dictionary.hpp](../runtime/include/process_dictionary.hpp))
+  gehalten und als Wurzeln der Speicherbereinigung besucht werden
+  ([Wurzeln](runtime-heap.md#roots-and-safe-points)); sie werden mit dem
+  Prozess freigegeben.
 - Die Reihenfolge von `get/0` und `get_keys/0,1` ist unspezifiziert, wie in
   OTP. Der Lookup durchsucht die Einträge linear; Immediate-Schlüssel werden
   wortweise verglichen. `put/2`, `get/1` und `erase/1` nehmen und liefern die
@@ -382,16 +379,16 @@ werden mit exakter Gleichheit gematcht (`1` und `1.0` sind zwei Schlüssel).
 
 ## Timer
 
-Quelle: `builtins/erlang/timers.cpp`, `scheduler/timers.cpp`. `start_timer/3,4`
-und `send_after/3,4` schalten einen Timer im Rad des Executors scharf (dem, das
-die [Empfangs-Timeouts](#receive-timeouts) verwenden), der beim Auslösen `Msg`
-oder `{timeout, TimerRef, Msg}` an eine Pid oder einen registrierten Namen
-sendet.
+`start_timer/3,4` und `send_after/3,4` (`builtins/erlang/timers.cpp`,
+`scheduler/timers.cpp`) schalten einen Timer im Rad des Executors scharf (dem,
+das die [Empfangs-Timeouts](#receive-timeouts) verwenden), der beim Auslösen
+`Msg` oder `{timeout, TimerRef, Msg}` an eine Pid oder einen registrierten
+Namen sendet.
 
 - Die Nachricht wird beim Start des Timers in einen `MessageBuffer` kopiert
   ([Nachrichtenpuffer](runtime-heap.md#message-buffers)), einen eigenen
   Heap-Block des Timers, und beim Auslösen erneut in den Heap des Empfängers
-  kopiert, wie ein Senden kopiert: Jeder Term, lokale funs eingeschlossen,
+  kopiert, wie ein Senden kopiert: Jeder Term, lokale Funs eingeschlossen,
   reist unverändert.
 - Ein Empfänger, der auf einem Worker läuft, erhält die Nachricht, wenn seine
   Zeitscheibe endet. Ein registrierter Name wird beim Auslösen des Timers
@@ -409,17 +406,18 @@ sendet.
 
 ## Introspektion
 
-Quelle: `builtins/erlang/introspection.cpp`, `scheduler/introspection.cpp`.
-`process_info/1,2` liest einen anderen Prozess unter der Sperre des Executors
-und kopiert seine Terme (Nachrichten, Dictionary) in den Heap des Aufrufers;
-ein Prozess, der auf einem anderen Worker läuft, wird gelesen, sobald seine
-Zeitscheibe endet. Eine Pid ohne lebenden Prozess ergibt `undefined`.
+`process_info/1,2` (`builtins/erlang/introspection.cpp`,
+`scheduler/introspection.cpp`) liest einen anderen Prozess unter der Sperre des
+Executors und kopiert seine Terme (Nachrichten, Dictionary) in den Heap des
+Aufrufers; ein Prozess, der auf einem anderen Worker läuft, wird gelesen,
+sobald seine Zeitscheibe endet. Eine Pid ohne lebenden Prozess ergibt
+`undefined`.
 
 - Elemente: `registered_name` (`[]` allein, wenn nicht registriert), `status`
   (`running`, `runnable`, `waiting`), `message_queue_len`, `messages`,
   `links`, `monitors`, `monitored_by`, `dictionary`, `trap_exit`,
   `group_leader`, `heap_size`, `total_heap_size`, `stack_size`, `memory`
-  (Wörter des Heaps, seiner Fragmente und Off-Heap-binaries sowie des Stacks),
+  (Wörter des Heaps, seiner Fragmente und Off-Heap-Binaries sowie des Stacks),
   `reductions` (0), `priority` (`normal`), `error_handler`,
   `garbage_collection`. `process_info/1` listet sie von `status` bis
   `garbage_collection`.
@@ -438,14 +436,15 @@ Zeitscheibe endet. Eine Pid ohne lebenden Prozess ergibt `undefined`.
 
 ## Spawn-Optionen
 
-Quelle: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
+Quellen: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
 
 - `spawn_opt/2..5` nehmen `link`, `monitor`, `{monitor, MonitorOptions}` und
   die Tuning-Optionen `{priority, P}`, `{fullsweep_after, N}`,
   `{min_heap_size, N}`, `{min_bin_vheap_size, N}`, `{max_heap_size, S}`,
-  `{message_queue_data, M}`, `{async_dist, B}`; Tuning-Optionen werden geprüft
-  und akzeptiert, nicht angewendet. Ein anderer Knoten als `nonode@nohost` ist
-  `badarg`.
+  `{message_queue_data, M}`, `{async_dist, B}`; `{min_heap_size, N}` setzt den
+  [Mindest-Heap](runtime-heap.md#sizing-and-budget) des Kindprozesses, die
+  anderen Tuning-Optionen werden geprüft und akzeptiert, nicht angewendet. Ein
+  anderer Knoten als `nonode@nohost` ist `badarg`.
 - `spawn_request/1..5` startet sofort und sendet `{Tag, ReqId, ok, Pid}`
   (`{Tag, ReqId, error, Reason}` bei Fehlschlag, `badopt` für eine ungültige
   Option), wie `{reply_tag, Tag}` und
@@ -460,22 +459,24 @@ Quelle: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
 
 Ein Alias ist eine Referenz, an die Nachrichten gesendet werden können
 (`Alias ! Msg`): `alias/0,1` (`explicit_unalias` oder `reply` für eine
-Nachricht) oder ein mit `{alias, explicit_unalias | demonitor | reply_demonitor}`
-von `monitor/3` erzeugter Monitor (`demonitor` endet mit dem Monitor,
-`reply_demonitor` beendet bei seiner ersten Nachricht auch den Monitor).
-`unalias/1` beendet einen Alias des Aufrufers. Eine Sendung an eine Referenz,
-die kein aktiver Alias ist oder deren Besitzer geendet hat, wird verworfen. Ein
-Antwort-Alias wird erst verbraucht, wenn seine Nachricht zugestellt wird, nach
-jedem Warten auf einen beschäftigten Besitzer. `{tag, Tag}` von `monitor/3`
-ersetzt `'DOWN'` in der Monitor-Nachricht; Port-Monitore nehmen keine Optionen.
+Nachricht) oder ein Monitor, der mit
+`{alias, explicit_unalias | demonitor | reply_demonitor}` von `monitor/3`
+erzeugt wurde (`demonitor` endet mit dem Monitor, `reply_demonitor` beendet bei
+seiner ersten Nachricht auch den Monitor). `unalias/1` beendet einen Alias des
+Aufrufers. Eine Sendung an eine Referenz, die kein aktiver Alias ist oder deren
+Besitzer geendet hat, wird verworfen. Ein Antwort-Alias wird erst verbraucht,
+wenn seine Nachricht zugestellt wird, nach jedem Warten auf einen beschäftigten
+Besitzer. `{tag, Tag}` von `monitor/3` ersetzt `'DOWN'` in der
+Monitor-Nachricht; Port-Monitore nehmen keine Optionen.
 
 ## Knoten
 
-Quelle: `builtins/erlang/node.cpp`. Ein Clause-Programm ist ein einzelner,
-nicht verteilter Knoten, `nonode@nohost`, und antwortet wie ein solcher
-OTP-Knoten: `nodes/0` ist `[]`, `nodes(this | known)` `[nonode@nohost]`, andere
-Typen `[]`; `nodes/2` liefert `{nonode@nohost, #{connection_id => undefined,
-node_type => this}}` für die abgefragten Schlüssel. `is_alive/0` ist `false`,
+Ein Clause-Programm ist ein einzelner, nicht verteilter Knoten,
+`nonode@nohost`, und antwortet wie ein solcher OTP-Knoten
+(`builtins/erlang/node.cpp`): `nodes/0` ist `[]`, `nodes(this | known)`
+`[nonode@nohost]`, andere Typen `[]`; `nodes/2` liefert
+`{nonode@nohost, #{connection_id => undefined, node_type =>
+this}}` für die abgefragten Schlüssel. `is_alive/0` ist `false`,
 `monitor_node/2,3` lösen `error:notalive` aus, und `disconnect_node/1` gibt
 `ignored` zurück.
 
@@ -499,14 +500,16 @@ Eine lange verlinkte Kette endet Prozess für Prozess ohne Rekursion.
 | Jeder andere Grund, einschließlich `kill` von einem Link | Endet mit diesem Grund | Nachricht `{'EXIT', From, Reason}` |
 
 - `process_flag(trap_exit, Bool)` setzt das Abfangen und gibt die vorherige
-  Einstellung zurück (anfangs `false`).
+  Einstellung zurück (anfangs `false`); `process_flag(min_heap_size, N)` setzt
+  den [Mindest-Heap](runtime-heap.md#sizing-and-budget) ab der nächsten
+  Bereinigung und gibt den vorherigen zurück.
 - Ein Prozess, der durch ein Signal endet, das er sich selbst gesendet hat
   (`exit(self(), kill)`), wickelt sich an jedem `catch`, jedem `try`-Handler und
   jedem `after`-Rumpf vorbei ab: Das Signal ist keine Ausnahme
   (`CallError::exited` im Fehlerkanal).
 - `exit/2` und `exit_signal/2` geben `true` zurück; an einen beendeten Prozess
-  tun sie nichts. Ein Referenz-Ziel tut ebenfalls nichts (es gibt keine
-  Prozess-Aliase).
+  tun sie nichts. Ein Referenz-Ziel tut ebenfalls nichts, selbst ein aktiver
+  [Alias](#aliases).
 - Ein Exit-Signal, das den Hauptprozess beendet, beendet das Programm wie ein
   nicht abgefangenes `exit` ([Exit-Status](executables.md#exit-status)): Grund
   `normal` endet mit 0.
@@ -515,17 +518,16 @@ Eine lange verlinkte Kette endet Prozess für Prozess ohne Rekursion.
 
 ## Ports
 
-Ports sind in [Ports](ports.md) spezifiziert: Ein Port
-ist mit seinem Öffner verlinkt, nimmt wie ein Prozess an Links, Monitoren,
-Exit-Signalen und registrierten Namen teil und spricht mit seinem verbundenen
-Prozess über Nachrichten. Step 57B stellt Identitäten, die Port-Tabelle, die
-Port-Builtins und reine Ausgabe-Ports `{fd, In, Out}` bereit.
+Ports sind in [Ports](ports.md) spezifiziert: Ein Port ist mit seinem Öffner
+verlinkt, nimmt wie ein Prozess an Links, Monitoren, Exit-Signalen und
+registrierten Namen teil und spricht mit seinem verbundenen Prozess über
+Nachrichten.
 
 ## Builtins
 
 | Builtin | Verhalten |
 | --- | --- |
-| `spawn(Fun)` | `badarg`, außer `Fun` ist ein fun; sonst ruft ein neuer Prozess `Fun()` auf und löst in diesem Prozess bei anderer Stelligkeit `{badarity, {Fun, []}}` aus |
+| `spawn(Fun)` | `badarg`, außer `Fun` ist eine Fun; sonst ruft ein neuer Prozess `Fun()` auf und löst in diesem Prozess bei anderer Stelligkeit `{badarity, {Fun, []}}` aus |
 | `spawn(M, F, Args)` | `badarg`, außer `M` und `F` sind Atome und `Args` eine echte Liste; sonst ruft ein neuer Prozess `M:F(Args...)` auf und löst in diesem Prozess `undef` aus, wenn kein Modul sie exportiert und kein Builtin diesen Namen hat |
 | `spawn_link(Fun)`, `spawn_link(M, F, Args)` | Wie `spawn`, und der neue Prozess wird mit dem Aufrufer verlinkt ([Links](#links)) |
 | `is_process_alive(Pid)` | `badarg`, außer `Pid` ist eine Pid; wahr, solange ihr Prozess nicht geendet hat |
@@ -535,8 +537,9 @@ Port-Builtins und reine Ausgabe-Ports `{fd, In, Out}` bereit.
 | `register(Name, Pid)`, `unregister(Name)`, `whereis(Name)`, `registered()` | Siehe [registrierte Namen](#registered-names); `Name` muss ein Atom sein |
 | `demonitor(Ref)`, `demonitor(Ref, Options)` | `badarg`, außer `Ref` ist eine Referenz und `Options` eine echte Liste aus `flush` und `info` |
 | `exit(Dest, Reason)`, `exit_signal(Dest, Reason)` | `badarg`, außer `Dest` ist eine Pid oder Referenz; `true` nach dem [Exit-Signal](#exit-signals) |
-| `process_flag(trap_exit, Bool)` | Die vorherige Einstellung; `badarg` für ein anderes Flag oder einen Nicht-Boolean |
+| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)` | Die vorherige Einstellung; `badarg` für ein anderes Flag, einen Nicht-Boolean oder eine negative oder nicht ganzzahlige Größe |
 | `erlang:send(Dest, Msg)`, `Dest ! Msg` | `Msg`, nach dem Senden ([Nachrichten](#messages)); `send/2` wird nicht automatisch importiert |
 
-Der neue Prozess wird hinter jedem lauffähigen Prozess eingereiht; `spawn` gibt
-seine Pid sofort zurück.
+Der neue Prozess wird am Ende der Warteschlange des Workers seines
+Elternprozesses eingereiht ([Worker](#workers)); `spawn` gibt seine Pid sofort
+zurück.

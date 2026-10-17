@@ -1,34 +1,46 @@
 ---
 source: docs/library.md
-sourceCommit: 6ed3851c
-sourceSha256: 827659aa3cf1548562f97b6e8d7a37e0f230599570a6c78628cd7a72896102f9
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: f657ad1632b57e9c9b11ad04f870350112a7cac942b10e5483e1aa26d1c79fc7
+translatedAt: 2026-10-17
 ---
 # Modules de bibliothèque
 
-Un sous-ensemble des modules `lists` et `maps` d'OTP appartenant au projet,
-écrit en Erlang d'après le comportement documenté d'OTP (et non copié depuis
-les sources d'OTP) et compilé avec les programmes qui l'utilisent.
+Clause livre ses propres versions des modules d'OTP qu'appellent les
+programmes, écrites en Erlang d'après le comportement documenté d'OTP (et non
+copiées depuis les sources d'OTP) au-dessus des [builtins](builtins.md) du
+runtime, et les compile avec les programmes qui les utilisent.
 
 ## Contenu
 
-| Module | Fonctions |
+Chaque module fourni exporte la liste complète d'OTP 29 pour son nom ; son
+inventaire `<module>.terms` ([fichiers](#files)) consigne quelles fonctions
+sont implémentées et lesquelles sont des bouchons (stubs).
+
+| Module | Contenu |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | `append/1,2`, `filter/2`, `foldl/3`, `foldr/3`, `keyfind/3`, `map/2`, `member/2`, `nth/2`, `reverse/1,2`, `seq/2,3`, `sort/1`, `foreach/2`, `mapfoldl/3`, `mapfoldr/3`, `partition/2`, `splitwith/2` ; builtins du runtime `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`, `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2`, `keymember/3`, `keysearch/3`, `keydelete/3` ([module lists](builtins.md#lists-module)) |
-| [`maps`](../library/stdlib/maps.erl) | `find/2`, `fold/3`, `from_list/1`, `get/2`, `keys/1`, `put/3`, `to_list/1`, `values/1`, `filter/2`, `map/2`, `foreach/2`, `update_with/3,4` ; builtins du runtime `get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`, `take/2`, `update/3`, `with/2`, `without/2`, `from_keys/2` ([module maps](builtins.md#maps-module)) |
-| [`file`](../library/kernel/file.erl) | `open/2`, `read/2`, `write/2`, `read_line/1`, `position/2`, `close/1`, `read_file/1`, `write_file/2,3`, `read_file_info/1,2`, `delete/1`, `rename/2`, `list_dir/1`, `make_dir/1`, `del_dir/1` au-dessus du pilote de fichiers ([fichiers](ports.md#standard-io-and-files)) |
+| [`lists`](../library/stdlib/lists.erl) | Les fonctions courantes ; les fonctions sur les données comme `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3` sont des builtins du runtime ([module lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | Les fonctions courantes et les itérateurs ; `get/3`, `merge/2`, `update/3`, `with/2`, ... sont des builtins du runtime ([module maps](builtins.md#maps-module)) |
 | [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (serveur d'entrée standard ou fichier ouvert), `request/1,2`, `requests/1,2` (protocole d'E/S d'OTP, [fichiers](ports.md#standard-io-and-files)) ; `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` et `nl/0,1` sont des builtins du runtime ([io](io.md)) |
-| [`gen_tcp`](../library/kernel/gen_tcp.erl) | `listen/2`, `accept/1,2`, `connect/3,4`, `send/2`, `recv/2,3`, `shutdown/2`, `controlling_process/2`, `close/1` au-dessus des ports socket ([sockets](ports.md#sockets-57f)) |
-| [`gen_udp`](../library/kernel/gen_udp.erl) | `open/1,2`, `send/4`, `recv/2,3`, `controlling_process/2`, `close/1` |
-| [`inet`](../library/kernel/inet.erl) | `port/1`, `sockname/1`, `peername/1`, `setopts/2`, `close/1` |
-| [`clause_socket`](../library/kernel/clause_socket.erl) | Propre à Clause : le protocole du pilote de sockets partagé par les trois modules ci-dessus |
-| [`erlang`](../library/erts/erlang.erl) | Bouchons générés de chaque export `erlang` d'OTP 29 ; les builtins remplacent les leurs, `nif_error/1,2` ont un corps, les autres lèvent `{not_implemented, F, A}` lorsqu'ils sont appelés ([module erlang](builtins.md#erlang-module)) |
-| [`binary`](../library/stdlib/binary.erl) | Chaque fonction d'OTP 29 : `replace/3,4` et `list_to_bin/1` en Erlang, les autres builtins du runtime ([module binary](builtins.md#binary-module)) |
+| [`binary`](../library/stdlib/binary.erl) | Chaque fonction ; `replace/3,4` et `list_to_bin/1` en Erlang, les autres builtins du runtime ([module binary](builtins.md#binary-module)) |
+| [`math`](../library/stdlib/math.erl) | Chaque fonction sous forme de builtin du runtime ([module math](builtins.md#math-module)) |
 | [`unicode`](../library/stdlib/unicode.erl) | Conversions, `bin_is_7bit/1` et marques d'ordre des octets sous forme de builtins du runtime ([module unicode](builtins.md#unicode-module)) ; la normalisation et les propriétés sont des bouchons |
-| [`math`](../library/stdlib/math.erl) | Chaque fonction d'OTP 29 sous forme de builtin du runtime ([module math](builtins.md#math-module)) |
-| [`persistent_term`](../library/erts/persistent_term.erl) | Chaque fonction d'OTP 29 sous forme de builtin du runtime ([termes persistants](builtins.md#persistent-terms)) |
-| [`code`](../library/kernel/code.erl) | Requêtes sur les modules chargés sous forme de builtins du runtime, sans serveur de code ([module code](builtins.md#code-module)) ; les chemins et le chargement sont des bouchons |
-| [`os`](../library/kernel/os.erl) | `cmd/1` au-dessus d'un port ([sous-processus](ports.md#subprocesses)), `timestamp/0`, `system_time/0,1`, `perf_counter/0,1`, `getenv/2` ; `type/0`, `getenv/0,1`, `env/0`, `putenv/2`, `unsetenv/1`, `getpid/0` et `version/0` sont des builtins du runtime |
+| [`unicode_util`](../library/stdlib/unicode_util.erl) | Chaque fonction au-dessus de tables générées ([unicode_util](builtins.md#unicode-util)) |
+| [`re`](../library/stdlib/re.erl) | Chaque fonction sauf `import/1`, au-dessus de PCRE2 ([module re](builtins.md#re-module)) |
+| [`file`](../library/kernel/file.erl) | Ouvrir, lire, écrire, positionner et fermer des fichiers, lectures et écritures de fichiers entiers, informations sur les fichiers et opérations sur les répertoires au-dessus du pilote de fichiers ([fichiers](ports.md#standard-io-and-files)) |
+| [`gen_tcp`](../library/kernel/gen_tcp.erl), [`gen_udp`](../library/kernel/gen_udp.erl), [`inet`](../library/kernel/inet.erl) | Sockets au-dessus des ports socket ([sockets](ports.md#sockets)) |
+| [`clause_socket`](../library/kernel/clause_socket.erl) | Propre à Clause : le protocole du pilote de sockets partagé par les trois modules ci-dessus |
+| [`os`](../library/kernel/os.erl) | `cmd/1` au-dessus d'un port, requêtes d'environnement, d'heure et de version ([module maps](builtins.md#maps-module)) |
+| [`code`](../library/kernel/code.erl) | Requêtes sur les modules chargés sans serveur de code ([module code](builtins.md#code-module)) ; les chemins et le chargement sont des bouchons |
+| [`application_controller`](../library/kernel/application_controller.erl) | Uniquement des bouchons ; masque celui d'OTP, qui appelle `prim_file` (luerl l'atteint via `application` d'OTP) |
+| [`erlang`](../library/erts/erlang.erl) | Bouchons générés de chaque export `erlang` d'OTP 29 ; les builtins remplacent les leurs, `nif_error/1,2` ont un corps, les autres lèvent `{not_implemented, F, A}` lorsqu'ils sont appelés ([module erlang](builtins.md#erlang-module)) |
+| [`init`](../library/erts/init.erl) | Les réponses d'un système démarré ; `boot/1`, `restart/0,1` et `make_permanent/2` refusés ([module init](builtins.md#init-module)) |
+| [`persistent_term`](../library/erts/persistent_term.erl) | Chaque fonction sous forme de builtin du runtime ([termes persistants](builtins.md#persistent-terms)) |
+| [`atomics`](../library/erts/atomics.erl), [`counters`](../library/erts/counters.erl) | Chaque fonction ([atomics et counters](builtins.md#atomics-and-counters)) |
+| [`erts_internal`](../library/erts/erts_internal.erl), [`erts_code_purger`](../library/erts/erts_code_purger.erl) | Ce qu'appellent `stdlib` et `kernel` ; groupes distribution, `.beam`, émulateur et processus de purge déclinés ([erts_internal](builtins.md#erts-internal)) |
+| [`erl_prim_loader`](../library/erts/erl_prim_loader.erl) | Requêtes de fichiers au-dessus de `file` ; chargement et archives déclinés ([fichiers](ports.md#standard-io-and-files)) |
+| [`zlib`](../library/erts/zlib.erl) | Chaque fonction au-dessus de la zlib épinglée ([module zlib](builtins.md#zlib-module)) |
+| [`prim_eval`](../library/erts/prim_eval.erl) | `'receive'/2` au-dessus des étapes d'un receive compilé ([prim eval](builtins.md#prim-eval)) |
 
 Les résultats et les raisons d'erreur correspondent à OTP 29, y compris les
 formes d'erreur des implémentations Erlang d'OTP (`lists:map(F, x)` donne
@@ -36,8 +48,10 @@ formes d'erreur des implémentations Erlang d'OTP (`lists:map(F, x)` donne
 `lists:seq(1, 10, 0)` `badarg`) et de ses BIF (`lists:member/2`,
 `lists:keyfind/3`, `lists:reverse/2`, les fonctions `maps` : `badarg`,
 `{badmap, M}`, `{badkey, K}`). `lists:member/2` compare avec `=:=`,
-`lists:keyfind/3` avec `==`. `lists:sort/1` est un tri par fusion stable. Les
-traces de pile nomment les fonctions de la bibliothèque, pas celles d'OTP.
+`lists:keyfind/3` avec `==`. `lists:sort/1` est un tri par fusion stable dont
+les passes alternent des séquences croissantes et décroissantes, de sorte
+qu'aucune fusion n'inverse une séquence. Les traces de pile nomment les
+fonctions de la bibliothèque, pas celles d'OTP.
 
 ## Comment les programmes les obtiennent
 
@@ -52,29 +66,27 @@ traces de pile nomment les fonctions de la bibliothèque, pas celles d'OTP.
   ajoutés nomment
   ([à quel module un nom se résout](#which-module-a-name-resolves-to)). Un
   appel `M:F(...)` d'un builtin du catalogue (`io:format/2`, `os:type/0`) ne
-  nomme aucun module.
+  nomme aucun module. `--print-inputs` liste les entrées ainsi ajoutées.
 - La bibliothèque est `library/` de l'arborescence de build, trouvée
   relativement à `clau` comme l'archive du runtime, avec un répertoire par
   application OTP (`erts`, `kernel`, `stdlib`).
 - Un module du lot portant le même nom remplace le module de bibliothèque,
-  avec un avertissement.
+  avec un avertissement ; les builtins du catalogue de ce nom l'emportent
+  toujours ([enregistrement](builtins.md#registration)).
 - Les modules de bibliothèque sont des modules ordinaires du lot : ils sont
   liés dans les exécutables et, pour une sortie objet ou IR, produisent leurs
-  propres artefacts.
+  propres artefacts. Ce sont du code Erlang, ils cèdent donc la main comme le
+  reste du code.
 - Un module atteint uniquement par des noms d'exécution (`M:F(...)` avec `M`
   une variable) n'est pas ajouté : un tel appel lève `undef` à moins que
   quelque chose d'autre ne nomme le module.
-- Les fonctions de bibliothèque sont du code Erlang ; elles céderont donc la
-  main comme le reste du code une fois l'ordonnanceur en place.
 
 ## Remplacements des modules du runtime
 
-Le plan 11 step 41I (2026-10-12) décide comment Clause remplace les modules
-d'OTP qu'ERTS implémente en C (NIF, BIF, pilotes de ports, les modules
-préchargés de `erts/preloaded/src`) et les modules qu'OTP génère pendant son
-build (`unicode_util`). Les `kernel` et `stdlib` d'OTP sont de l'Erlang
-ordinaire, mais appellent ces modules ; les steps 41J et suivants
-implémentent ce contrat.
+Clause remplace les modules d'OTP qu'ERTS implémente en C (NIF, BIF, pilotes
+de ports, les modules préchargés de `erts/preloaded/src`) et les modules
+qu'OTP génère pendant son build (`unicode_util`). Les `kernel` et `stdlib`
+d'OTP sont de l'Erlang ordinaire, mais appellent ces modules.
 
 ### Fourni ou absent
 
@@ -88,21 +100,23 @@ plusieurs préoccupations :
   `refused` (renvoie ou lève ce que les appelants d'OTP gèrent déjà lorsqu'une
   fonctionnalité est absente, comme `{error, enotsup}`), `stub` (lève
   `error({not_implemented, F, A})` avec `M:F/A` au sommet de la pile, comme le
-  font les [bouchons d'`erlang`](builtins.md#erlang-module) ; pas encore fait ;
-  orientation de l'utilisateur du 2026-10-12), ou `declined` (un bouchon qui
-  reste, avec une raison comme la distribution ou le chargement de code en
-  attente du plan step 71). Un module commence avec toutes ses fonctions en
-  bouchons, de sorte qu'il est découvrable et que ses appelants compilent ;
-  les groupes passent ensuite à leur statut décidé.
+  font les [bouchons d'`erlang`](builtins.md#erlang-module) ; pas encore
+  fait), ou `declined` (un bouchon qui reste, avec une raison comme la
+  distribution ou le chargement de code). Un module commence avec toutes ses
+  fonctions en bouchons, de sorte qu'il est découvrable et que ses appelants
+  compilent ; les groupes passent ensuite à leur statut décidé.
 - **Absent :** Clause ne livre aucun module, peut-être pour toujours, et
   consigne pourquoi et quels modules Clause de plus haut niveau prennent la
-  place de ses appelants. Les couches bas niveau `prim_*` de fichiers et de
-  sockets en sont le cas typique : les programmes utilisent à la place les
-  `file`, `gen_tcp`, `gen_udp` et `inet` de Clause, et comme les modules de
-  Clause l'emportent sur ceux d'OTP (ci-dessous), les appelants d'OTP d'un
-  module absent n'entrent jamais dans un lot. Un module absent n'obtient
-  jamais de bouchon, de sorte qu'une référence à celui-ci est une erreur de
-  compilation, jamais une surprise à l'exécution.
+  place de ses appelants (`library/modules.terms`). Les couches bas niveau
+  `prim_*` de fichiers et de sockets (`prim_file`, `prim_buffer`,
+  `prim_socket`, `prim_net`, `prim_inet`, `socket_registry`) ainsi que
+  `socket` et `net` sont les modules absents : les programmes utilisent à la
+  place les `file`, `gen_tcp`, `gen_udp` et `inet` de Clause, et comme les
+  modules de Clause l'emportent sur ceux d'OTP (ci-dessous), les appelants
+  d'OTP d'un module absent (`gen_tcp_socket`, `inet_tcp`, ... d'OTP) n'entrent
+  jamais dans un lot. Un module absent n'obtient jamais de bouchon, de sorte
+  qu'une référence à celui-ci est une erreur de compilation, jamais une
+  surprise à l'exécution.
 
 Les fonctions triviales pour le runtime sont implémentées sans décision
 séparée.
@@ -135,11 +149,12 @@ avertissement, puisque rien n'est remplacé.
 
 - Les modules de bibliothèque vivent dans `library/<application>/`, nommé
   d'après l'application OTP qui possède le module dans OTP : `erts`
-  (équivalents des modules préchargés et `erlang`), `kernel` (`file`,
-  `gen_tcp`, `gen_udp`, `inet`, `os`, et le `clause_socket` propre à Clause),
-  `stdlib` (`binary`, `lists`, `maps`, `math`, `io`, `unicode`,
-  `unicode_util`). La recherche dans la bibliothèque parcourt chaque
-  répertoire d'application ; un nom de module existe dans au plus l'un d'eux.
+  (équivalents des modules préchargés et `erlang`), `kernel`, `stdlib`. Les
+  modules auxiliaires privés de Clause (`clause_socket`, `clause_re`,
+  `clause_unicode`, `clause_zlib`, `clause_receive`, `clause_maps`) se
+  trouvent à côté des modules qu'ils servent. La recherche dans la
+  bibliothèque parcourt chaque répertoire d'application ; un nom de module
+  existe dans au plus l'un d'eux.
 - `library/modules.terms` liste chaque module sur lequel Clause statue :
   `{Module, Application, provided}.` ou
   `{Module, Application, missing, "reason"}.` Le compilateur le lit pour savoir
@@ -153,11 +168,6 @@ avertissement, puisque rien n'est remplacé.
   (`M:module_info(exports)`) ; aucune source d'OTP n'est copiée. Les résultats
   et les termes d'erreur des fonctions implémentées correspondent à OTP 29 ;
   les différences délibérées vont dans [différences](differences.md).
-- Chaque module de bibliothèque de Clause exporte la liste complète d'OTP 29
-  pour son nom, de sorte que le code OTP compilé contre lui trouve chaque
-  fonction ; les `lists`, `maps`, `file`, `io`, `os`, `gen_tcp`, `gen_udp` et
-  `inet` propres à Clause reçoivent aussi des inventaires et des bouchons pour
-  ce qu'ils n'implémentent pas encore.
 
 ### Types
 
@@ -185,26 +195,20 @@ bibliothèque de Clause, pas du programme de l'utilisateur.
 Les `file`, `io`, `code` et `logger` d'OTP appellent des serveurs enregistrés
 (`file_server_2`, `code_server`, le serveur d'E/S d'un group leader, `logger`)
 que l'application `kernel` démarre au boot. Un exécutable Clause n'en démarre
-aucun et, comme décidé le 2026-10-12, continue de n'en démarrer aucun pour
-l'instant : les `file` et `io` propres à Clause n'ont besoin d'aucun serveur,
-et un module OTP qui en a besoin échoue comme il échoue sous OTP sans ce
-serveur (`noproc`). Coût : le code OTP qui journalise via `logger` ou appelle
-`code` à l'exécution ne fonctionne pas tant qu'une entrée ultérieure du
-registre ne choisit pas un ensemble minimal de services pour l'objet de
-démarrage. Démarrer toute l'application `kernel` n'est pas prévu.
+aucun : les `file` et `io` propres à Clause n'ont besoin d'aucun serveur, et un
+module OTP qui en a besoin échoue comme il échoue sous OTP sans ce serveur
+(`noproc`). Le code OTP qui journalise via `logger` ou appelle `code` à
+l'exécution ne fonctionne donc pas. Démarrer toute l'application `kernel`
+n'est pas prévu.
 
 ### Registre
 
-Le projet luerl pilote ce travail. Après chaque step, exécuter
-
-```text
-clau.bat --project test-luerl --entry luerl:init
-```
-
-classer chaque erreur (`unknown module`, `undefined function M:F/A`, syntaxe
-ou fonctionnalité non prise en charge, autre), et affecter chacune à un step
-de la phase H3 du plan 11, à un autre élément du backlog ou à un refus
-consigné. Avec la sortie d'erreur de l'exécution enregistrée dans un fichier,
+Des programmes réels pilotent ce travail ; le projet luerl est le pilote
+actuel ([21-lib](../.agents/21-lib.md)). Le compiler et l'exécuter, classer
+chaque erreur (`unknown module`, `undefined function M:F/A`, syntaxe ou
+fonctionnalité non prise en charge, autre), et affecter chacune à une étape du
+plan, à un autre élément du backlog ou à un refus consigné. Avec la sortie
+d'erreur de l'exécution enregistrée dans un fichier,
 `python tests/compiler/library/library_modules.py report FILE` affiche la
 classification sous forme de tableaux : chaque module inconnu avec son nombre
 d'erreurs, les modules appelants et les fonctions appelées avec leurs arités ;
@@ -227,42 +231,12 @@ Tous se trouvent dans `tests/compiler/library/` :
   signale chaque désaccord : un module fourni sans ses fichiers, un module
   absent avec un fichier, un inventaire non listé comme fourni, un export
   absent de l'inventaire ou l'inverse, une entrée `stub`/`declined` qui n'est
-  pas un bouchon levant `undef`, une entrée `implemented`/`refused` sans corps
-  ni builtin du catalogue. `library_rejects` le démontre sur une bibliothèque
-  de fixtures délibérément incohérente.
-- Le test CTest `library_freshness` (étiquette `host_otp`) observe à nouveau
-  chaque inventaire et exige qu'il soit inchangé, puis observe, génère,
-  vérifie et compile un nouveau module de bout en bout. `library_report`
-  exécute `clau` sur un programme de fixture et vérifie les lignes du rapport.
-
-| Module | Décision (2026-10-12) | Raison ou step du plan |
-| --- | --- | --- |
-| `init` | fourni ; implémenté sauf `boot/1`, `restart/0,1` et `make_permanent/2`, refusés | réponses sur les arguments et l'état d'un système démarré (41L, [module init](builtins.md#init-module)) |
-| `persistent_term` | fourni, uniquement des bouchons | table de termes à l'échelle du runtime (41M) |
-| `erts_internal` | fourni ; groupes `stdlib` et `counters` implémentés, `get_creation/0` et `map_hashmap_children/1` refusés, groupes `distribution`, `beam` et `emulator` déclinés | 41N ([erts_internal](builtins.md#erts-internal)) ; pas de distribution, pas de fichiers `.beam` |
-| `atomics`, `counters`, `erts_code_purger` | fournis ; `atomics`, `counters` implémentés ; `purge/1`, `soft_purge/1` implémentés, le processus de purge décliné | 41N ([atomics et counters](builtins.md#atomics-and-counters)) ; le chargement de code attend le step 71 |
-| `unicode_util` | fourni, implémenté (41O1, 41O2) | tables générées à partir des réponses d'OTP et des données Unicode ([unicode_util](builtins.md#unicode-util)) |
-| `erl_prim_loader` | fourni ; requêtes de fichiers implémentées au-dessus de `file`, chargement et archives déclinés | 41P ([fichiers](ports.md#standard-io-and-files)) ; le chargement de code attend le step 71 |
-| `zlib` | fourni, implémenté au-dessus de la zlib épinglée (41Q) | les flux sont des références handle ([module zlib](builtins.md#zlib-module)) |
-| `prim_eval` | fourni, implémenté (41S) | `'receive'/2` au-dessus des étapes d'un receive compilé ([prim eval](builtins.md#prim-eval)) |
-| `application_controller` | fourni, uniquement des bouchons | masque celui d'OTP, qui appelle `prim_file` (luerl le nomme via `application` d'OTP) |
-| `lists`, `maps`, `io`, `file`, `os`, `gen_tcp`, `gen_udp`, `inet` | fournis, listes d'exports complètes d'OTP 29 ; ce que Clause avait reste implémenté, le reste en bouchons | s'étendent selon les demandes du registre |
-| `re` | fourni ; implémenté (41ZA, 41ZB) sauf `import/1`, décliné | au-dessus de la PCRE2 épinglée ([module re](builtins.md#re-module)) ; Clause n'exporte aucun motif |
-| `prim_file`, `prim_buffer` | absents, décidé en 41P | le `file` de Clause est la couche fichiers ; `filelib`/`filename` d'OTP s'exécutent dessus |
-| `prim_socket`, `prim_net`, `prim_inet`, `socket_registry`, `socket`, `net` | absents, décidé en 41R | les `gen_tcp`, `gen_udp`, `inet` de Clause sont la couche réseau ; `gen_tcp_socket`, `gen_udp_socket`, `inet_tcp`, `inet_udp` d'OTP ne sont atteints que depuis les modules masqués d'OTP ([sockets](ports.md#sockets-57f)) |
-
-Dernière couche luerl (2026-10-12, après les steps 41K1 et 41K2, avec
-`NEW_STACKTRACE` défini comme le fait le `rebar.config.script` de luerl sous
-OTP 21 et ultérieur, et `inet` ne figurant plus dans `ignore_modules`) : la
-cible compile et se lie sans erreur. Il reste 83 avertissements : 74 types des
-`erl_parse` et `compile` ignorés, 8 types de modules OTP extérieurs au
-programme nommés par du code OTP que la cible compile, un élargissement du
-graphe de types par budget dans ce code. L'exécutable démarre `luerl:init/0`
-et termine avec le code 0. La couche suivante est le comportement à
-l'exécution : quels bouchons luerl atteint lorsqu'il exécute du code Lua.
-
-Couche d'exécution (2026-10-14, après les phases H3–H5) : un pilote qui
-exécute 35 extraits Lua via `luerl:do` se compile avec 17 avertissements et
-affiche la sortie d'OTP 29 pour 34 d'entre eux, `os.date` compris. Le dernier,
-un `goto`, échoue avec le `function_clause` d'OTP ; seuls ses cadres de pile
-diffèrent, sans arguments ni emplacements ([différences](differences.md)).
+  pas un bouchon `not_implemented`, une entrée `implemented`/`refused` sans
+  corps ni builtin du catalogue.
+  `library_rejects` le démontre sur une bibliothèque de fixtures délibérément
+  incohérente.
+- Le test CTest `library_freshness` (étiquettes `host_otp`, `full_only`)
+  observe à nouveau chaque inventaire et exige qu'il soit inchangé, puis
+  observe, génère, vérifie et compile un nouveau module de bout en bout.
+  `library_report` exécute `clau` sur un programme de fixture et vérifie les
+  lignes du rapport.

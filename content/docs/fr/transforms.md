@@ -1,30 +1,26 @@
 ---
 source: docs/transforms.md
-sourceCommit: 6ed3851c
-sourceSha256: 2c6d8c271fd5fd640bb4c93eaff0872914f396898bfe9df527ca51055d033c11
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
+translatedAt: 2026-10-17
 ---
 # Parse transforms
 
 ## Utiliser les parse transforms
 
 - **Prérequis :** Erlang/OTP 29 installé sur l'hôte, uniquement pour compiler
-  les modules qui utilisent une transformation. `clau` prend `--erl PATH`,
-  sinon `erl` dans le `PATH`, sinon sous Windows
-  `%ProgramFiles%\Erlang OTP\bin\erl.exe`. `--erl none` n'exécute jamais de
-  code de l'hôte : les modules qui ont besoin d'une transformation échouent.
+  les modules qui utilisent une transformation ([OTP de l'hôte](#host-otp)).
+  `--erl none` n'exécute jamais de code de l'hôte : les modules qui ont besoin
+  d'une transformation échouent.
 - **Invoquer une transformation** dans le source avec
   `-compile({parse_transform, Module}).` (ou dans une liste
   `-compile([...])`), ou pour chaque module de la commande avec
   `--parse-transform Module` (répétable ; celles-ci s'exécutent en premier,
   comme `erlc +'{parse_transform,M}'`).
 - **Les modules de transformation** sont trouvés sous forme de fichiers
-  `.beam` dans les répertoires `--transform-path` (répétable) et les
-  `transform_paths` du projet, puis sous forme de `Module.erl` parmi les
-  sources du lot et les `source_search_paths` (compilés par l'OTP de l'hôte à
-  chaque build, avec les modules qu'ils appellent depuis ces emplacements ;
-  `ignore_dirs` et `ignore_modules` s'appliquent), puis parmi les modules
-  d'OTP (`ms_transform`, `qlc`).
+  `.beam` dans les chemins de transformations, puis sous forme de sources du
+  projet compilés par l'OTP de l'hôte à chaque build, puis parmi les modules
+  d'OTP ([modules de transformation](#transform-modules)).
 - **Précompiler** une transformation qui provient d'une autre bibliothèque
   (toujours), ou une transformation du projet que le compilateur de l'hôte ne
   peut pas construire avec les répertoires d'inclusion et les définitions de
@@ -45,10 +41,9 @@ module analysé sous forme de formes du
 [format abstrait](https://www.erlang.org/doc/apps/erts/absform.html) d'OTP,
 exécute le module de transformation sur un Erlang/OTP 29 installé sur l'hôte,
 importe les formes renvoyées comme nouvelle syntaxe du module et compile
-celle-ci. OTP n'est nécessaire que pendant la compilation d'un module qui
-utilise une transformation ; les programmes générés n'en ont jamais besoin.
-Décidé au plan step 73A ; implémenté par les steps 73B–73G
-(`compiler/src/transforms/`).
+celle-ci (`compiler/src/transforms/`). OTP n'est nécessaire que pendant la
+compilation d'un module qui utilise une transformation ; les programmes
+générés n'en ont jamais besoin.
 
 ## Comportement d'OTP
 
@@ -123,10 +118,8 @@ D'après le `lib/compiler/src/compile.erl` épinglé (`transform_module`,
 6. Ajouter les fonctions prédéfinies, puis effectuer le lint, l'analyse et la
    compilation comme d'habitude.
 
-Les transformations s'exécutent lorsqu'un module est compilé et pour
-`--print-ast`, `--print-source` et `--print-abstr`, qui affichent le module
-transformé. `--preprocess-check`, `--parse-check` et `--print-pp` ne les
-exécutent pas.
+Les actions qui exécutent les transformations sont listées sous
+[utiliser les parse transforms](#using-parse-transforms).
 
 ## Échange
 
@@ -135,8 +128,9 @@ exécutent pas.
   UTF-8, grands entiers et aucune analyse de texte en Erlang. Le format
   lui-même (étiquettes, dispositions, vérifications de bornes) vit une seule
   fois dans `abi/include/clause/abi/external_term.hpp`, indépendamment de toute
-  représentation des termes, de sorte que les futurs `term_to_binary/1`,
-  `binary_to_term/1` et la distribution du runtime le réutilisent. Le modèle
+  représentation des termes ; les `term_to_binary` et `binary_to_term` du
+  runtime le partagent
+  ([format des termes externes](builtins.md#external-term-format)). Le modèle
   de termes du compilateur de Clause contient les atomes, les entiers, les
   flottants, les listes propres et impropres, les tuples, les maps et les
   bitstrings ; les pids, ports, références et funs sont rejetés avec un
@@ -184,9 +178,9 @@ nouveau donne les mêmes formes.
   `erl -noshell -noinput -pa Dir ... -eval ...` (répertoires du chemin de code
   rendus absolus) avec une limite de temps de 600 s. Sa sortie standard et sa
   sortie d'erreur (y compris la sortie `io:format` de la transformation) sont
-  recopiées sur la sortie d'erreur de `clau` après sa fin.
-  Un chargeur qui se termine sans écrire de réponse, dépasse le délai ou ne
-  peut pas démarrer est une erreur.
+  recopiées sur la sortie d'erreur de `clau` après sa fin. Un chargeur qui se
+  termine sans écrire de réponse, dépasse le délai ou ne peut pas démarrer est
+  une erreur.
 - Une transformation exécute du code arbitraire avec les droits de
   l'utilisateur, exactement comme elle le ferait sous `erlc`.
 
@@ -224,9 +218,10 @@ Un module de transformation est recherché dans cet ordre :
    `transform_paths`, qui sont placés dans le chemin de code du chargeur avant
    ceux d'OTP. C'est la seule façon d'utiliser une transformation qui provient
    d'une bibliothèque de dépendance : construire d'abord cette bibliothèque
-   avec l'OTP de l'hôte (par exemple `erlc -o deps/lib/ebin deps/lib/src/*.erl`) ;
-   Clause ne construit jamais les dépendances. Le `.beam` doit provenir de la
-   version majeure d'OTP de l'hôte.
+   avec l'OTP de l'hôte (par exemple
+   `erlc -o deps/lib/ebin deps/lib/src/*.erl`) ; Clause ne construit jamais
+   les dépendances. Le `.beam` doit provenir de la version majeure d'OTP de
+   l'hôte.
 2. **Les sources du projet courant** : un `Module.erl` dans le lot ou ses
    `source_search_paths`, compilé en mémoire par le chargeur avec les
    répertoires d'inclusion et les définitions de la cible à chaque exécution,
@@ -236,8 +231,8 @@ Un module de transformation est recherché dans cet ordre :
    [recherche de modules](projects.md#ignored-sources). Clause cherche ces
    sources une fois par lot et les garde en mémoire ; le chargeur les compile
    tout de même pour chaque module sur lequel la transformation s'exécute,
-   donc précompiler une grosse transformation fait gagner ce temps.
-   Les modules que l'hôte charge depuis ses répertoires collants (`kernel`,
+   donc précompiler une grosse transformation fait gagner ce temps. Les
+   modules que l'hôte charge depuis ses répertoires collants (`kernel`,
    `stdlib`, `compiler`, comme `ms_transform` ou `qlc_pt` lorsque les sources
    d'OTP sont sur un chemin de recherche) ne peuvent pas être rechargés, donc
    les modules propres à l'hôte sont utilisés : leurs sources, et les modules
@@ -301,8 +296,3 @@ source_search_paths = ["transforms"]  # transforms/pt_rewrite.erl, compiled for 
 parse_transforms = ["pt_dep"]         # applied to every module of the target
 transform_paths = ["deps/*/ebin"]     # deps/ptdep/ebin/pt_dep.beam, built with erlc first
 ```
-
-Garder les modules de transformation hors des `sources` d'une cible lorsque le
-programme ne les appelle pas : en tant que modules ordinaires, ils seraient
-aussi compilés par Clause, et leurs appels à `erl_parse` ou `erl_syntax`
-exigent des modules que Clause ne livre pas.

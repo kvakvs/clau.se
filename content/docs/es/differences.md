@@ -1,8 +1,8 @@
 ---
 source: docs/differences.md
-sourceCommit: 6ed3851c
-sourceSha256: 7f5e373cf63cd3d962f6e9954719a80cdb14f9cf5bfdb3af590c58fc8e0cabf3
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 3ef4e2009b365f68cd20c9627686948139c57277d62690565abaab54507ac818
+translatedAt: 2026-10-17
 ---
 # Diferencias con Erlang/OTP
 
@@ -21,8 +21,10 @@ plan.
 | Contenido de `bad_generators` de un generador de map en un grupo zip | Su iterador: cadena `{K, V, Next}` que termina en `none`, en el orden de OTP | La misma cadena, construida en el orden canónico de claves | [patrones](patterns.md#comprehensions) |
 | `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3` | Orden interno (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves); un iterador es una posición o una cadena `{K, V, Next}` | Orden canónico de claves; un iterador continúa sobre una lista de claves | [builtins](builtins.md#erts-internal) |
 | Impresión de maps (`erlang:display/1`, `~w`, `~p`) | Orden de la disposición interna (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves) | Orden de claves del map, como `~kw` de OTP | [términos](terms.md#printing) |
-| Impresión de records nativos (`erlang:display/1`) | Campos en el orden de índice de la tabla de átomos | Orden de definición, como `~w` | [records nativos](native-records.md#printing-and-order) |
-| `==` entre records nativos cuyos campos solo difieren como entero/flotante | El compilador puede plegarlo a `=:=` (false) | Comparación numérica (true) | [records nativos](native-records.md#printing-and-order) |
+| Orden de `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` | El orden interno del map (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves) | Orden de claves | [biblioteca](library.md) |
+| Impresión de native records (`erlang:display/1`) | Campos en el orden de índice de la tabla de átomos | Orden de definición, como `~w` | [native records](native-records.md#printing-and-order) |
+| `==` entre native records cuyos campos solo difieren como entero/flotante | El compilador puede plegarlo a `=:=` (false) | Comparación numérica (true) | [native records](native-records.md#printing-and-order) |
+| Construcción externa de un native record de un módulo que no está cargado | Falla hasta que se carga el módulo que lo define | Todos los módulos del lote se cargan al arrancar; un módulo fuera del lote siempre falla | [native records](native-records.md#differences-kept) |
 | Impresión de funs locales (`#Fun<M.Index.Uniq>`) | Índice según la numeración de lambdas del compilador, `Uniq` un hash del código del módulo | Índice de los funs locales del módulo en orden de código fuente, `Uniq` siempre 0 | [funs](funs.md#comparison-and-printing) |
 | Orden de dos funs locales de un mismo módulo | Según el índice de OTP | Según el índice en orden de código fuente, por lo que funs de funciones distintas pueden ordenarse de otro modo | [funs](funs.md#comparison-and-printing) |
 | Nombres de funs anónimos en trazas de pila (`-f/1-fun-N-`) | `N` según la numeración del compilador | `N` cuenta los funs de `f/1` en orden de código fuente | [funs](funs.md#closures) |
@@ -34,8 +36,8 @@ plan.
 | Diferencia | OTP | Clause | Responsable |
 | --- | --- | --- | --- |
 | Números de pid | El primer proceso de usuario es aproximadamente `<0.80.0>`; los números se reutilizan cuando la tabla de pids da la vuelta | El primer proceso es `<0.1.0>`; los números provienen de una única secuencia y nunca se reutilizan | [términos](terms.md#pids-and-references) |
-| Código tras `spawn(Fun)` de un fun de otra aridad | El análisis de tipos del compilador puede considerar inalcanzable el código posterior a la llamada y eliminarlo, de modo que el llamador devuelve el pid de inmediato | El llamador continúa; solo el nuevo proceso falla con `{badarity, {Fun, []}}` | [procesos](processes.md#builtins) |
-| Pila de un `function_clause` lanzado por un builtin de `lists` (`lists:sublist/2`, `lists:max/1`, ...) | El marco superior es la función Erlang, a menudo una auxiliar interna (`lists:sublist_2/2`), con sus argumentos | El llamador está arriba: los builtins no apilan ningún marco | [builtins](builtins.md#lists-module) |
+| Código tras `spawn(Fun)` de un fun de otra aridad | El análisis de tipos del compilador puede considerar inalcanzable el código posterior a la llamada y eliminarlo, de modo que el llamante devuelve el pid de inmediato | El llamante continúa; solo el nuevo proceso falla con `{badarity, {Fun, []}}` | [procesos](processes.md#builtins) |
+| Pila de un `function_clause` lanzado por un builtin de `lists` (`lists:sublist/2`, `lists:max/1`, ...) | El marco superior es la función Erlang, a menudo una auxiliar interna (`lists:sublist_2/2`), con sus argumentos | El llamante está arriba: los builtins no apilan ningún marco | [builtins](builtins.md#lists-module) |
 | Último bit de los resultados de `math` (`math:erfc(1)`, ...) | La biblioteca C con la que se compiló OTP | La biblioteca C que enlazan los programas Clause (Windows: `0.15729920705028513` para `erfc(1)`, OTP `0.1572992070502851`) | [builtins](builtins.md#math-module) |
 | Resultado de `binary:compile_pattern/1` | `{bm, Ref}` o `{ac, Ref}` con una referencia opaca | `{bm, [Pattern]}` o `{ac, Patterns}` | [builtins](builtins.md#binary-module) |
 | `binary:referenced_byte_size/1` de un sub-binary | El tamaño del binary al que hace referencia | Su propio tamaño | [builtins](builtins.md#binary-module) |
@@ -45,7 +47,7 @@ plan.
 | `init:get_arguments/0`, `init:get_argument/1` | Los flags del emulador: `root`, `bindir`, `progname`, `home` y cada `-Flag` de la línea de órdenes | Solo `home`; un ejecutable no tiene flags de emulador | [builtins](builtins.md#init-module) |
 | `init:script_name/0`, `init:script_id/0` | La ruta del script de arranque y `{"Erlang/OTP", "29"}` | La ruta absoluta del ejecutable y `{"Clause", "29"}` | [builtins](builtins.md#init-module) |
 | `init:get_status/0`, `init:ensure_loaded/1` en la entrada | `{starting, started}` y carga de código mientras se ejecuta código de `escript`, `-s` o `-eval` durante el arranque; `{started, started}` y `not_allowed` una vez arrancado | Siempre las respuestas de sistema arrancado | [builtins](builtins.md#init-module) |
-| `init:stop/0,1`, `init:reboot/0` | Devuelven `ok`; después `init` detiene las aplicaciones y termina, mientras el llamador sigue ejecutándose | Terminan de inmediato; la llamada nunca retorna | [builtins](builtins.md#init-module) |
+| `init:stop/0,1`, `init:reboot/0` | Devuelven `ok`; después `init` detiene las aplicaciones y termina, mientras el llamante sigue ejecutándose | Terminan de inmediato; la llamada nunca retorna | [builtins](builtins.md#init-module) |
 | `init:get_argument(home)` en Windows sin `HOMEDRIVE`/`HOMEPATH` | La carpeta de perfil del shell | `USERPROFILE`, normalmente la misma carpeta | [builtins](builtins.md#init-module) |
 | `erlang:halt(Slogan)`, `init:stop(Slogan)` | Imprime el eslogan, escribe `erl_crash.dump` en el directorio actual y lo indica en stderr; código de salida 1 | Imprime el eslogan en stderr, no escribe volcado de memoria; código de salida 1 | [ejecutables](executables.md) |
 | `init:restart/0,1`, `init:boot/1`, `init:make_permanent/2` | Reinician el sistema en el mismo nodo, lo arrancan o fijan el script de arranque del siguiente reinicio | Rechazadas: error `notsup`, `{error, notsup}` de `make_permanent/2` | [builtins](builtins.md#init-module) |
@@ -54,20 +56,20 @@ plan.
 | `erts_internal:term_type/1` | La representación interna: `flatmap` o `hashmap`, `heap_binary`, `refc_binary` o `sub_binary`, ... | Todo map es `flatmap`, todo bitstring `sub_binary` | [builtins](builtins.md#erts-internal) |
 | `erl_prim_loader:get_path/0` | La ruta de código del arranque | `["."]` hasta `set_path/1` | [puertos](ports.md#standard-io-and-files) |
 | `file:read_link_info/1,2` de un enlace simbólico en Windows | Los datos de reparse point propios del enlace | El tamaño y las fechas del destino con tipo `symlink` | [puertos](ports.md#standard-io-and-files) |
-| `inet:gethostbyname/1,2` | El nombre canónico y los alias del resolutor (`inet_res`, archivo hosts, nativo) | El nombre solicitado y ningún alias; direcciones del resolutor del sistema | [puertos](ports.md#sockets-57f) |
+| `inet:gethostbyname/1,2` | El nombre canónico y los alias del resolutor (`inet_res`, archivo hosts, nativo) | El nombre solicitado y ningún alias; direcciones del resolutor del sistema | [puertos](ports.md#sockets) |
 | Módulos `socket`, `net` | La API NIF de sockets | Ausentes: una referencia es un error de compilación; úsense `gen_tcp`, `gen_udp`, `inet` | [biblioteca](library.md) |
 | Listas de salida de `zlib` | Un binary por bloque interno, anidados donde un flujo terminó y se reinició | Un binary por llamada, `[]` cuando no hay ninguno; los bytes son los de OTP | [builtins](builtins.md#zlib-module) |
 | `zlib:safeInflate/2` y llamadas largas a `zlib` | Retornan tras una cantidad acotada de salida (`{continue, Output}`) y ceden el control | Descomprimen toda la entrada encolada en una llamada (`{finished, Output}`); una llamada larga retiene su hilo de planificador | [builtins](builtins.md#zlib-module) |
 | Coincidencias largas de `re` | `re:run/3` y el bucle global ceden el control tras una cantidad acotada de trabajo | Una coincidencia se ejecuta hasta el final y retiene su hilo de planificador; una ejecución global solo cede entre coincidencias | [builtins](builtins.md#re-module) |
 | `re:compile/2` con `export`, `re:import/1` | Un patrón exportado `{re_exported_pattern, ...}` que otro nodo importa | `export` es `badarg`; `import/1` lanza `{not_implemented, import, 1}` | [builtins](builtins.md#re-module) |
-| Errores de argumentos de `re` | `badarg` lanzado desde `re:run/3` (o `replace`, `split`) con los argumentos del llamador y `error_info` | `badarg` lanzado desde la auxiliar de `re` que rechazó el argumento, con los argumentos de esa auxiliar | [builtins](builtins.md#re-module) |
+| Errores de argumentos de `re` | `badarg` lanzado desde `re:run/3` (o `replace`, `split`) con los argumentos del llamante y `error_info` | `badarg` lanzado desde la auxiliar de `re` que rechazó el argumento, con los argumentos de esa auxiliar | [builtins](builtins.md#re-module) |
 | `code:is_sticky/1` | `true` para los módulos de `kernel`, `stdlib` y `compiler` | Siempre `false` | [builtins](builtins.md#code-module) |
 | Salida a un dispositivo de archivo (`io:format(File, ...)`) | Los caracteres se codifican según la codificación del archivo (`latin1` por defecto: los caracteres por encima de 255 son un error) | Siempre bytes UTF-8 | [io](io.md#calls) |
 | Formateo de un término grande (`io:format/1,2`) | Se ejecuta en código Erlang (`io_lib`) y en el group leader, por lo que el proceso puede ser desalojado durante el formateo | Se ejecuta hasta el final en una sola llamada a un builtin; los demás procesos esperan | [builtins](builtins.md#portions) |
-| Flags de `process_flag/2` | `trap_exit`, `priority`, `message_queue_data`, `min_heap_size` y otros | Solo `trap_exit`; cualquier otro flag lanza `badarg` | [procesos](processes.md#builtins) |
-| Orden de los informes de error de procesos que fallan al mismo tiempo | Orden del logger | El orden en que sus workers los terminan | [procesos](processes.md#workers) |
-| Señales a un proceso que se ejecuta en otro planificador | Se encolan en su cola de señales y se procesan después, mientras el emisor continúa | El emisor espera a que termine la porción de tiempo del destino y luego actúa de inmediato; solo observable como diferencia de tiempos | [procesos](processes.md#workers) |
-| `term_to_binary/1` de un fun local o de un record nativo | Se codifica (`NEW_FUN_EXT`, ...) | `error:notsup`; `fun M:F/A` sí se codifica | [builtins](builtins.md#external-term-format) |
+| Flags de `process_flag/2` | `trap_exit`, `priority`, `message_queue_data`, `min_heap_size` y otros | Solo `trap_exit` y `min_heap_size`; cualquier otro flag lanza `badarg` | [procesos](processes.md#builtins) |
+| Orden de los informes de error de procesos que fallan al mismo tiempo | Orden del logger | El orden en que sus hilos de trabajo los terminan | [procesos](processes.md#workers) |
+| Señales de salida (`exit/2`, `exit_signal/2`) a un proceso que se ejecuta en otro planificador | Se encolan en su cola de señales y se procesan después, mientras el emisor continúa | El emisor espera a que termine la porción de tiempo del destino y luego actúa de inmediato; solo observable como diferencia de tiempos (los mensajes se almacenan en búfer y el emisor continúa) | [procesos](processes.md#workers) |
+| `term_to_binary/1` de un fun local o de un native record | Se codifica (`NEW_FUN_EXT`, ...) | `error:notsup`; `fun M:F/A` sí se codifica | [builtins](builtins.md#external-term-format) |
 | `term_to_binary/1` de un map con más de 32 claves | Orden de hash salvo con `deterministic` | Siempre orden de claves (los bytes de `deterministic`) | [builtins](builtins.md#external-term-format) |
 | `binary_to_term/1` del pid, puerto o referencia de otro nodo; opción `local` de `term_to_binary/2` | Identidades externas; codificación `LOCAL_EXT` | `badarg` | [builtins](builtins.md#external-term-format) |
 | Límite de tiempo de los temporizadores | Depende de la unidad de tiempo nativa (unos 2^49.7 ms en Windows) | Tiempo relativo 0..2^49-1 ms en todas las plataformas | [procesos](processes.md#timers) |
@@ -77,7 +79,7 @@ plan.
 | `garbage_collect/0,1,2` | Recolecta antes de retornar | Recolecta en el siguiente punto seguro (safepoint) del destino | [procesos](processes.md#introspection) |
 | `erlang:system_info(machine)` | `"BEAM"` | `"Clause"` | [builtins](builtins.md#system-information) |
 | Opciones de ajuste de `spawn_opt/2..5` (`priority`, `min_heap_size`, ...) | Se aplican | Se comprueban y se aceptan, pero no se aplican | [procesos](processes.md#spawn-options) |
-| `hibernate/3` | Descarta la pila; el proceso termina cuando `M:F` retorna | Conserva la pila; el resultado de `M:F` vuelve al llamador de `hibernate/3` | [procesos](processes.md#spawn-options) |
+| `hibernate/3` | Descarta la pila; el proceso termina cuando `M:F` retorna | Conserva la pila; el resultado de `M:F` vuelve al llamante de `hibernate/3` | [procesos](processes.md#spawn-options) |
 | `monitor(port, Item, Options)` con opciones | Se acepta | `badarg` | [procesos](processes.md#aliases) |
 | `spawn_request_abandon/1` | `true` mientras la respuesta está pendiente | Siempre `false`: la respuesta se envía antes de que `spawn_request` retorne | [procesos](processes.md#spawn-options) |
 | Último bit de `math:log2/1` (Windows) | La compilación de OTP para Windows divide `log(X)` entre `log(2)` (`math:log2(1.0e308)` es `1023.1538532253077`) | El `log2` de la biblioteca C (`1023.1538532253076`) | [builtins](builtins.md#math-module) |
@@ -96,14 +98,14 @@ plan.
 | Resultado de `os:cmd/1` | Caracteres Unicode decodificados de la salida | Los bytes de la salida | [puertos](ports.md#subprocesses) |
 | Argumentos vacíos de `{spawn_executable, F}` en Windows | Se descartan de la línea de órdenes | Se pasan como `""` | [puertos](ports.md#subprocesses) |
 | `{exit_status, S}` y `eof` de un programa lanzado | Orden no especificado, `exit_status` puede llegar antes de los últimos datos | Después de todos los datos, antes de `eof` | [puertos](ports.md#subprocesses) |
-| Puertos ocupados | Un puerto con demasiada salida encolada suspende a los emisores; `force` de `port_command/3` funciona en los drivers que lo permiten | La salida nunca suspende; `force` lanza `notsup` en todos los drivers | [puertos](ports.md#io-thread) |
-| `{active, N}` de sockets | Un entero `N` cuenta mensajes antes de `{tcp_passive, S}` | `exit(badarg)`; solo `true`, `false` y `once` | [puertos](ports.md#sockets-57f) |
-| Opciones de ajuste de sockets (`nodelay`, `keepalive`, `send_timeout`, `delay_send`, búferes) | Se aplican; otras opciones de `inet` (`header`, `{packet, line}`, `http`, ...) funcionan | Las opciones de ajuste enumeradas se aceptan pero no se aplican; las demás opciones dan `exit(badarg)` | [puertos](ports.md#sockets-57f) |
-| Motivos de error de sockets | Todo motivo POSIX que informe el sistema | Los habituales (`econnrefused`, `eaddrinuse`, `econnreset`, `etimedout`, ...); los demás son `eio` | [puertos](ports.md#sockets-57f) |
+| Puertos ocupados | Un puerto con demasiada salida encolada suspende a los emisores, incluidos los puertos de socket; `force` de `port_command/3` funciona en los drivers que lo permiten | Solo se ocupan los puertos de programas lanzados; los puertos `fd` y de socket nunca; `force` lanza `notsup` en todos los drivers | [puertos](ports.md#busy-ports) |
+| `{active, N}` de sockets | Un entero `N` cuenta mensajes antes de `{tcp_passive, S}` | `exit(badarg)`; solo `true`, `false` y `once` | [puertos](ports.md#sockets) |
+| Opciones de ajuste de sockets (`nodelay`, `keepalive`, `send_timeout`, `delay_send`, búferes) | Se aplican; otras opciones de `inet` (`header`, `{packet, line}`, `http`, ...) funcionan | Las opciones de ajuste enumeradas se aceptan pero no se aplican; las demás opciones dan `exit(badarg)` | [puertos](ports.md#sockets) |
+| Motivos de error de sockets | Todo motivo POSIX que informe el sistema | Los habituales (`econnrefused`, `eaddrinuse`, `econnreset`, `etimedout`, ...); los demás son `eio` | [puertos](ports.md#sockets) |
 | Entrada de puerto mientras el proceso conectado retiene 1.024 mensajes y puede ejecutarse | Sigue leyendo y entregando | Deja de entregar hasta que termina la porción de tiempo del proceso; por encima de 64 KiB retenidos, deja de leer, de modo que el programa que escribe se bloquea | [puertos](ports.md#busy-ports) |
-| `gen_tcp:close/1` con salida encolada | Espera, hasta el valor de `linger`/`send_timeout`, a que la salida se envíe | Retorna de inmediato; el hilo de E/S envía la salida encolada y después cierra | [puertos](ports.md#sockets-57f) |
+| `gen_tcp:close/1` con salida encolada | Espera, hasta el valor de `linger`/`send_timeout`, a que la salida se envíe | Retorna de inmediato; el hilo de E/S envía la salida encolada y después cierra | [puertos](ports.md#sockets) |
 | Tipos de `monitor/2` | `process`, `port`, `time_offset` | `process` y `port`; `time_offset` lanza `badarg` (no hay cambios de desfase horario) | [procesos](processes.md#monitors) |
-| `exit/2`, `exit_signal/2` a una referencia | Envía al alias del proceso, si la referencia es un alias activo | Nada (no hay alias) | [procesos](processes.md#exit-signals) |
+| `exit/2`, `exit_signal/2` a una referencia | Envía al alias del proceso, si la referencia es un alias activo | Nada: las señales de salida nunca van a los alias | [procesos](processes.md#exit-signals) |
 | Números de referencia | Combinan un identificador de planificador y contadores por planificador (`#Ref<0.178111994.4235460610.214105>`) | Un único contador para todo el programa (`#Ref<0.0.0.1>`), por lo que las referencias se ordenan por creación | [términos](terms.md#pids-and-references) |
 
 ## Errores, trazas de pila e informes
@@ -111,6 +113,7 @@ plan.
 | Diferencia | OTP | Clause | Responsable |
 | --- | --- | --- | --- |
 | Ubicaciones en trazas de pila | `[{file, F}, {line, L}]`, `error_info` para `error/3` | Siempre `[]`; sin `error_info` | [ABI](abi.md#stack-traces) |
+| `erlang:raise/3` con entradas de pila `{Fun, Args}` | Se aceptan | Se rechazan | [ABI](abi.md#stack-traces) |
 | Marco superior de `function_clause` | Lista de argumentos | Aridad | [ABI](abi.md#stack-traces) |
 | Marco superior de `undef` | `{M, F, Args, []}` de la función inexistente | El marco de la función que llama | [funs](funs.md#dynamic-calls) |
 | Llamada dinámica a una exportación que un ejecutable no puede alcanzar (su módulo solo se nombra a través de una traza de pila, una excepción o un mensaje externo al programa) | La llama | `undef`, salvo si se compiló con `--keep-exports`; `function_exported/3` y `module_info(exports)` la siguen enumerando | [ejecutables](executables.md#export-liveness) |
@@ -119,13 +122,13 @@ plan.
 | `list_to_integer/1,2` con caracteres por encima de 255 | Sus primeros dígitos usan solo el byte bajo de cada carácter (`[16#131]` es 1) | `badarg` | [builtins](builtins.md#how-calls-reach-them) |
 | `erlang:function_exported/3` de un BIF | Verdadero para todo BIF del emulador | Verdadero solo para los builtins que proporciona este runtime | [builtins](builtins.md#how-calls-reach-them) |
 | Informes de error de procesos que han fallado | Se envían al logger y su manejador por defecto los escribe más tarde (en la salida estándar con `erl`, a menudo se pierden cuando un escript termina antes) | Se escriben en stderr cuando el proceso termina, antes de cualquier salida posterior | [procesos](processes.md#exits) |
-| Llamadas a funciones que nunca retornan | Compiladas como llamadas de cola (el llamador no aparece en la traza) | Llamadas ordinarias (el llamador aparece) | [ABI](abi.md#stack-traces) |
-| Memoria del sistema agotada | El emulador informa de que no puede reservar memoria, escribe un volcado de memoria y se detiene | `clau: runtime failure: entry call failed: out_of_memory`, código de salida 70, sin volcado | [heap del runtime](runtime-heap.md#failure-behavior) |
-| Almacenamiento de maps de más de 32 claves | Un HAMT en el heap, contabilizado en `heap_size` y copiado en cada recolección | Un árbol fuera del heap tras un stub de 4 palabras en el heap, contabilizado con los binaries fuera del heap; los tamaños de heap son menores y las recolecciones solo copian el stub | [heap del runtime](runtime-heap.md#off-heap-maps) |
+| Llamadas a funciones que nunca retornan | Compiladas como llamadas de cola (el llamante no aparece en la traza) | Llamadas ordinarias (el llamante aparece) | [ABI](abi.md#stack-traces) |
+| Memoria del anfitrión agotada | El emulador informa de que no puede reservar memoria, escribe un volcado de memoria y se detiene | `clau: runtime failure: entry call failed: out_of_memory`, código de salida 70, sin volcado | [heap del runtime](runtime-heap.md#failure-behavior) |
+| Almacenamiento de maps de más de 32 claves | Un HAMT en el heap de nodos hash de 16 ramas | Un árbol B+ en el heap de hasta 16 entradas por nodo en orden de claves; los tamaños de heap de los maps grandes difieren de los de OTP | [heap del runtime](runtime-heap.md#map-trees) |
 | Límite de memoria por proceso | `max_heap_size` (en palabras, heap y pila) mata el proceso con motivo `killed` y registra un informe de error | `--max-heap` / `--max-stack` (bytes) y `--max-memory`, global para todo el runtime, hacen fallar al proceso solicitante como `resource_limit`: `clau: runtime failure: entry call failed: resource_limit`, código de salida 70 | [heap del runtime](runtime-heap.md#runtime-memory-limit) |
-| Argumentos del programa | `escript` pasa todos los argumentos a `main/1`; los flags del emulador (`+t`) provienen de `%%!` o de `ERL_FLAGS` | Las opciones iniciales del runtime (`--max-atoms`, `--max-heap`, `--max-stack`, `--max-memory`, `--args-file`, `--`) se extraen primero; `CLAUSE_FLAGS` contiene las mismas opciones | [ejecutables](executables.md#runtime-options) |
+| Argumentos del programa | `escript` pasa todos los argumentos a `main/1`; los flags del emulador (`+t`) provienen de `%%!` o de `ERL_FLAGS` | Las opciones iniciales del runtime (`--max-atoms`, `--max-heap`, `--max-stack`, `--max-memory`, `--min-heap-size`, `--args-file`, `--`) se extraen primero; `CLAUSE_FLAGS` contiene las mismas opciones | [ejecutables](executables.md#runtime-options) |
 | Excepción no capturada en un módulo de entrada ordinario | `escript` termina con código 127 | Termina con código 1 y una línea `uncaught exception <class>: <reason>` (los fuentes escript mantienen 127) | [ejecutables](executables.md) |
-| Diagnósticos del compilador | Redacción de `erl_lint` (`variable 'X' is unbound`) y advertencias | Redacción propia (`unbound variable X`); las advertencias de lint de OTP en su mayoría no se emiten (tampoco las de campos desconocidos de records nativos en accesos, actualizaciones y patrones) | [semántica](semantic.md#bindings) |
+| Diagnósticos del compilador | Redacción de `erl_lint` (`variable 'X' is unbound`) y advertencias | Redacción propia (`unbound variable X`); las advertencias de lint de OTP en su mayoría no se emiten (tampoco las de native records: campos desconocidos en accesos, actualizaciones y patrones, construcción cualificada con el propio módulo sin valores, records no usados o definidos en cabeceras; un patrón posterior que coincide con un nombre exportado desde una rama) | [semántica](semantic.md#bindings) |
 | Módulo de behaviour con un `behaviour_info/1` escrito a mano | Lo llama al compilar los módulos que lo usan y advierte de callbacks ausentes, mal definidos u obsoletos | No se evalúa: los callbacks de quienes lo usan no se comprueban | [semántica](semantic.md#behaviours) |
 | Módulos de behaviour fuera del lote (`gen_server`, `supervisor`, ...) | Se cargan desde la ruta de código; sus callbacks se comprueban | Advertencia `behaviour M undefined` | [semántica](semantic.md#behaviours) |
 | `-behaviour` con un valor que no es un átomo | La advertencia imprime el término con `~w` (`behaviour [115,116,114] undefined`) | Imprime el texto fuente del atributo (`behaviour "str" undefined`); el error es el mismo | [semántica](semantic.md#behaviours) |
@@ -133,9 +136,7 @@ plan.
 | `module_info(compile)` | `version` de la aplicación compiler de OTP, `options` que se le pasaron | La versión de Clause; `options` siempre `[]` | [semántica](semantic.md#predefined-functions) |
 | `module_info(functions)` | También enumera las funciones que OTP genera para los funs (`'-f/0-fun-0-'/0`) | Solo las funciones del código fuente y las predefinidas | [semántica](semantic.md#predefined-functions) |
 | `-nominal` en `module_info(attributes)` | Se conserva como `{nominal,[{Name,AbstractType,Params}]}` en formato abstracto | Se omite | [semántica](semantic.md#predefined-functions) |
-| `erlang:get_module_info/1,2` | El BIF que hay detrás de `module_info/0,1` | No se proporciona; `module_info/0,1` devuelven datos literales | [semántica](semantic.md#predefined-functions) |
-| `-compile({parse_transform, Module})` | Ejecuta la transformación sobre las formas del módulo | No se aplica; advertencia `[parse transforms] notimpl` y el módulo se compila sin transformar | [compilación](compile.md#accepted-source-subset) |
-| Una función de un módulo de biblioteca de Clause que Clause no ha implementado (un BIF de `erlang`, `lists:keysort/2`, `persistent_term:get/1`, ...) | Se ejecuta | Compila; lanza `error({not_implemented, F, A})` al llamarla, con `M:F/A` en la cima de la pila ([estados](../library/modules.terms)) | [biblioteca](library.md#provided-or-missing), [builtins](builtins.md#erlang-module) |
+| Una función de un módulo de biblioteca de Clause que Clause no ha implementado (un BIF de `erlang`, `lists:ukeysort/2`, ...) | Se ejecuta | Compila; lanza `error({not_implemented, F, A})` al llamarla, con `M:F/A` en la cima de la pila ([estados](../library/modules.terms)) | [biblioteca](library.md#provided-or-missing), [builtins](builtins.md#erlang-module) |
 | Importación de un módulo fuera del lote | Compila; la llamada lanza `undef` en tiempo de ejecución si falta el módulo | Error de compilación `unknown module M` cuando se llama a la importación (las importaciones no usadas no necesitan el módulo) | [semántica](semantic.md#imports) |
 | Advertencia `import directive overrides auto-imported BIF` | Para todo BIF autoimportado de `erl_internal:bif/2` | Solo para los BIF autoimportados que Clause implementa | [semántica](semantic.md#imports) |
 
@@ -146,9 +147,9 @@ plan.
 | Segmento entero más ancho que el límite de enteros, con un valor que lo supera (`<<V:4194241>>` todo unos) | El JIT de x86 encaja con un término inválido; usarlo bloquea la VM | No encaja | [términos](terms.md#integers) |
 | Grupo zip cuyos generadores relajados y estrictos comparten una variable | La prueba de omisión mantiene las variables de los patrones estrictos en los patrones relajados | Un paso rechazado se omite siempre que los patrones estrictos encajen por sí solos | [patrones](patterns.md#comprehensions) |
 | Llamada a un fun externo, `M:F(Args)` o `apply/3` de un módulo ajeno al programa | Carga el módulo desde la ruta de código, `undef` si no existe | `undef`; los módulos de biblioteca solo se incorporan al programa cuando este los nombra con un átomo literal | [funs](funs.md#dynamic-calls), [biblioteca](library.md#how-programs-get-them) |
-| `lists` y `maps` | Los módulos completos; `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` siguen el orden interno del map (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves) | El [subconjunto de la biblioteca](library.md); las funciones de map siguen el orden de claves | [biblioteca](library.md) |
 | Archivos sin `#!` pasados como escripts | `escript file.erl` omite la primera línea | Se compilan como módulos ordinarios | [ejecutables](executables.md) |
 | Escripts de beam precompilado y de archivo | Se ejecutan | No soportados | [ejecutables](executables.md) |
+| Nombre de módulo de un escript sin `-module` | `<name>__escript` más un sufijo de marca de tiempo/único | `<name>__escript`, determinista | [ejecutables](executables.md#escripts) |
 | `include_lib` de una aplicación presente en varios directorios `<app>-<version>` | La ruta de código contiene una sola versión (el arranque elige la más alta); sin diagnóstico | La versión más alta dentro de cada directorio buscado, con una advertencia por ejecución que las enumera | [preprocesador](preprocessor.md#compatibility-policies) |
 | Un `-spec` cuyos tipos no comparten ningún valor con el resultado inferido, el dominio de entrada o los argumentos de una llamada | Compila; Dialyzer puede advertir | Un dominio de entrada de argumentos contradicho es un error de compilación que nombra los tipos declarado e inferido; un resultado o una llamada contradichos son una advertencia, y se usan los tipos inferidos | [análisis semántico](semantic.md#inference) |
 
@@ -160,7 +161,6 @@ plan.
 | `~p` de contenedores anidados a más de 256 niveles | Se imprimen | `system_limit` | [io](io.md#pretty-printing-p) |
 | Anchos de campo y precisión de `~ts` con caracteres combinables o `\r\n` | Cuentan clústeres de grafemas | Cuentan puntos de código | [io](io.md#formats) |
 | Precisión o número de relleno negativos (`~.*c` con -1) | Bucle infinito | `badarg` | [io](io.md#formats) |
-| Funciones de `io` distintas de `format/1,2`, `put_chars/1` | Existen | `unknown module io` | [io](io.md#calls) |
 
 ## Parse transforms
 

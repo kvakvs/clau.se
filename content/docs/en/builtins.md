@@ -50,7 +50,9 @@ the bridge. Every other `erlang` function reaches the
 | Source | Path |
 | --- | --- |
 | `abs(X)`, `X + Y`, `erlang:display(X)`, `halt()`, `error(R)` | Inline code or a dedicated runtime service |
-| `erlang:function_exported(M, F, A)`, `setelement(I, T, V)`, `A ++ B`, `A -- B`, `length(L)` in a body (catalog builtins without an inline service) | Entered like a function: `CLAUSE_builtin_frame_v1(context, index)` gives the builtin's frame, the arguments go in the registers ([portions](#portions)) |
+| `erlang:function_exported(M, F, A)`, `A -- B`, `length(L)` in a body (catalog builtins without an inline service) | Entered like a function: `CLAUSE_builtin_frame_v1(context, index)` gives the builtin's frame, the arguments go in the registers ([portions](#portions)) |
+| `integer_to_list(I)`, `atom_to_list(A)`, `setelement(I, T, V)`, ... (direct builtins: never trap, wait or act on another process) | Called at once: `CLAUSE_builtin_call_v1(context, index, arguments)` returns the result ([ABI](abi.md#runtime-services)) |
+| `A ++ B` | A short proper `A` is copied inline; otherwise entered like a function ([ABI](abi.md#frames-and-transfers)) |
 | `fun abs/1`, `fun erlang:'+'/2` | External fun `erlang:F/A`; registration binds it to the builtin |
 | `M:F(Args)`, `apply(M, F, Args)`, runtime `fun M:F/A` | The code server finds a module's export first, then a builtin |
 
@@ -243,7 +245,10 @@ Calls:
 `erlang/term_encoding.cpp`, `erlang/term_decoding.cpp`. Both directions share
 the codec of [external_term.hpp](../abi/include/clause/abi/external_term.hpp)
 with the compiler, and walk terms with explicit stacks, so nesting depth costs
-no native stack.
+no native stack. The encoder reads the cells of its validated argument in place
+(`TermAccess::trusted`, no per-cell address lookup); the decoder collects
+children on one shared stack and writes tuples, lists and strings straight into
+heap words it claims once per container (`TermAccess::claim`).
 
 - `term_to_binary/1,2` writes OTP's bytes for a non-distributed node
   (`nonode@nohost`, creation 0): UTF-8 atoms, `NEW_FLOAT`, `STRING_EXT` for
@@ -396,6 +401,11 @@ builtin:
   implemented functions (`filter/2`, `map/2`, `fold/3`, `iterator/1,2`,
   `next/1`, ...) are Erlang in `library/stdlib/maps.erl`; iterators use
   [`erts_internal:map_next/3`](#erts-internal).
+- Map cursors (`runtime/src/terms/map_cursor.hpp`) walk a flat map cell and an
+  map tree alike, as words in key order, with no `Term` per entry. The
+  private builtin `clause_maps:entries/1` returns `{K1, V1, K2, V2, ...}` from
+  one, so `maps:fold/3` reads the associations in place with `element/2`
+  instead of building a list of pairs; `map_next/3` steps with one too.
 - `os:type/0`, `os:getenv/0,1` (`getenv/0`: `"Name=Value"` strings; Windows'
   per-drive `=C:` entries are left out), `os:env/0` (`{Name, Value}` pairs),
   `os:putenv/2`, `os:unsetenv/1` (`badarg` unless the arguments are strings

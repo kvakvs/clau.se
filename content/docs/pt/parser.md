@@ -1,8 +1,8 @@
 ---
 source: docs/parser.md
-sourceCommit: 6ed3851c
-sourceSha256: 620d520afbba7b5b1d96dcbf60cf55b23bfb6a23153437fd25ee82c424a2afc1
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 86719d7cbbba9250f7167908fc08ac6735ed50c9adf31c9d0655d626a595c815
+translatedAt: 2026-10-17
 ---
 # Parser
 
@@ -15,9 +15,9 @@ uma AST com posse própria dos dados.
 escrevendo os diagnósticos em stderr e nada em stdout em caso de sucesso.
 Aplicam-se todas as opções de pré-processamento. `--print-pp` e `--print-ast`
 imprimem o código-fonte expandido ou a árvore da mesma passagem. As opções de
-caminho de saída são erros de utilização nos modos de verificação/impressão.
-As entradas são isoladas; qualquer falha mantém um código de saída de falha.
-`--` permite caminhos que começam por `-`. Códigos de saída: 0 sucesso (avisos
+caminho de saída são erros de utilização nos modos de verificação/impressão. As
+entradas são isoladas; qualquer falha mantém um código de saída de falha. `--`
+permite caminhos que começam por `-`. Códigos de saída: 0 sucesso (avisos
 permitidos), 1 falha de código-fonte/sistema de ficheiros, 2 erro de
 utilização.
 
@@ -55,23 +55,22 @@ for (const auto &id : result.module.forms()) {
 - `ast::Module` só pode ser movido e detém as formas, as arenas planas de nós,
   os buffers de código-fonte e os instantâneos de features. Os movimentos
   preservam os handles.
-- Handles distintos `ExprId`, `PatternSyntaxId`, `TermId`, `TypeId`,
-  `FormId`; as verificações de dono/geração rejeitam handles alheios ou
-  obsoletos.
+- Handles distintos `ExprId`, `PatternSyntaxId`, `TermId`, `TypeId`, `FormId`;
+  as verificações de dono/geração rejeitam handles alheios ou obsoletos.
 - `module.visit(id, visitor)` despacha uma variante fechada. Percorra árvores
   profundas com pilhas explícitas.
 - `NodeSource` é um intervalo de tokens expandidos mais uma âncora; use
   `extent()`/`anchor()` em vez de presumir uma grafia física contígua.
 - Streaming: `ParserSession::consume(event)`,
   `parse_form(tokens, eof, features)` e depois
-  `std::move(session).finish(features)`. Verifique sempre
-  `ParseResult::failed`; formas recuperadas não implicam sucesso.
+  `std::move(session).finish(features)`. Verifique sempre `ParseResult::failed`;
+  formas recuperadas não implicam sucesso.
 - `tests/compiler/parser/consumer.cpp` é um exemplo compilado de posse.
 
 Cobertura da gramática: atributos e termos literais, records em tuplo/nativos,
-declarações type/opaque/nominal, specs/callbacks, todas as expressões,
-padrões, guards, cláusulas, binaries, fun/try/maybe/receive e comprehensions
-de lista/map/binary com os geradores estritos e os grupos zip do OTP 29. As
+declarações type/opaque/nominal, specs/callbacks, todas as expressões, padrões,
+guards, cláusulas, binaries, fun/try/maybe/receive e comprehensions de
+lista/map/binary com os geradores estritos e os grupos zip do OTP 29. As
 anotações de teste SSA estão excluídas. O sucesso sintático não implica nada
 quanto a lint, associações ou geração de código.
 
@@ -84,8 +83,8 @@ de abertura sem par mais próximo e os terminais `Diagnostic::expected`.
 
 Valores por omissão: 1 000 000 de tokens/forma, 4 000 000 de tokens/módulo,
 1 000 000 de nós, 1000 diagnósticos (+1 mensagem de esgotamento), aninhamento
-256 (teto absoluto da API 512), 16 000 000 de unidades de trabalho. O
-impressor da árvore tem por omissão 4 000 000 de objetos visitados e lança
+256 (teto absoluto da API 512), 16 000 000 de unidades de trabalho. O impressor
+da árvore tem por omissão 4 000 000 de objetos visitados e lança
 `std::length_error` quando se esgota. São limites de contabilização, não
 garantias de tempo real. O esgotamento de recursos interrompe a sessão.
 

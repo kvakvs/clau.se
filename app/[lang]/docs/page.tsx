@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   docsSource,
   featuredDocs,
@@ -71,12 +70,12 @@ export default async function DocsPage({ params }: Props) {
             return (
               <li key={entry.id}>
                 {doc ? (
-                  <Link
+                  <a
                     href={href(doc.slug)}
                     className="block h-full rounded-xl border border-border bg-card p-5 hover:border-accent"
                   >
                     {body}
-                  </Link>
+                  </a>
                 ) : (
                   <div className="h-full rounded-xl border border-dashed border-border p-5">
                     {body}
@@ -85,12 +84,12 @@ export default async function DocsPage({ params }: Props) {
                       {related.map((d, j) => (
                         <span key={d.slug}>
                           {j > 0 && ", "}
-                          <Link
+                          <a
                             href={href(d.slug)}
                             className="text-accent hover:underline"
                           >
                             {d.title}
-                          </Link>
+                          </a>
                         </span>
                       ))}
                     </p>
@@ -109,12 +108,12 @@ export default async function DocsPage({ params }: Props) {
         <ul className="mt-4 columns-1 gap-8 sm:columns-2 lg:columns-3">
           {getOtherDocs(lang).map((doc) => (
             <li key={doc.slug} className="break-inside-avoid py-1">
-              <Link
+              <a
                 href={href(doc.slug)}
                 className="hover:text-accent hover:underline"
               >
                 {doc.title}
-              </Link>
+              </a>
             </li>
           ))}
         </ul>

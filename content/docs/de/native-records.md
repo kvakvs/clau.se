@@ -1,17 +1,14 @@
 ---
 source: docs/native-records.md
-sourceCommit: 6ed3851c
-sourceSha256: 5383c5a0c72bed06730432be7a2605262122d7580d5a4e6124e01661d7e93086
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
+translatedAt: 2026-10-17
 ---
 # Native Records
 
-Sie legt den Umfang der
-OTP-29-Record-Formen jenseits gewöhnlicher Tupel-Records fest und bestimmt ihre
-Darstellung, Operationen und Fehler. Step 31B implementierte die Runtime-Zellen
-und `CLAUSE_record_v1`; 31C kompiliert lokale native Records, 31D qualifizierte
-und importierte Formen mit `-export_record`/`-import_record`, 31E anonyme
-Formen. Tupel-Records stehen unter [Terme](terms.md#records).
+Die Record-Formen von OTP 29 jenseits gewöhnlicher Tupel-Records: ihre
+Darstellung, Operationen und Fehler. Tupel-Records stehen unter
+[Terme](terms.md#records).
 
 OTP 29 kennzeichnet native Records als experimentell. Die folgenden Fakten
 stammen aus den festgelegten `maint-29`-Quellen (`erl_lint`,
@@ -21,18 +18,18 @@ Live-Proben mit OTP 29.1.1.
 
 ## Umfang
 
-Alle drei Formen jenseits der Tupel-Records sind ausgewählt. Sie teilen eine
-Darstellung, daher brauchen sie keine separate Entscheidung zur Darstellung:
+Alle drei Formen jenseits der Tupel-Records sind implementiert und teilen eine
+Darstellung:
 
-| Form | Syntax | Schritt |
-| --- | --- | --- |
-| Nativer Record, lokal | `-record #r{...}.`, `#r{...}`, `X#r.f`, `X#r{...}`, Muster, `is_record/1,2,3` | 31C |
-| Qualifiziert und importiert | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, Muster; `-export_record`, `-import_record` | 31D |
-| Inferiert (anonym) | `X#_.f`, `X#_{...}`, Muster `#_{...}` | 31E |
+| Form | Syntax |
+| --- | --- |
+| Nativer Record, lokal | `-record #r{...}.`, `#r{...}`, `X#r.f`, `X#r{...}`, Muster, `is_record/1,2,3` |
+| Qualifiziert und importiert | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, Muster; `-export_record`, `-import_record` |
+| Inferiert (anonym) | `X#_.f`, `X#_{...}`, Muster `#_{...}` |
 
-Nicht ausgewählt: das Reflexionsmodul `records` (eine Bibliothek, mit der
-Bibliotheksarbeit von step 39), `term_to_binary` (`RECORD_EXT`) und Hot Code
-Upgrade (D01). Aufrufe von `records:*` bleiben Diagnosen `unknown module`.
+Nicht vorhanden: das Reflexionsmodul `records` (Aufrufe von `records:*` sind
+Diagnosen `unknown module`), `term_to_binary` nativer Records (`error:notsup`,
+[externes Termformat](builtins.md#external-term-format)) und Hot Code Upgrade.
 
 ## Darstellung
 
@@ -48,13 +45,14 @@ Upgrade (D01). Aufrufe von `records:*` bleiben Diagnosen `unknown module`.
   kompiliert, nie gespeichert.
 - **Instanz.** Heap-Zelle der Art `native_record`: Header (Anzahl `1 + n`), ein
   nicht verfolgtes Deskriptorwort, dann `n` verfolgte Werte in
-  Definitionsreihenfolge. Ein Record ohne Felder ist eine Zelle aus zwei Wörtern.
+  Definitionsreihenfolge. Ein Record ohne Felder ist eine Zelle aus zwei
+  Wörtern.
 - Der Deskriptor hält Modul, Name, Export-Flag und Feldliste bei der
   Konstruktion fest, wie die erfasste Definition von OTP. Jede Operation nach
   der Konstruktion liest den Deskriptor der Instanz, nie den Code, der sie
   ausführt.
-- Kopieren, Speicherbereinigung, Durchlauf und Verifikation behandeln die Zelle wie ein
-  Tupel, dessen erstes Nutzdatenwort nicht verfolgt wird. Die Zulassung
+- Kopieren, Speicherbereinigung, Durchlauf und Verifikation behandeln die Zelle
+  wie ein Tupel, dessen erstes Nutzdatenwort nicht verfolgt wird. Die Zulassung
   erfordert einen Deskriptor, der von einem Modul derselben Runtime registriert
   wurde.
 
@@ -102,8 +100,9 @@ Die Meldungen folgen `erl_lint`:
   Zeichenketten): `illegal default value for field a in native record r`.
 - Lokale Konstruktion ohne Wert für ein Feld ohne Standardwert:
   `field a is not initialized in native record r`; unbekanntes Feld:
-  `field zz undefined in record r`. Unbekannte Felder in Zugriff, Aktualisierung
-  und Mustern werden akzeptiert (OTP warnt nur); sie schlagen zur Laufzeit fehl.
+  `field zz undefined in record r`. Unbekannte Felder in Zugriff,
+  Aktualisierung und Mustern werden akzeptiert (OTP warnt nur); sie schlagen zur
+  Laufzeit fehl.
 - Index `#r.a`, `record_info/2`, Initialisierer `_ = V` und typisierte
   Feldverfeinerungen gibt es nur für Tupel-Records, mit den Meldungen von OTP.
 - Ein Name ist entweder ein Tupel-Record, ein nativer Record oder ein
@@ -115,28 +114,23 @@ Die Meldungen folgen `erl_lint`:
   zur Laufzeit fehl. Externe Konstruktion wird zur Compile-Zeit gegen den Batch
   aufgelöst: Das importierende Modul führt das Lowering der literalen
   Standardwerte des definierenden Moduls selbst durch und referenziert dessen
-  exportierten
-  Deskriptor; unbekannte Felder lösen `badfield` aus, bevor ein fehlender Wert
-  `novalue` auslöst (`ErrorReason` 21).
+  exportierten Deskriptor; unbekannte Felder lösen `badfield` aus, bevor ein
+  fehlender Wert `novalue` auslöst (`ErrorReason` 21).
 
 ## Ausgabe und Ordnung
 
 - `erlang:display/1` gibt `#m:r{a=1,b=2}` aus: keine Leerzeichen, Felder in
-  Definitionsreihenfolge. OTP gibt Felder in der Reihenfolge der
-  Atomtabellen-Indizes aus, die von der Erzeugungsreihenfolge der Atome abhängt
-  und nicht reproduzierbar ist; dies ist ein festgehaltener Unterschied, wie bei
-  Map-Schlüsseln.
+  Definitionsreihenfolge (OTP: Reihenfolge der Atomtabellen-Indizes,
+  [Unterschiede](differences.md#maps)).
 - Term-Ordnung: Tupel < nativer Record < Map. Records werden nach Modul, Name,
   Export-Flag (false zuerst), Feldanzahl, Feldnamen in Definitionsreihenfolge
-  und dann Werten in Definitionsreihenfolge verglichen. `=:=` verlangt zusätzlich
-  dieselbe Feldreihenfolge; `==` vergleicht Werte numerisch (der Compiler von
-  OTP faltet manche `==` auf Records zu `=:=`; befolgt wird die Runtime-Regel).
+  und dann Werten in Definitionsreihenfolge verglichen. `=:=` verlangt
+  zusätzlich dieselbe Feldreihenfolge; `==` vergleicht Werte numerisch (der
+  Compiler von OTP faltet manche `==` auf Records zu `=:=`,
+  [Unterschiede](differences.md#maps); befolgt wird die Runtime-Regel).
 
 ## Beibehaltene Unterschiede
 
-| OTP | Clause |
-| --- | --- |
-| Feldreihenfolge von `display` folgt Atom-Indizes | Definitionsreihenfolge |
-| Externe Konstruktion eines nicht geladenen Moduls schlägt fehl, bis es geladen ist | Jedes Modul des Batches wird beim Start geladen; ein Modul außerhalb des Batches schlägt immer fehl |
-| Der Compiler kann `==` zwischen Records zu `=:=` falten (`#r{a=1} == #r{a=1.0}` ist false) | Runtime-`==` (true) |
-| Unbekannte Felder in Zugriff/Aktualisierung/Mustern, qualifizierte Konstruktion im eigenen Modul ohne Werte, ungenutzte oder in Headern definierte Records: Warnungen | Keine Warnungen |
+Feldreihenfolge der Ausgabe, Faltung von `==`, externe Konstruktion nicht
+geladener Module und fehlende Record-Warnungen sind unter
+[Unterschiede](differences.md#maps) festgehalten.

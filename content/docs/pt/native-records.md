@@ -1,60 +1,56 @@
 ---
 source: docs/native-records.md
-sourceCommit: 6ed3851c
-sourceSha256: 5383c5a0c72bed06730432be7a2605262122d7580d5a4e6124e01661d7e93086
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
+translatedAt: 2026-10-17
 ---
 # Native records
 
-Define o âmbito das formas de
-record do OTP 29 para além dos records comuns em tuplo e fixa a sua
-representação, operações e erros. O step 31B implementou as células do
-runtime e `CLAUSE_record_v1`; o 31C compila os native records locais, o 31D as
-formas qualificadas e importadas com `-export_record`/`-import_record`, o 31E
-as formas anónimas. Os records em tuplo estão em [termos](terms.md#records).
+As formas de record do OTP 29 para além dos records comuns em tuplo: a sua
+representação, operações e erros. Os records em tuplo estão em
+[termos](terms.md#records).
 
 O OTP 29 marca os native records como experimentais. Os factos abaixo vêm dos
-códigos-fonte fixados `maint-29` (`erl_lint`, `erl_expand_records`,
-`v3_core`, `beam_core_to_ssa`, `erts/emulator/beam/erl_record.c`, `utils.c`,
+códigos-fonte fixados `maint-29` (`erl_lint`, `erl_expand_records`, `v3_core`,
+`beam_core_to_ssa`, `erts/emulator/beam/erl_record.c`, `utils.c`,
 `erl_printf_term.c`) e de sondagens em direto no OTP 29.1.1.
 
 ## Âmbito
 
-As três formas para além dos records em tuplo foram selecionadas. Partilham
-uma única representação, pelo que não precisam de decisões de representação
-separadas:
+As três formas para além dos records em tuplo estão implementadas e partilham
+uma única representação:
 
-| Forma | Sintaxe | Step |
-| --- | --- | --- |
-| Native record, local | `-record #r{...}.`, `#r{...}`, `X#r.f`, `X#r{...}`, padrões, `is_record/1,2,3` | 31C |
-| Qualificado e importado | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, padrões; `-export_record`, `-import_record` | 31D |
-| Inferido (anónimo) | `X#_.f`, `X#_{...}`, padrão `#_{...}` | 31E |
+| Forma | Sintaxe |
+| --- | --- |
+| Native record, local | `-record #r{...}.`, `#r{...}`, `X#r.f`, `X#r{...}`, padrões, `is_record/1,2,3` |
+| Qualificado e importado | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, padrões; `-export_record`, `-import_record` |
+| Inferido (anónimo) | `X#_.f`, `X#_{...}`, padrão `#_{...}` |
 
-Não selecionados: o módulo de reflexão `records` (uma biblioteca, com o
-trabalho de bibliotecas do step 39), `term_to_binary` (`RECORD_EXT`) e a
-atualização de código a quente (D01). As chamadas a `records:*` continuam a
-dar diagnósticos `unknown module`.
+Não disponíveis: o módulo de reflexão `records` (as chamadas a `records:*` dão
+diagnósticos `unknown module`), `term_to_binary` de native records
+(`error:notsup`, [formato externo de termos](builtins.md#external-term-format))
+e a atualização de código a quente.
 
 ## Representação
 
 - **Descritor.** Cada definição de native record compila para um
   `abi::v1::RecordDescriptor` imutável ao lado do descritor do seu módulo: o
-  `ModuleDescriptor` que o define, slots de átomos para os nomes do módulo e
-  do record, a flag de exportação (`-export_record` em tempo de compilação) e
-  os slots de átomos dos nomes dos campos pela ordem da definição. Os
-  slots de átomos são resolvidos através dos átomos registados do módulo,
-  como os nomes de `FrameDescriptor`. Os programas são estáticos (sem
-  descarregamento), pelo que um descritor vive tanto como o programa; outro
-  módulo do lote refere-o por símbolo. Os valores por omissão são compilados
-  em cada local de construção, nunca armazenados.
+  `ModuleDescriptor` que o define, slots de átomos para os nomes do módulo e do
+  record, a flag de exportação (`-export_record` em tempo de compilação) e os
+  slots de átomos dos nomes dos campos pela ordem da definição. Os slots de
+  átomos são resolvidos através dos átomos registados do módulo, como os nomes
+  de `FrameDescriptor`. Os programas são estáticos (sem descarregamento), pelo
+  que um descritor vive tanto como o programa; outro módulo do lote refere-o
+  por símbolo. Os valores por omissão são compilados em cada local de
+  construção, nunca armazenados.
 - **Instância.** Célula de heap do tipo `native_record`: cabeçalho (contagem
   `1 + n`), uma palavra de descritor não rastreada e depois `n` valores
-  rastreados pela ordem da definição. Um record sem campos é uma célula de
-  duas palavras.
+  rastreados pela ordem da definição. Um record sem campos é uma célula de duas
+  palavras.
 - O descritor captura o módulo, o nome, a flag de exportação e a lista de
-  campos no momento da construção, como faz a definição capturada do OTP.
-  Todas as operações após a construção leem o descritor da instância, nunca o
-  código que as executa.
+  campos no momento da construção, como faz a definição capturada do OTP. Todas
+  as operações após a construção leem o descritor da instância, nunca o código
+  que as executa.
 - A cópia, a recolha, o percurso e a verificação tratam a célula como um tuplo
   cuja primeira palavra de conteúdo não é rastreada. A admissão exige um
   descritor registado por um módulo do mesmo runtime.
@@ -79,12 +75,12 @@ badrecord são o valor em causa, exceto na construção externa falhada.
 | Padrão anónimo `#_{...}` | Qualquer native record; exportado ou módulo `M` quando um campo é listado | sem correspondência |
 
 - A construção avalia os campos indicados pela ordem do código-fonte (os
-  valores por omissão são literais); uma atualização avalia primeiro o record
-  e depois os novos valores pela ordem do código-fonte, ao contrário de uma
+  valores por omissão são literais); uma atualização avalia primeiro o record e
+  depois os novos valores pela ordem do código-fonte, ao contrário de uma
   atualização de record em tuplo. As atualizações vazias também verificam.
 - Guards: apenas o acesso a campos (uma falha faz falhar a guard) e
-  `is_record`. A construção numa guard dá `creating a record in a guard is only supported
-  for tuple records`; a atualização dá `illegal guard expression`.
+  `is_record`. A construção numa guard dá `creating a record in a guard is only
+  supported for tuple records`; a atualização dá `illegal guard expression`.
 - `is_record(X)` só é verdadeiro para native records. `is_record(X, r)` com um
   `r` nativo local testa o módulo `M` e o nome `r`; com `r` importado de `m`
   testa o módulo `m`. `is_record(X, m, r)` com átomos testa o módulo e o nome;
@@ -108,8 +104,8 @@ As mensagens seguem o `erl_lint`:
   refinamentos de tipo de campos são exclusivos dos records em tuplo, com as
   mensagens do OTP.
 - Um nome é um record em tuplo, um native record ou um record importado; os
-  conflitos e as formas `-export_record`/`-import_record` inválidas são
-  erros. `-export_record` tem de preceder as definições de funções.
+  conflitos e as formas `-export_record`/`-import_record` inválidas são erros.
+  `-export_record` tem de preceder as definições de funções.
 - As formas externas que designam um módulo fora do lote, um record não
   definido ou não exportado compilam e falham em tempo de execução, como no
   OTP. A construção externa é resolvida em relação ao lote em tempo de
@@ -120,22 +116,18 @@ As mensagens seguem o `erl_lint`:
 
 ## Impressão e ordem
 
-- `erlang:display/1` imprime `#m:r{a=1,b=2}`: sem espaços, campos pela ordem
-  da definição. O OTP imprime os campos pela ordem do índice na tabela de
-  átomos, que depende da ordem de criação dos átomos e não é reproduzível;
-  esta é uma diferença registada, tal como para as chaves de maps.
+- `erlang:display/1` imprime `#m:r{a=1,b=2}`: sem espaços, campos pela ordem da
+  definição (OTP: ordem do índice na tabela de átomos,
+  [diferenças](differences.md#maps)).
 - Ordem dos termos: tuplo < native record < map. Os records comparam-se por
   módulo, nome, flag de exportação (falso primeiro), número de campos, nomes
   dos campos pela ordem da definição e depois valores pela ordem da definição.
   `=:=` exige além disso a mesma ordem de campos; `==` compara os valores
-  numericamente (o compilador do OTP reduz alguns `==` sobre records a `=:=`;
-  segue-se a regra do runtime).
+  numericamente (o compilador do OTP reduz alguns `==` sobre records a `=:=`,
+  [diferenças](differences.md#maps); segue-se a regra do runtime).
 
 ## Diferenças mantidas
 
-| OTP | Clause |
-| --- | --- |
-| A ordem dos campos em `display` segue os índices dos átomos | Ordem da definição |
-| A construção externa de um módulo não carregado falha até ele ser carregado | Todos os módulos do lote são carregados no arranque; um módulo fora do lote falha sempre |
-| O compilador pode reduzir `==` entre records a `=:=` (`#r{a=1} == #r{a=1.0}` é falso) | `==` do runtime (verdadeiro) |
-| Campos desconhecidos em acessos/atualizações/padrões, construção qualificada do próprio módulo sem valores, records não usados ou definidos em cabeçalhos: avisos | Sem avisos |
+A ordem dos campos na impressão, a redução de `==`, a construção externa de
+módulos não carregados e os avisos de records em falta estão registados em
+[diferenças](differences.md#maps).

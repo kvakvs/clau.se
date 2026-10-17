@@ -1,8 +1,8 @@
 ---
 source: docs/guards.md
-sourceCommit: 6ed3851c
-sourceSha256: d5589018751662ec240dc70ab6c6d0637d16fa10698c1c4fa7510a033dd888f1
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 06fccff40aa16d2969fa711e61435acef58adf23acf5478fdea02da2654c8fa8
+translatedAt: 2026-10-17
 ---
 # Guards
 
@@ -43,21 +43,17 @@ Guard-Signaturen aus den festgelegten Tabellen `guard_bif`, `new_type_test`,
 exakte Mengengleichheit mit Upstream.
 [Das Audit-Manifest](../tests/fixtures/patternmatch/generated/guard_catalog/manifest.json)
 ordnet jede Signatur Resolver, Lowering und Runtime-Zuständigem zu. Alle 81
-sind implementiert (die identitätsabhängigen `self/0`, `node/0,1` und das native
-`is_record/1` seit plan step 52): `self()` ist die Pid des aufrufenden
-Prozesses, `node()` und `node/1` einer Pid, Referenz oder eines Ports sind
-`nonode@nohost` (es gibt einen Knoten; jedes andere Argument von `node/1` lässt
-den Guard fehlschlagen, in einem Rumpf `badarg`), und `is_record/1` prüft auf
-einen nativen Record. `is_record/2` mit einem lokalen
-Namen eines nativen Records prüft Modul und Name; `is_record/3` mit einem Atom
-als drittem Argument prüft Modul und Name eines nativen Records; nativer
-Feldzugriff lässt den Guard bei jeder Abweichung fehlschlagen.
+sind implementiert: `self()` ist die Pid des aufrufenden Prozesses, `node()`
+und `node/1` einer Pid, Referenz oder eines Ports sind `nonode@nohost` (es gibt
+einen Knoten; jedes andere Argument von `node/1` lässt den Guard fehlschlagen,
+in einem Rumpf `badarg`). Native Records in Guards: `is_record/1,2,3` und
+Feldzugriff wie in [native Records](native-records.md#operations).
 
 - Typtests: `is_atom`, `is_integer`, `is_float`, `is_number`, `is_boolean`,
   `is_tuple`, `is_list`, `is_map`, `is_binary`, `is_bitstring`,
   `is_function/1,2` ([Funs](funs.md)), `is_pid`, `is_reference`
-  ([Pids und Referenzen](terms.md#pids-and-references)); `is_port` ist
-  immer false (es gibt keine Ports).
+  ([Pids und Referenzen](terms.md#pids-and-references)), `is_port`
+  ([Ports](ports.md#identity)).
 - `is_integer(V, Lo, Hi)` validiert zuerst beide Grenzen als Ganzzahlen (sonst
   `badarg`) und prüft dann den einschließlichen Bereich; vertauschte Grenzen
   ergeben false.

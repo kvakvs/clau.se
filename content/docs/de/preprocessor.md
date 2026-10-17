@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 6ed3851c
-sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 57dcb1da3315eb173341c8100e17e37df776b01f85f4c06585c1b7e5d3503daf
+translatedAt: 2026-10-17
 ---
 # Präprozessor
 
@@ -85,9 +85,10 @@ während die Wiederherstellung an der nächsten Formgrenze fortfährt.
 
 ## Tests
 
-Token-Goldens (`semantic/*.erl.tokens`) halten Token-Arten von epp,
-dekodierte Werte (Gleitkommazahlen als binary64-Bits) und die Reihenfolge der
-Diagnosen fest; der Wortlaut muss nicht mit OTP übereinstimmen. Lokale
-Fragmente `semantic/headers/*.hrl` ersetzen früher kopierte OTP-Header.
+Token-Goldens (`tests/fixtures/preprocessor/semantic/*.erl.tokens`) halten
+Token-Arten von epp, dekodierte Werte (Gleitkommazahlen als binary64-Bits) und
+die Reihenfolge der Diagnosen fest; der Wortlaut muss nicht mit OTP
+übereinstimmen. Eingebundene Header (`semantic/headers/*.hrl`) sind lokal
+verfasst, nicht aus OTP kopiert.
 `preprocessor_workflow` deckt echte Include-Bäume, Optionsreihenfolge, Umgebung,
 Latin-1 und Bedingungsfälle über die CLI ab.

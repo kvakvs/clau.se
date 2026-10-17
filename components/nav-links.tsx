@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
@@ -15,7 +14,7 @@ export function NavLinks({ label, links }: Props) {
         // The first link is the locale home and matches only exactly.
         const current = i === 0 ? pathname === href : pathname.startsWith(href);
         return (
-          <Link
+          <a
             key={href}
             href={href}
             aria-current={current ? "page" : undefined}
@@ -27,7 +26,7 @@ export function NavLinks({ label, links }: Props) {
             )}
           >
             {text}
-          </Link>
+          </a>
         );
       })}
     </nav>

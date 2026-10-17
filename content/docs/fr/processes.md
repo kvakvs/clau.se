@@ -1,15 +1,10 @@
 ---
 source: docs/processes.md
-sourceCommit: 6ed3851c
-sourceSha256: 44df8f9eb19f91eec3e5363c50556ce2b7dbcbee643890fa7ddf4afaefb055c9
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: c52f95bbde29faed486345896a09dfa1514cba322d235541606d955fe442ac48
+translatedAt: 2026-10-17
 ---
 # Processus
-
-Processus créés par spawn sur un exécuteur coopératif ; raisons de sortie et
-rapports d'erreur ; envoi de messages ; réception sélective ; délais d'attente
-de réception ; liens et signaux de sortie ; moniteurs ; noms enregistrés ;
-ports (aucun) ; workers de l'ordonnanceur ; réveils entre workers et arrêt.
 
 ## Exécuteur
 
@@ -25,13 +20,13 @@ principal, et exécute l'exécuteur jusqu'à ce qu'il se termine :
 - Chaque entrée de fonction dépense une réduction : appels, appels terminaux,
   appels de fun et dynamiques, et builtins. S'il n'en reste plus, l'entrée
   n'a pas lieu : le processus enregistre la fonction dans laquelle il entrait,
-  garde ses arguments dans ses registres (ils restent des racines de
-  collecte) et retourne à l'exécuteur, qui le reprend plus tard en répétant
-  l'entrée. Une boucle qui ne fait aucun appel (une comprehension sur une
-  liste sans appels dans son corps) s'exécute jusqu'au bout avant que le
-  processus puisse céder la main. Les builtins dont le travail croît avec un
-  argument liste ou binary s'exécutent par portions et cèdent la main entre
-  elles ([portions](builtins.md#portions)).
+  garde ses arguments dans ses registres (ils restent des racines de collecte)
+  et retourne à l'exécuteur, qui le reprend plus tard en répétant l'entrée
+  ([modèle d'exécution](execution-model.md#operations)). Chaque tête de boucle
+  de comprehension en dépense une aussi, si bien qu'une boucle sans appels cède
+  également la main. Les builtins dont le travail croît avec un argument liste
+  ou binary s'exécutent par portions et cèdent la main entre elles
+  ([portions](builtins.md#portions)).
 - Chaque processus possède son tas et sa pile. Les arguments d'un nouveau
   processus sont copiés dans son tas
   ([copie entre tas](runtime-heap.md#copying-between-heaps)).
@@ -39,8 +34,8 @@ principal, et exécute l'exécuteur jusqu'à ce qu'il se termine :
   exception. Le contexte, le tas et la pile d'un processus terminé sont
   libérés immédiatement ; son pid reste un terme valide et
   `is_process_alive/1` renvoie false pour lui.
-- Un processus en attente dans un `receive` n'est pas dans la file ; un envoi
-  qui lui est destiné le remet en fin de file ([réception](#receive)).
+- Un processus en attente dans un `receive` n'est dans aucune file ; un envoi
+  qui lui est destiné le remet en file ([réception](#receive)).
 - Lorsque le processus principal se termine, le programme se termine avec son
   résultat ([exécutables](executables.md)) : les processus encore en file ou
   en attente sont libérés sans poursuivre leur exécution, comme un escript
@@ -59,12 +54,11 @@ principal, et exécute l'exécuteur jusqu'à ce qu'il se termine :
 
 ## Workers
 
-L'exécuteur exécute les processus sur
-`RuntimeOptions::schedulers` threads workers : le thread qui a démarré le
-programme et un thread de plus par worker supplémentaire. Les programmes
-prennent ce nombre dans `--schedulers N` (1 à 1 024,
-[options du runtime](executables.md#runtime-options)) ; par défaut, un worker
-par processeur logique, comme `+S` d'OTP.
+L'exécuteur exécute les processus sur `RuntimeOptions::schedulers` threads
+workers : le thread qui a démarré le programme et un thread de plus par worker
+supplémentaire. Les programmes prennent ce nombre dans `--schedulers N` (1 à
+1 024, [options du runtime](executables.md#runtime-options)) ; par défaut, un
+worker par processeur logique, comme `+S` d'OTP.
 
 - Chaque worker a sa propre file d'exécution, comme chaque ordonnanceur
   d'ERTS : un processus reste avec le worker sur lequel il s'est exécuté en
@@ -87,29 +81,29 @@ par processeur logique, comme `+S` d'OTP.
   des minuteries et d'E/S, les tâches de ports et les workers entre deux
   tranches mettent un processus en file pour son propre worker, ou pour un
   worker inactif lorsque le sien est occupé.
-- Un mutex de l'exécuteur protège la file, les processus en attente, les
-  minuteries, les noms enregistrés, les liens et moniteurs de chaque processus,
-  et chaque processus qui n'est pas en cours d'exécution. Le tas, la pile, la
-  boîte aux lettres et le canal d'échec d'un processus en cours d'exécution
-  n'appartiennent qu'à son worker ; le code Erlang s'exécute sans le verrou.
+- Un mutex de l'exécuteur protège les files d'exécution, les processus en
+  attente, les minuteries, les noms enregistrés, les liens et moniteurs de
+  chaque processus, et chaque processus qui n'est pas en cours d'exécution. Le
+  tas, la pile, la boîte aux lettres et le canal d'échec d'un processus en
+  cours d'exécution n'appartiennent qu'à son worker ; le code Erlang s'exécute
+  sans le verrou.
 - Les liens, moniteurs et noms changent immédiatement sous le verrou, y
   compris pour un processus qui s'exécute ailleurs. Un message vers un
   processus qui s'exécute sur un autre worker ne peut pas encore aller dans son
   tas : il est copié dans un tampon qui lui est propre et délivré, après les
-  messages mis en tampon plus tôt, à la fin de la tranche du destinataire. Un
-  signal de sortie de `exit/2` ou `exit_signal/2` vers un tel processus ne fait
-  rien et son processus termine sa tranche (`builtins::Blocked`) ; il attend que la
-  tranche de la cible se termine, puis s'exécute en premier et répète le
-  builtin avec les mêmes arguments. La cible est retenue jusque-là, de sorte
-  que le builtin répété ne peut pas la retrouver en cours d'exécution. Un
-  processus qui se termine avec des liens ou des moniteurs dont les processus
-  s'exécutent ailleurs est finalisé de la même façon une fois leurs tranches
-  terminées.
+  messages mis en tampon plus tôt, à la fin de la tranche du destinataire
+  ([tampons de messages](runtime-heap.md#message-buffers)). Un signal de sortie
+  de `exit/2` ou `exit_signal/2` vers un tel processus ne fait rien et son
+  processus termine sa tranche (`builtins::Blocked`) ; il attend que la tranche
+  de la cible se termine, puis s'exécute en premier et répète le builtin avec
+  les mêmes arguments. La cible est retenue jusque-là, de sorte que le builtin
+  répété ne peut pas la retrouver en cours d'exécution. Un processus qui se
+  termine avec des liens ou des moniteurs dont les processus s'exécutent
+  ailleurs est finalisé de la même façon une fois leurs tranches terminées.
 - Ainsi, les signaux conservent leur ordre : un message mis en tampon avant un
   signal de sortie bloqué du même expéditeur atteint le destinataire en
-  premier, et `is_process_alive/1` après
-  `exit(Pid, kill)` vaut false, comme OTP le promet pour les signaux émis par
-  l'appelant.
+  premier, et `is_process_alive/1` après `exit(Pid, kill)` vaut false, comme
+  OTP le promet pour les signaux émis par l'appelant.
 - Un spawn lie ou surveille le nouveau processus (`spawn_link`,
   `spawn_monitor`) avant qu'un worker puisse l'exécuter. Un processus créé
   peut s'exécuter avant que son parent ne continue, donc un programme qui
@@ -120,20 +114,20 @@ par processeur logique, comme `+S` d'OTP.
   autres processus sont alors libérés.
 - Les services partagés du runtime sont synchronisés
   ([threads](runtime.md#threads)) : atomes, serveur de code, numéros de pid et
-  compte mémoire.
+  de port, et compte mémoire.
 - Les sorties de différents processus s'entrelacent dans l'ordre où leurs
   écritures ont lieu. Chaque appel `io:format` et `erlang:display` écrit son
   texte d'un seul coup.
 
-Les réveils et l'arrêt ne nécessitent aucun mécanisme
-supplémentaire, car tout changement de l'état d'ordonnancement d'un processus
-se fait sous le mutex de l'exécuteur :
+Les réveils et l'arrêt ne nécessitent aucun mécanisme supplémentaire, car tout
+changement de l'état d'ordonnancement d'un processus se fait sous le mutex de
+l'exécuteur :
 
 - Un message, `'EXIT'` ou `'DOWN'` destiné à un processus en attente le met
-  en file dans la même section critique qui le délivre, et réveille un worker
-  inactif. Un processus qui est encore dans la tranche où il a commencé à
-  attendre ne peut alors pas recevoir de message (ses expéditeurs attendent la
-  fin de la tranche), donc la livraison le trouve toujours parqué.
+  en file dans la même section critique qui le délivre, en réveillant un worker
+  comme ci-dessus. Un processus qui est encore dans la tranche où il a commencé
+  à attendre ne peut alors pas recevoir de message (ses expéditeurs attendent
+  la fin de la tranche), donc la livraison le trouve toujours parqué.
 - Un worker qui ne trouve aucun processus exécutable dort jusqu'à ce qu'un
   autre worker, un envoi ou le thread des minuteries en mette un en file, ou
   jusqu'à la fin du programme. Les workers ne lisent jamais l'horloge pour les
@@ -160,9 +154,8 @@ se fait sous le mutex de l'exécuteur :
 
 ### Délais de réception
 
-Le plan step 62B a remplacé la table ordonnée d'échéances du step 47, lue
-avant chaque tranche de temps, par une roue de minuteries hiérarchique hachée
-(hierarchical hashed timer wheel), comme ERTS gère ses minuteries
+Les minuteries vivent dans une roue de minuteries hiérarchique hachée
+(hierarchical hashed timer wheel), comme ERTS les gère
 (`scheduler/timer_wheel`) :
 
 - Les ticks sont des millisecondes depuis le démarrage de l'exécuteur. Six
@@ -183,11 +176,9 @@ avant chaque tranche de temps, par une roue de minuteries hiérarchique hachée
   le moment est venu sont consultées ; les processus en attente ne sont jamais
   parcourus. Les processus expirés sont mis en file dans l'ordre des ticks.
 - La roue est partagée par les workers sous le mutex de l'exécuteur. `after 0`
-  n'attend jamais et `infinity` n'arme jamais de minuterie, comme auparavant.
-- Mesuré sur le golden `wakeups` : 64 lectures d'horloge pour 2 046 tranches
-  de temps (68 pour 1 745 avec un seul worker), là où l'ancien exécuteur lisait
-  l'horloge avant chaque tranche ; `--profile` indique les deux comptes
-  ([profilage](profiling.md)). Les minuteries ne se déclenchent toujours
+  n'attend jamais et `infinity` n'arme jamais de minuterie.
+- `--profile` indique les tranches de temps et les lectures d'horloge du thread
+  des minuteries ([profilage](profiling.md)). Les minuteries ne se déclenchent
   qu'avec la précision des attentes temporisées de l'hôte (sous Windows, la
   résolution par défaut de la minuterie).
 - `runtime_timer_wheel` arme 20 000 minuteries sur tous les niveaux, en annule
@@ -228,16 +219,17 @@ celle du programme ([exécutables](executables.md)).
 
 ## Messages
 
-`Dest ! Msg` et `erlang:send(Dest, Msg)` évaluent d'abord
-`Dest` et renvoient `Msg`.
+`Dest ! Msg` et `erlang:send(Dest, Msg)` évaluent d'abord `Dest` et renvoient
+`Msg`.
 
 | `Dest` | Effet |
 | --- | --- |
-| Un pid d'un processus vivant | `Msg` est copié dans le tas du destinataire ([copie entre tas](runtime-heap.md#copying-between-heaps)), en conservant son partage, et ajouté à sa boîte de réception des signaux |
+| Un pid d'un processus vivant | `Msg` est copié à plat dans le tas du destinataire ([copie entre tas](runtime-heap.md#copying-between-heaps)), comme OTP copie les messages, un grand message dans un bloc que le destinataire reprend ([remise des messages](runtime-heap.md#message-buffers)), et ajouté à sa boîte de réception des signaux |
 | Un pid d'un processus terminé | Rien ; l'envoi réussit |
 | Un [nom enregistré](#registered-names) | Comme pour son pid ; `badarg` lorsqu'aucun processus vivant ne porte ce nom |
 | `{Name, nonode@nohost}` de deux atomes | Comme pour le pid enregistré sous `Name` ; rien s'il n'y en a pas |
 | `{Name, Node}` pour tout autre nœud | Rien (il n'y a pas d'autres nœuds) |
+| Une référence | Comme pour le propriétaire d'un [alias](#aliases) actif ; rien sinon |
 | Toute autre chose | `badarg` |
 
 - Les messages d'un même expéditeur arrivent dans l'ordre où il les a
@@ -256,8 +248,8 @@ celle du programme ([exécutables](executables.md)).
 
 ## Réception
 
-`receive` choisit parmi ses clauses comme `case`, sur les
-messages de la boîte aux lettres :
+`receive` choisit parmi ses clauses comme `case`, sur les messages de la boîte
+aux lettres :
 
 - Le parcours de la boîte aux lettres commence au message le plus ancien.
   Chaque message est confronté aux clauses dans l'ordre (motifs et guards,
@@ -296,8 +288,8 @@ messages de la boîte aux lettres :
   boucle entre dans l'attente avec le délai, qui répond `true` (parcourir à
   nouveau) ou `false` (délai expiré : `restart`, puis le corps `after`).
 - L'exécuteur garde une minuterie par processus en attente avec un délai
-  fini dans une roue de minuteries ([ci-dessous](#receive-timeouts)) : une
-  minuterie expirée remet le processus dans la file. Les délais sont mesurés
+  fini dans une roue de minuteries ([délais de réception](#receive-timeouts)) :
+  une minuterie expirée remet le processus en file. Les délais sont mesurés
   sur une horloge monotone en millisecondes et ne se déclenchent jamais en
   avance.
 - Lorsque chaque processus attend sans délai un message que rien ne peut
@@ -307,9 +299,8 @@ messages de la boîte aux lettres :
 
 ## Liens
 
-Un lien relie deux processus dans les deux sens (`Signals` dans
-chaque contexte : les pids liés dans l'ordre des liens et l'indicateur
-`trap_exit`).
+Un lien relie deux processus dans les deux sens (`Signals` dans chaque
+contexte : les pids liés dans l'ordre des liens et l'indicateur `trap_exit`).
 
 - `link(Pid)` lie l'appelant à un processus vivant et renvoie `true` ; se lier
   à soi-même ou se lier à nouveau ne fait rien. Pour un processus terminé, il
@@ -327,10 +318,9 @@ chaque contexte : les pids liés dans l'ordre des liens et l'indicateur
 
 ## Moniteurs
 
-Un moniteur est unidirectionnel : le processus qui surveille le
-détient (par référence, dans `Signals`) et le processus surveillé garde la
-référence et le pid de l'observateur, afin de pouvoir envoyer le message
-lorsqu'il se termine.
+Un moniteur est unidirectionnel : le processus qui surveille le détient (par
+référence, dans `Signals`) et le processus surveillé garde la référence et le
+pid de l'observateur, afin de pouvoir envoyer le message lorsqu'il se termine.
 
 - `monitor(process, Pid)` renvoie une nouvelle référence. Lorsque le processus
   se termine, l'appelant reçoit `{'DOWN', Ref, process, Pid, Reason}` avec sa
@@ -360,8 +350,8 @@ lorsqu'il se termine.
 
 ## Noms enregistrés
 
-L'exécuteur garde une table unique associant des noms (atomes)
-à des pids, et chaque processus son propre nom (`Signals::name`).
+L'exécuteur garde une table unique associant des noms (atomes) à des pids, et
+chaque processus son propre nom (`Signals::name`).
 
 - `register(Name, Pid)` nomme un processus vivant : `badarg` pour
   `undefined`, un nom déjà utilisé, un processus qui a déjà un nom, un
@@ -396,11 +386,11 @@ comparent par égalité exacte (`1` et `1.0` sont deux clés).
 
 ## Minuteries
 
-Source : `builtins/erlang/timers.cpp`, `scheduler/timers.cpp`. `start_timer/3,4`
-et `send_after/3,4` arment une minuterie dans la roue de l'exécuteur (celle
-qu'utilisent les [délais de réception](#receive-timeouts)) qui envoie `Msg`, ou
-`{timeout, TimerRef, Msg}`, à un pid ou à un nom enregistré lorsqu'elle se
-déclenche.
+`start_timer/3,4` et `send_after/3,4` (`builtins/erlang/timers.cpp`,
+`scheduler/timers.cpp`) arment une minuterie dans la roue de l'exécuteur
+(celle qu'utilisent les [délais de réception](#receive-timeouts)) qui envoie
+`Msg`, ou `{timeout, TimerRef, Msg}`, à un pid ou à un nom enregistré
+lorsqu'elle se déclenche.
 
 - Le message est copié au démarrage de la minuterie dans un `MessageBuffer`
   ([tampons de messages](runtime-heap.md#message-buffers)), un bloc de tas
@@ -423,11 +413,11 @@ déclenche.
 
 ## Introspection
 
-Source : `builtins/erlang/introspection.cpp`, `scheduler/introspection.cpp`.
-`process_info/1,2` lit un autre processus sous le verrou de l'exécuteur et
-copie ses termes (messages, dictionnaire) dans le tas de l'appelant ; un
-processus en cours d'exécution sur un autre worker est lu une fois sa tranche
-terminée. Un pid sans processus vivant donne `undefined`.
+`process_info/1,2` (`builtins/erlang/introspection.cpp`,
+`scheduler/introspection.cpp`) lit un autre processus sous le verrou de
+l'exécuteur et copie ses termes (messages, dictionnaire) dans le tas de
+l'appelant ; un processus en cours d'exécution sur un autre worker est lu une
+fois sa tranche terminée. Un pid sans processus vivant donne `undefined`.
 
 - Éléments : `registered_name` (`[]` seul s'il n'est pas enregistré),
   `status` (`running`, `runnable`, `waiting`), `message_queue_len`,
@@ -452,14 +442,15 @@ terminée. Un pid sans processus vivant donne `undefined`.
 
 ## Options de spawn
 
-Source : `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
+Sources : `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
 
 - `spawn_opt/2..5` acceptent `link`, `monitor`, `{monitor, MonitorOptions}` et
   les options de réglage `{priority, P}`, `{fullsweep_after, N}`,
   `{min_heap_size, N}`, `{min_bin_vheap_size, N}`, `{max_heap_size, S}`,
-  `{message_queue_data, M}`, `{async_dist, B}` ; les options de réglage sont
-  vérifiées et acceptées, non appliquées. Un nœud autre que `nonode@nohost`
-  donne `badarg`.
+  `{message_queue_data, M}`, `{async_dist, B}` ; `{min_heap_size, N}` définit
+  le [tas minimal](runtime-heap.md#sizing-and-budget) de l'enfant, les autres
+  options de réglage sont vérifiées et acceptées, non appliquées. Un nœud
+  autre que `nonode@nohost` donne `badarg`.
 - `spawn_request/1..5` crée le processus immédiatement et envoie
   `{Tag, ReqId, ok, Pid}` (`{Tag, ReqId, error, Reason}` en cas d'échec,
   `badopt` pour une option invalide) selon ce que demandent `{reply_tag, Tag}`
@@ -486,11 +477,11 @@ moniteurs de ports n'acceptent pas d'options.
 
 ## Nœuds
 
-Source : `builtins/erlang/node.cpp`. Un programme Clause est un seul nœud non
-distribué, `nonode@nohost`, et répond comme un tel nœud OTP : `nodes/0` vaut
-`[]`, `nodes(this | known)` `[nonode@nohost]`, les autres types `[]` ;
-`nodes/2` donne `{nonode@nohost, #{connection_id => undefined,
-node_type => this}}` pour les clés demandées. `is_alive/0` vaut `false`,
+Un programme Clause est un seul nœud non distribué, `nonode@nohost`, et répond
+comme un tel nœud OTP (`builtins/erlang/node.cpp`) : `nodes/0` vaut `[]`,
+`nodes(this | known)` `[nonode@nohost]`, les autres types `[]` ; `nodes/2`
+donne `{nonode@nohost, #{connection_id => undefined, node_type =>
+this}}` pour les clés demandées. `is_alive/0` vaut `false`,
 `monitor_node/2,3` lèvent `error:notalive` et `disconnect_node/1` renvoie
 `ignored`.
 
@@ -514,14 +505,17 @@ longue chaîne de liens se termine processus par processus, sans récursion.
 | Toute autre raison, y compris `kill` depuis un lien | Se termine avec cette raison | Message `{'EXIT', From, Reason}` |
 
 - `process_flag(trap_exit, Bool)` active ou désactive le piégeage et renvoie
-  le réglage précédent (initialement `false`).
+  le réglage précédent (initialement `false`) ;
+  `process_flag(min_heap_size, N)` définit le
+  [tas minimal](runtime-heap.md#sizing-and-budget) à partir de la collecte
+  suivante et renvoie le précédent.
 - Un processus terminé par un signal qu'il s'est envoyé lui-même
   (`exit(self(), kill)`) se déroule au-delà de tout `catch`, gestionnaire
   `try` et corps `after` : le signal n'est pas une exception
   (`CallError::exited` dans le canal d'échec).
 - `exit/2` et `exit_signal/2` renvoient `true` ; envers un processus terminé,
-  ils ne font rien. Une destination de type référence ne fait rien non plus
-  (il n'y a pas d'alias de processus).
+  ils ne font rien. Une destination de type référence ne fait rien non plus,
+  même un [alias](#aliases) actif.
 - Un signal de sortie qui termine le processus principal termine le programme
   comme un `exit` non capturé ([code de sortie](executables.md#exit-status)) :
   la raison `normal` sort avec 0.
@@ -531,12 +525,10 @@ longue chaîne de liens se termine processus par processus, sans récursion.
 
 ## Ports
 
-Les ports sont spécifiés dans [ports](ports.md) : un
-port est lié au processus qui l'a ouvert, participe aux liens, moniteurs,
-signaux de sortie et noms enregistrés comme un processus, et communique avec
-son processus connecté par des messages. Le step 57B fournit les identités,
-la table des ports, les builtins de ports et les ports `{fd, In, Out}` en
-sortie seule.
+Les ports sont spécifiés dans [ports](ports.md) : un port est lié au processus
+qui l'a ouvert, participe aux liens, moniteurs, signaux de sortie et noms
+enregistrés comme un processus, et communique avec son processus connecté par
+des messages.
 
 ## Builtins
 
@@ -552,8 +544,8 @@ sortie seule.
 | `register(Name, Pid)`, `unregister(Name)`, `whereis(Name)`, `registered()` | Voir [noms enregistrés](#registered-names) ; `Name` doit être un atome |
 | `demonitor(Ref)`, `demonitor(Ref, Options)` | `badarg` sauf si `Ref` est une référence et `Options` une liste propre de `flush` et `info` |
 | `exit(Dest, Reason)`, `exit_signal(Dest, Reason)` | `badarg` sauf si `Dest` est un pid ou une référence ; `true` après le [signal de sortie](#exit-signals) |
-| `process_flag(trap_exit, Bool)` | Le réglage précédent ; `badarg` pour un autre indicateur ou une valeur non booléenne |
+| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)` | Le réglage précédent ; `badarg` pour un autre indicateur, une valeur non booléenne ou une taille négative ou non entière |
 | `erlang:send(Dest, Msg)`, `Dest ! Msg` | `Msg`, après l'avoir envoyé ([messages](#messages)) ; `send/2` n'est pas auto-importé |
 
-Le nouveau processus est mis en file derrière tous les processus exécutables ;
-`spawn` renvoie immédiatement son pid.
+Le nouveau processus rejoint la fin de la file du worker de son parent
+([workers](#workers)) ; `spawn` renvoie immédiatement son pid.

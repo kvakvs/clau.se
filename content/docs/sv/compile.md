@@ -1,52 +1,44 @@
 ---
 source: docs/compile.md
-sourceCommit: 6ed3851c
-sourceSha256: 3702a6fe367aab0776ef6b6345f19e09f34fcd9bd96ff7e67047a19b92c95805
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 070de594787444f6afefbf3760848986bda8c85ff204932e596a67502385ae50
+translatedAt: 2026-10-17
 ---
 # Kompilering
 
 `clau` kompilerar Erlang/OTP 29-moduler via LLVM till verifierad IR, bitkod
 eller inbyggda objektfiler. `-o/--output` länkar positionella indata (eller ett
 valt projektmål), deras [ingångs](executables.md)-startobjekt och runtime till
-en körbar fil ([länkning](executables.md#linking)); projektbyggen länkar körbara
-mål till utdata i deras manifest ([projekt](projects.md#executables)). Genererade
-objekt kan också köras genom en C++-testrigg länkad med runtime (se exemplet
-nedan).
+en körbar fil ([länkning](executables.md#linking)); projektbyggen länkar
+körbara mål till utdata i deras manifest ([projekt](projects.md#executables)).
+Genererade objekt kan också köras genom en C++-testrigg länkad med runtime (se
+exemplet nedan).
 
 ## Godtagen delmängd av källkoden
 
-Namngivna moduler med exporter och ordnade funktionsklausuler. Huvuden och
-matchningar i kroppar godtar variabler, `_`, alias, upprepade namn och mönster
-över atomer, godtyckliga heltal, ändliga flyttal, tupler, listor/strängar, maps,
-bitstrings och vanliga tupel-records. Kroppar är sekvenser av matchningar,
-konstruktorer, kontrollerade operatorer/guard-BIF:ar, `erlang:display/1`
-([utskrift](terms.md#printing)), `halt/0,1`
-([slutstatus](executables.md#exit-status)), de felgivande
-`error/1,2,3`, `exit/1`, `throw/1` och `erlang:raise/3`
-([ABI](abi.md#failure-channel-revision-2)), övriga
-[inbyggda funktioner i bryggan](builtins.md) (`erlang:function_exported/3`) och funs av
-inbyggda funktioner, `case`/`if`, `catch Expr`,
+Namngivna moduler i det vanliga OTP 29-språket: ordnade funktionsklausuler med
+[mönster](patterns.md) och [guards](guards.md); matchningar, konstruktorer,
+operatorer och inbyggda funktioner ([inbyggda funktioner](builtins.md));
+`case`, `if`, `receive`, `catch`,
 `try ... of ... catch Class:Reason:Stack ... after` med
-[stackspårningar](abi.md#stack-traces), `maybe ... else ... end`, list-, binary- och map-comprehensions
-([mönster](patterns.md#comprehensions)) samt direkta lokala anrop eller
-literala fjärranrop inom batchen, inklusive själv-, ömsesidig och
-modulöverskridande rekursion på explicita processramar med äkta svansanrop
+[stackspårningar](abi.md#stack-traces), `maybe ... else ... end`; list-,
+binary- och map-comprehensions ([mönster](patterns.md#comprehensions));
+tupel-records och [native records](native-records.md); [funs](funs.md),
+lokala, fjärr- och dynamiska anrop (`M:F(...)`, `apply/2,3`);
+[processer](processes.md) och [portar](ports.md). Anrop körs på explicita
+processramar med äkta svansanrop
 ([exekveringsmodell](execution-model.md#implementation)); kroppsrekursion
 begränsas av processtacken (obegränsad som standard), inte av den inbyggda
-stacken. Guards stöder hela den tillåtna
-katalogen. Se [mönster](patterns.md), [guards](guards.md) och [termer](terms.md).
+stacken. Moduler som en batch namnger men inte deklarerar kommer från
+[biblioteket](library.md). Matchningskvalificerare i comprehensions från den
+experimentella funktionen `compr_assign` avvisas som
+`[heap expressions] notimpl`.
 
-Funktionsvärden `fun F/A`, `fun M:F/A`, anonyma och namngivna funs med
-infångade variabler, anrop av funs och dynamiska anrop (`M:F(...)`, `apply/2,3`)
-körs ([funs](funs.md)). Avvisas med diagnostik även i oanvända funktioner:
-`receive`, funs av inbyggda funktioner,
-processer och meddelandehantering.
 Godtagna attribut: `module`, `export`, `file`, tupel- och native-`record`,
-`export_record`, `import_record`, typ-/spec-former,
-`doc`/`moduledoc`, `behaviour`/`behavior` ([behaviours](semantic.md#behaviours)),
-varje informativt attribut (`vsn`, `author`, `copyright`, `deprecated`,
-`dialyzer`, användardefinierade `-name(Term)`; behålls för
+`export_record`, `import_record`, typ-/spec-former, `doc`/`moduledoc`,
+`behaviour`/`behavior` ([behaviours](semantic.md#behaviours)), varje
+informativt attribut (`vsn`, `author`, `copyright`, `deprecated`, `dialyzer`,
+användardefinierade `-name(Term)`; behålls för
 [`module_info(attributes)`](semantic.md#predefined-functions)),
 `-import(Module, [F/A, ...])` ([importer](semantic.md#imports)) och `-compile`
 med alternativ som inte ändrar något som Clause genererar:
@@ -59,11 +51,11 @@ värdens Erlang/OTP före analysen ([parse transforms](transforms.md)).
 `on_load`, `nifs`, `export_all`, andra `compile`-alternativ och
 parametriserade moduler avvisas; diagnostiken namnger dem, till exempel
 `[behavior-changing attributes] notimpl [module="m" operation="-compile option export_all"]`.
-Varje modul får `module_info/0,1`.
-Källfiler som börjar med `#!` följer [reglerna för escripts](executables.md#escripts)
-(implicit modul och export av `main/1`, `-mode` godtas).
-Typ-/spec-former analyseras men ändrar aldrig genererad kod. Rena syntaxlägen
-(`--parse-check`, `--print-ast`, `--print-source`, ...) godtar hela grammatiken.
+Varje modul får `module_info/0,1`. Källfiler som börjar med `#!` följer
+[reglerna för escripts](executables.md#escripts) (implicit modul och export av
+`main/1`, `-mode` godtas). Typ-/spec-former analyseras men ändrar aldrig
+genererad kod. Rena syntaxlägen (`--parse-check`, `--print-ast`,
+`--print-source`, ...) godtar hela grammatiken.
 
 ## Kör exemplet med kompilerade moduler
 
@@ -89,8 +81,8 @@ Det skriver ut `42`, `-7`, `record`, `map`, `binary`, `list`, `integer`,
 `other`, en per rad. Testriggen registrerar moduler explicit, skapar en kontext
 och avkodar resultat; den är ett exempel på en värd, inte en ingångspunkt för
 produktion. På Unix används `build/debug/bin/clau`, `clang++` och
-`-DGENERATED_DIR="$PWD/build/example-aot"` (inbyggda körningar där är ännu inte
-validerade).
+`-DGENERATED_DIR="$PWD/build/example-aot"`. CTest `codegen_examples` kör dessa
+kommandon för varje policy.
 
 Andra åtgärder på samma källfiler:
 
@@ -104,25 +96,28 @@ Andra åtgärder på samma källfiler:
 ## Utskrift av abstrakt format
 
 `--print-abstr` (en frontend-åtgärd) skriver ut varje tolkad modul som de
-former i OTP:s [abstrakta format](https://www.erlang.org/doc/apps/erts/absform.html)
-som `epp` skulle lämna till en parse transform, en `file:consult/1`-term per
-rad, samma termer som `erlc +to_abstr` skriver ([transforms](transforms.md)).
+former i OTP:s
+[abstrakta format](https://www.erlang.org/doc/apps/erts/absform.html) som
+`epp` skulle lämna till en parse transform, en `file:consult/1`-term per rad,
+samma termer som `erlc +to_abstr` skriver ([transforms](transforms.md)).
 
 ## Utskrift av källkod
 
 `--print-source` (en frontend-åtgärd, som `--print-ast`) skriver ut varje
 tolkad modul som Erlang-källkod; `--print-types` skriver ut samma text med
-typannoteringar. Utskrivaren (`print_source`, `expression_source`, `type_source`
-i `printing.hpp`; `compiler/src/printing/source_*`) är återanvändbar:
+typannoteringar. Utskrivaren (`print_source`, `expression_source`,
+`type_source` i `printing.hpp`; `compiler/src/printing/source_*`) är
+återanvändbar:
 
-- Former följer varandra i källkodsordning, med en tom rad kring varje funktion;
-  den `-file`-form som preprocessorn lägger före en modul utelämnas, de kring
-  inkluderade filer behålls.
+- Former följer varandra i källkodsordning, med en tom rad kring varje
+  funktion; den `-file`-form som preprocessorn lägger före en modul utelämnas,
+  de kring inkluderade filer behålls.
 - Texten är den tolkade syntaxen: makron är expanderade, inkluderingar
-  infogade, och kommentarer, ursprunglig stavning och layout är borta. Klausuler
-  och blockuttryck (`case`, `if`, `receive`, `try`, `maybe`, `begin`, funs med
-  mer än en rad) får indragna rader med fyra kolumner; allt annat står på en
-  rad. Parenteser kommer endast från källkodens egna grupperingar.
+  infogade, och kommentarer, ursprunglig stavning och layout är borta.
+  Klausuler och blockuttryck (`case`, `if`, `receive`, `try`, `maybe`,
+  `begin`, funs med mer än en rad) får indragna rader med fyra kolumner; allt
+  annat står på en rad. Parenteser kommer endast från källkodens egna
+  grupperingar.
 - Utskriven text tolkas tillbaka till samma syntaxträd, och att skriva ut den
   igen ger samma text (CTest `printing_source` över de tolkningsbara
   fixturerna).
@@ -144,7 +139,7 @@ i `printing.hpp`; `compiler/src/printing/source_*`) är återanvändbar:
 | `--no-cache` | Varken läs eller skriv [byggcacher](projects.md#build-caches) |
 | `--cache-inference-in-dirs PATTERN` | Kan upprepas: moduler i matchande kataloger behåller sina inferensresultat i byggcachen, utöver de implicita OTP-applikationskatalogerna ([inferenscache](projects.md#inference-cache)) |
 | `--build-dir DIR` | Där Clause håller temporära filer (under `DIR/tmp`); ersätter `build_dir` för varje valt projektmål; positionella indata har ingen utan alternativet ([byggkatalog](projects.md#build-directory)) |
-| `--entry MODULE[:FUNCTION]` | Den körbara filens ingångsfunktion/1; valideras i varje kompileringsläge och lägger till startartefakten `clausev1_start` ([körbara filer](executables.md#startup-object)); IR- och assemblerinspektioner utelämnar då det som den inte kan nå ([levande exporter](executables.md#export-liveness)) |
+| `--entry MODULE[:FUNCTION[/ARITY]]` | Den körbara filens ingångsfunktion/1 (annars funktion/0; `/0` eller `/1` väljer en); valideras i varje kompileringsläge och lägger till startartefakten `clausev1_start` ([körbara filer](executables.md#startup-object)); IR- och assemblerinspektioner utelämnar då det som den inte kan nå ([levande exporter](executables.md#export-liveness)) |
 | `--target-triple TRIPLE` | Målmaskin; `--target` väljer projektmål |
 | `-O0` / `-O2` / `-Os` | Generisk standardkod + LLVM O0 / begränsad specialisering + LLVM O2 / LLVM Os, ingen specialisering, en sektion per symbol och länkarens borttagning av orefererad kod och data |
 | `--no-type-specialization` | Stäng av varianter oavsett alternativens ordning |
@@ -159,11 +154,11 @@ i `printing.hpp`; `compiler/src/printing/source_*`) är återanvändbar:
 | `--print-env` | Skriv ut den lösta kompileringsmiljön som TOML på stdout och avsluta utan att bearbeta källfiler ([miljörapport](#environment-report)) |
 | `--print-inputs` | Förbehandla och tolka indata, lägg till modulerna som de namnger så som kompileringen gör, lista sedan varje källfil i batchen på stdout och stanna före kompileringen ([projekt](projects.md#cli-and-target-selection)) |
 
-- Utan `--emit` verifierar kompileringen objekten i minnet och skriver ingenting
-  utanför [byggkatalogen](projects.md#build-directory).
+- Utan `--emit` verifierar kompileringen objekten i minnet och skriver
+  ingenting utanför [byggkatalogen](projects.md#build-directory).
 - Positionella indata bildar en batch; varje projektmål är en egen batch.
-- Artefaktrötter: `build/aot` (positionella) eller `build/aot/<hex-target>` under
-  manifestkatalogen. Explicita rötter är relativa till anropet.
+- Artefaktrötter: `build/aot` (positionella) eller `build/aot/<hex-target>`
+  under manifestkatalogen. Explicita rötter är relativa till anropet.
 - Namn är reversibel hex: `answer` → `clausev1_616e73776572__0.obj` (`.o` för
   ELF/Mach-O, `.ll`, `.bc`); startobjektet är `clausev1_start.obj`.
 - Alla batcher kompileras och förbereds före publicering. Fel publicerar
@@ -303,15 +298,15 @@ läser eller skriver.
 
 ## Backend
 
-- En LLVM-kontext och målmaskin per batch. Värdtripeln använder värdens CPU och
-  funktioner; främmande tripler använder den generiska CPU:n. PIC, liten
+- En LLVM-kontext och målmaskin per batch. Värdtripeln använder värdens CPU
+  och funktioner; främmande tripler använder den generiska CPU:n. PIC, liten
   kodmodell.
 - Backends: X86, ARM, AArch64 (snittet med SDK:n). Okända eller saknade
   backends misslyckas; det finns ingen reserv till värden.
-- Verifiering körs före och efter optimering; den kontrollerar IR:ens giltighet,
-  inte Erlang-korrekthet.
-- Budgetar per mål: 1 024 moduler, 250 000 AST-noder per modul, 1 000 000 per
-  batch. Serialiserad utdata: 64 MiB per modul, 256 MiB per batch. Att
+- Verifiering körs före och efter optimering; den kontrollerar IR:ens
+  giltighet, inte Erlang-korrekthet.
+- Budgetar per mål: 16 384 moduler, 1 500 000 AST-noder per modul, 16 000 000
+  per batch. Serialiserad utdata: 64 MiB per modul, 256 MiB per batch. Att
   överskrida en budget är en vanlig resursdiagnostik.
 
 ## LLVM SDK
@@ -323,22 +318,21 @@ Runtime använder aldrig LLVM.
 
 - Sökningen genomsöker standardprefix (`/usr`, `/usr/local`, `/opt/homebrew`,
   `/opt/local`, `/opt/llvm`, Linuxbrew, `/Library/Developer/Toolchains`,
-  Program Files på Windows), inklusive versionerade layouter. Byggträd avvisas.
+  Program Files på Windows), inklusive versionerade layouter. Byggträd
+  avvisas.
 - `LLVM_DIR` väljer en SDK explicit; ogiltiga val misslyckas utan reserv.
 - Om ingen hittas laddar CMake ned det fastlåsta **23.1.2**-arkivet (SHA-256
-  kontrollerad) till `thirdparty/` för Windows x64/ARM64, Linux x64/ARM64 eller
-  macOS ARM64. `CLAUSE_DOWNLOAD_LLVM=OFF` stänger av nedladdningar.
+  kontrollerad) till `thirdparty/` för Windows x64/ARM64, Linux x64/ARM64
+  eller macOS ARM64. `CLAUSE_DOWNLOAD_LLVM=OFF` stänger av nedladdningar.
 - En länkprob vid konfigurering kontrollerar ABI-kompatibilitet.
 
-Referensuppsättning för Windows x64 (2026-09-29): värdens clang-cl 23.1.2 i
-`C:/Program Files/LLVM/bin`, SDK `thirdparty/clang+llvm-23.1.2-x86_64-pc-windows-msvc`,
-Visual Studio 18 x64-verktyg, Windows SDK 10.0.26100.0, Ninja, `/MT`,
+Referensuppsättning för Windows x64: värdens clang-cl 23.1.2 i
+`C:/Program Files/LLVM/bin`, SDK
+`thirdparty/clang+llvm-23.1.2-x86_64-pc-windows-msvc`, Visual Studio 18
+x64-verktyg, Windows SDK 10.0.26100.0, Ninja, `/MT`,
 `_ITERATOR_DEBUG_LEVEL=0`. Automatiskt val tillämpar `/MT`- och
 iteratorinställningarna; en explicit `LLVM_DIR` gör det inte, och länkproben
 misslyckas då.
-
-Historisk referens för macOS: Homebrew `llvm` 23.1.1_1 (arm64, delad
-`libLLVM.23.1.dylib`, assertions avstängda) med AppleClang 21.
 
 ## PCRE2
 
@@ -373,9 +367,8 @@ installerat bibliotek blir i stället en extra länkarindata som registreras i
 till i varje länkning; ett delat bibliotek gör att de körbara filerna beror på
 det vid körning. Per plattform: Windows använder nedladdningen (ingen
 system-PCRE2 söks i praktiken); Linux och macOS använder en installerad PCRE2
-10.47 eller nyare när den finns, annars nedladdningen. Länkas tills vidare
-alltid in i runtimen (beslutat 2026-10-14); att länka in den endast i program
-som anropar `re`, eller ett dynamiskt laddat bibliotek, är uppskjutet.
+10.47 eller nyare när den finns, annars nedladdningen. PCRE2 länkas alltid in
+i runtimen, även i program som aldrig anropar `re`.
 
 ## zlib
 
@@ -391,6 +384,6 @@ verifieras (SHA-256
 värd. zlibs licens är zlib-licensen. Kompilatorns LLVM behåller sin egen zlib;
 de två möts aldrig i en binär.
 
-Övriga förutsättningar: CMake ≥ 3.28, en C++23-kompilator, Boost ≥ 1.90, toml++
-3.4.0 och kvalitetsverktygen. OTP behövs endast för valfria granskningar och
-återskapande av fixturer.
+Övriga förutsättningar: CMake ≥ 3.28, en C++23-kompilator, Boost ≥ 1.90,
+toml++ 3.4.0 och kvalitetsverktygen. OTP behövs endast för valfria
+granskningar och återskapande av fixturer.

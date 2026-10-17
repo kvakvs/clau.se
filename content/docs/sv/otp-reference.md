@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 6ed3851c
-sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
+translatedAt: 2026-10-17
 ---
 # Referens till Erlang/OTP-källkoden
 
@@ -18,41 +18,41 @@ Clause följer den officiella grenen `maint-29`. Den granskade låsta revisionen
 `references/otp` är en ignorerad utcheckning. Vanliga byggen och tester
 använder referensresultat som ägs av projektet och behöver varken
 utcheckningen eller en installerad OTP. Konfiguration och tester hämtar eller
-flyttar aldrig fram referensen. Levande granskningar aktiveras uttryckligen
-med `-DCLAUSE_OTP_AUDITS=ON`; se
+flyttar aldrig fram referensen. Live-granskningar aktiveras uttryckligen med
+`-DCLAUSE_OTP_AUDITS=ON`; se
 [återskapande av fixturer](../tests/fixtures/patternmatch/generated/README.md).
 
-OTP-källkod, kopierade hjälpfiler och headers genererade av OTP kommer
-aldrig in i Git. Incheckade testindata är skrivna lokalt; incheckade
-referensresultat är observationer av dessa indata. Se
+OTP-källkod, kopierade hjälpfiler och headers genererade av OTP kommer aldrig in
+i Git. Incheckade testindata är skrivna lokalt; incheckade referensresultat är
+observationer av dessa indata. Se
 [validering](validation.md#fixtures-and-provenance).
 
 ## Uppdateringsprocedur
 
 Körs i början av arbete som beror på OTP.
 
-1. Kontrollera `git -C references/otp status --short` och bevara lokalt
-   arbete. Hämta:
+1. Kontrollera `git -C references/otp status --short` och bevara lokalt arbete.
+   Hämta:
    `git -C references/otp fetch https://github.com/erlang/otp.git refs/heads/maint-29:refs/remotes/origin/maint-29`.
    Granska `git -C references/otp log -1 origin/maint-29` och ändringar sedan
-   den låsta revisionen, särskilt grammatik, scanner, preprocessor och
+   den låsta revisionen, särskilt grammatik, skanner, preprocessor och
    korpusindata.
 2. Snabbspola den rena lokala grenen: `git merge --ff-only origin/maint-29`
    (första uppsättning: `git switch --create maint-29 --track origin/maint-29`).
    Använd LF i utcheckade bytes (`core.autocrlf=false`) så att kontrollsummor
    stämmer på varje värd; i en befintlig utcheckning på Windows normaliseras
-   endast textfiler som listas i manifestet och `erl_parse.yrl`, och
-   uppströms binära fixturer lämnas oförändrade.
+   endast textfiler som listas i manifestet och `erl_parse.yrl`, och binära
+   fixturer från uppströms lämnas oförändrade.
 3. Generera kompilatorns header från samma revision (från projektroten):
    `perl references/otp/erts/emulator/utils/beam_makeops -compiler -outdir references/otp/lib/compiler/src references/otp/lib/compiler/src/genop.tab`.
    På Windows normaliseras endast den genererade `beam_opcodes.hrl` till LF.
 4. Uppdatera den låsta revisionen och verifiera varje sökväg i
-   `tests/fixtures/parser/phase6/otp.tsv`. Uppdatera hashvärden först efter
-   att ha granskat verkliga uppströmsändringar. Om `erl_parse.yrl` ändras,
-   granska `tests/fixtures/parser/grammar.tsv`, dess fixturer och
-   `phase6/coverage.tsv`; varje vanlig produktion behöver ett uppmätt belägg.
-5. Konfigurera med `CLAUSE_OTP_AUDITS=ON` och `CLAUSE_OTP_SOURCE_ROOT` satt
-   till utcheckningen. Kör granskningstesterna och
+   `tests/fixtures/parser/phase6/otp.tsv`. Uppdatera hashvärden först efter att
+   ha granskat verkliga uppströmsändringar. Om `erl_parse.yrl` ändras, granska
+   `tests/fixtures/parser/grammar.tsv`, dess fixturer och `phase6/coverage.tsv`;
+   varje vanlig produktion behöver ett uppmätt belägg.
+5. Konfigurera med `CLAUSE_OTP_AUDITS=ON` och `CLAUSE_OTP_SOURCE_ROOT` satt till
+   utcheckningen. Kör granskningstesterna och
    `tests/compiler/patternmatch/regenerate.py --corpus all --check`. Notera
    revisionen och utfallen nedan; rapportera avvikelser i stället för att
    återskapa för att dölja dem.

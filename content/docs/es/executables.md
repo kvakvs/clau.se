@@ -1,65 +1,67 @@
 ---
 source: docs/executables.md
-sourceCommit: 6ed3851c
-sourceSha256: 84319a420ecb674ad4d7c524783b1696997988d90503989810d27f6feb553bc4
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
+translatedAt: 2026-10-17
 ---
 # Ejecutables
 
 Contrato de los programas construidos con `clau -o` o con una compilación de
 proyecto. Las entradas posicionales, o exactamente un objetivo de proyecto
-seleccionado, se enlazan en la ruta de `-o`; una compilación de proyecto
-enlaza cada objetivo ejecutable seleccionado en el `output` de su manifiesto
+seleccionado, se enlazan en la ruta de `-o`; una compilación de proyecto enlaza
+cada objetivo ejecutable seleccionado en el `output` de su manifiesto
 ([enlazado](#linking), [proyectos](projects.md#executables)).
 
 ## Selección de la entrada
 
 La entrada es una función exportada de aridad 1 que recibe la lista de
-argumentos. Un `FUNCTION` seleccionado sin `FUNCTION/1` puede ser en su lugar
-un `FUNCTION/0` exportado: se ejecuta sin los argumentos del programa (las
-opciones del runtime se siguen extrayendo). Por defecto (sin selección) es
-siempre `main/1`.
+argumentos. Un `FUNCTION` seleccionado sin `FUNCTION/1` puede ser en su lugar un
+`FUNCTION/0` exportado: se ejecuta sin los argumentos del programa (las opciones
+del runtime se siguen extrayendo). Un sufijo `/0` o `/1` selecciona solo esa
+aridad, así que `--entry benchmarks:run/0` ejecuta `run/0` aunque `run/1`
+también esté exportada. Por defecto (sin selección) es siempre `main/1`.
 
 | Origen | Escritura | Alcance |
 | --- | --- | --- |
-| CLI | `--entry MODULE[:FUNCTION]` | Lote posicional, o el único objetivo de proyecto seleccionado |
-| Manifiesto | `entry = "MODULE[:FUNCTION]"` en una tabla `[[targets]]` | Ese objetivo |
+| CLI | `--entry MODULE[:FUNCTION[/ARITY]]` | Lote posicional, o el único objetivo de proyecto seleccionado |
+| Manifiesto | `entry = "MODULE[:FUNCTION[/ARITY]]"` en una tabla `[[targets]]` | Ese objetivo |
 | Por defecto | El único escript; si no, el único módulo que exporta `main/1` | Solo cuando se pide un ejecutable (`-o`, o un objetivo de proyecto con `output`) |
 
-- `FUNCTION` es `main` por defecto. Los nombres son texto de átomo sin
-  comillas: de 1 a 255 escalares Unicode, UTF-8 válido, sin caracteres de
-  control y sin `:`. Cualquier otra escritura es un error de uso (CLI, salida
-  2) o un error de manifiesto (salida 1).
-- `entry` es una clave opcional del esquema 1; los manifiestos anteriores
-  siguen siendo válidos. Se decodifica el manifiesto completo, así que un
-  `entry` mal formado falla incluso en objetivos no seleccionados.
+- `FUNCTION` es `main` por defecto. Los nombres son texto de átomo sin comillas:
+  de 1 a 255 escalares Unicode, UTF-8 válido, sin caracteres de control y sin
+  `:`. Un `/DIGITS` final tras `FUNCTION` es la aridad y debe ser `0` o `1`; las
+  demás barras forman parte del nombre. Cualquier otra escritura es un error de
+  uso (CLI, salida 2) o un error de manifiesto (salida 1).
+- Se decodifica el manifiesto completo, así que un `entry` mal formado falla
+  incluso en objetivos no seleccionados ([manifiesto](projects.md)).
 - `--entry` en la CLI prevalece sobre la clave del manifiesto y requiere
   exactamente un objetivo seleccionado. Es incompatible con las acciones de
-  comprobación/impresión y con `--new-project`; esas acciones ignoran el
-  `entry` del manifiesto (igual que ignoran `output`).
-- Una entrada explícita se valida en todos los modos que compilan (por
-  defecto, `--emit`, inspección de IR/tipos), junto con los diagnósticos
-  semánticos ordinarios.
+  comprobación/impresión y con `--new-project`; esas acciones ignoran el `entry`
+  del manifiesto (igual que ignoran `output`).
+- Una entrada explícita se valida en todos los modos que compilan (por defecto,
+  `--emit`, inspección de IR/tipos), junto con los diagnósticos semánticos
+  ordinarios.
 
 | Fallo | Diagnóstico (salida 1) |
 | --- | --- |
 | Módulo ausente del lote | `<origin>: entry module M is not among the compiled modules` (origin: `--entry` o el manifiesto `file:line:col [target t] (entry)`) |
 | No hay `F/1` ni `F/0` | `<file>:<line>:<col>: entry function M:F/1 is not defined` en la declaración del módulo |
+| Falta el `F/A` explícito | `... entry function M:F/A is not defined; found F/N` en una definición con el mismo nombre; si no, en la declaración del módulo |
 | Solo otras aridades | `... is not defined; found F/N, but the entry takes the argument list (FUNCTION/1) or nothing (FUNCTION/0)` en esa definición |
 | `F/1` (si no, `F/0`) no exportada | `<file>:<line>:<col>: entry function M:F/A is not exported` en la definición |
-| Sin selección, ninguna exportación de `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main)` |
+| Sin selección, ninguna exportación de `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION[/ARITY]] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main, ARITY to 1, else 0)` |
 | Sin selección, varias | `ambiguous entry point: main/1 is exported by a, b; choose the entry with ...` (la misma indicación) |
 
 Para los objetivos de proyecto, la indicación también nombra la clave del
-manifiesto: `... --entry MODULE[:FUNCTION] or with
-entry = "MODULE[:FUNCTION]" in this target's [[targets]] table of the project manifest ...`,
-por ejemplo:
+manifiesto: `... --entry
+MODULE[:FUNCTION[/ARITY]] or with entry = "MODULE[:FUNCTION[/ARITY]]" in this
+target's [[targets]] table of the project manifest ...`, por ejemplo:
 
 ```toml
 [[targets]]
 name = "app"
 sources = ["src/*.erl"]
-entry = "app:start"   # calls app:start/1 (or app:start/0); plain "app" calls app:main/1
+entry = "app:start"   # calls app:start/1 (or app:start/0); "app:start/0" calls app:start/0; plain "app" calls app:main/1
 ```
 
 ## Argumentos
@@ -73,35 +75,35 @@ en orden, como `escript`.
   inicia una secuencia válida se convierte en el punto de código de ese byte
   (alternativa Latin-1).
 - Windows: el vector de argumentos ancho (UTF-16) de la CRT, dividido con las
-  mismas reglas que `argv`; un sustituto (surrogate) sin pareja se convierte
-  en U+FFFD.
-- El runtime no realiza ningún otro análisis de opciones, expansión de
-  comodines (globbing) ni expansión de variables de entorno.
+  mismas reglas que `argv`; un sustituto (surrogate) sin pareja se convierte en
+  U+FFFD.
+- El runtime no realiza ningún otro análisis de opciones, expansión de comodines
+  (globbing) ni expansión de variables de entorno.
 
 ## Opciones del runtime
 
-El runtime lee sus opciones de la variable de entorno `CLAUSE_FLAGS`
-(palabras separadas por espacios y tabuladores, sin comillas) y después de
-los argumentos iniciales de la línea de órdenes, así que la línea de órdenes
-prevalece. Ambas se analizan igual; un valor va en el argumento siguiente o
-después de `=`.
+El runtime lee sus opciones de la variable de entorno `CLAUSE_FLAGS` (palabras
+separadas por espacios y tabuladores, sin comillas) y después de los argumentos
+iniciales de la línea de órdenes, así que la línea de órdenes prevalece. Ambas
+se analizan igual; un valor va en el argumento siguiente o después de `=`.
 
 | Opción | Efecto |
 | --- | --- |
 | `--max-atoms N` | Tamaño de la tabla de átomos, de 1 a 2^26 (67.108.864); por defecto 2^20 (1.048.576), como `+t` de OTP |
 | `--max-heap BYTES` | Límite del bloque de heap, los fragmentos y los binaries off-heap de cada proceso, como mínimo el heap mínimo (233 palabras); sin límite por defecto |
 | `--max-stack BYTES` | Límite de la pila de marcos de cada proceso; sin límite por defecto |
+| `--min-heap-size WORDS` | `min_heap_size` por defecto de cada proceso, como mínimo 1, redondeado hacia arriba a un tamaño de heap, como `+hms` de OTP; como máximo `--max-heap`; por defecto 233 ([dimensionamiento](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Límite de la memoria de todos los procesos juntos (heaps, binaries off-heap, pilas); sin límite por defecto |
-| `--schedulers N` | Workers del planificador que ejecutan procesos, de 1 a 1.024; por defecto uno por procesador lógico, como `+S` de OTP ([workers](processes.md#workers)) |
+| `--schedulers N` | Hilos de trabajo del planificador que ejecutan procesos, de 1 a 1.024; por defecto uno por procesador lógico, como `+S` de OTP ([hilos de trabajo](processes.md#workers)) |
 | `--profile FILE` | Escribe en `FILE`, cuando termina el programa, un informe de entradas y tiempo propio por función y por proceso ([perfilado](profiling.md)); desactivado por defecto |
 | `--args-file FILE` | Archivo de opciones como `vm.args` de OTP: reservado, informa `runtime option --args-file is not implemented` |
 | `--` | Termina las opciones del runtime; los argumentos siguientes van todos a `Entry` |
 
-En la línea de órdenes, el análisis se detiene en el primer argumento que no
-es una opción del runtime, así que `prog data --max-atoms 9` pasa los tres
+En la línea de órdenes, el análisis se detiene en el primer argumento que no es
+una opción del runtime, así que `prog data --max-atoms 9` pasa los tres
 argumentos al programa. En `CLAUSE_FLAGS` cada palabra debe ser una opción del
-runtime. Un valor no válido, una palabra de la variable que no es una opción,
-o `--args-file` detienen el programa antes de registrar ningún módulo:
+runtime. Un valor no válido, una palabra de la variable que no es una opción, o
+`--args-file` detienen el programa antes de registrar ningún módulo:
 `clau: runtime failure: <reason>`, salida 70. El número de procesos no está
 limitado y la memoria no tiene límite por defecto. Los valores en bytes son
 decimales sin sufijos y se redondean hacia abajo a palabras completas; un
@@ -122,12 +124,12 @@ programa que alcanza un límite falla con `resource_limit`, salida 70
 | Fallo de arranque o de infraestructura del runtime (ABI incompatible, registro, memoria antes de la entrada) | Mensaje en stderr, 70 |
 | Memoria del sistema agotada (crecimiento de heap, de binary off-heap o de pila rechazado; sin límite de memoria por defecto, [agotamiento de memoria](runtime-heap.md#failure-behavior)) | `clau: runtime failure: entry call failed: out_of_memory`, 70 |
 
-Los argumentos no válidos de `halt/1` lanzan `badarg` en quien llama. Cuando
-la entrada termina, el programa sale: los demás procesos se detienen sin
-seguir ejecutándose, como con `halt/1` de OTP después de que `escript`
-retorne. Un halt en cualquier proceso termina el programa con su estado, y un
-fallo del runtime en cualquier proceso lo termina con 70; una excepción en un
-proceso lanzado con spawn solo termina ese proceso ([procesos](processes.md)).
+Los argumentos no válidos de `halt/1` lanzan `badarg` en quien llama. Cuando la
+entrada termina, el programa sale: los demás procesos se detienen sin seguir
+ejecutándose, como con `halt/1` de OTP después de que `escript` retorne. Un halt
+en cualquier proceso termina el programa con su estado, y un fallo del runtime
+en cualquier proceso lo termina con 70; una excepción en un proceso lanzado con
+spawn solo termina ese proceso ([procesos](processes.md)).
 
 `halt/0,1`, `error/1,2,3`, `exit/1` y `throw/1` se pueden llamar con o sin el
 prefijo `erlang:`; una definición local o `-compile({no_auto_import, ...})`
@@ -135,44 +137,43 @@ mantiene local el nombre sin cualificar, como en OTP. `halt/2` no está
 disponible. `halt(N)` conserva los 31 bits bajos de cualquier entero no
 negativo, como hace OTP. Un slogan es una lista propia de como máximo 1.023
 puntos de código Unicode. Un halt desenrolla la entrada a través del canal de
-errores comprobado como un error, así que solo detiene el programa después de
-la limpieza generada.
+errores comprobado como un error, así que solo detiene el programa después de la
+limpieza generada.
 
 ## Flujos de salida
 
 - stdout: la salida de `standard_io` (`io:format/1,2`, `io:put_chars/1`,
-  `erlang:display/1`). Con búfer; se vacía en todas las rutas de salida
-  excepto `abort`.
-- stderr: el informe de excepción no capturada, la salida de
-  `standard_error`, los fallos del runtime y los informes de error de otros
-  procesos que fallan ([procesos](processes.md#exits)).
-- El informe es una línea `uncaught exception <class>: <reason in ~w form>`,
-  seguida más adelante por los marcos de pila. Su texto exacto no es
-  una interfaz estable; las pruebas lo comparan mediante patrones.
+  `erlang:display/1`). Con búfer; se vacía en todas las rutas de salida excepto
+  `abort`.
+- stderr: el informe de excepción no capturada, la salida de `standard_error`,
+  los fallos del runtime y los informes de error de otros procesos que fallan
+  ([procesos](processes.md#exits)).
+- El informe es una línea `uncaught exception <class>: <reason in ~w form>`, sin
+  marcos de pila. Su texto exacto no es una interfaz estable; las pruebas lo
+  comparan mediante patrones.
 
 ## Objeto de arranque
 
-Compilar con una entrada explícita (`--entry` o `entry` del manifiesto) añade
-un módulo de arranque después de los módulos del lote. Con `--emit` se publica
-como `clausev1_start.{obj,o,ll,bc}` junto a los artefactos de los módulos (el
-nombre no puede colisionar con el artefacto de un módulo). Contiene un
+Compilar con una entrada explícita (`--entry` o `entry` del manifiesto) añade un
+módulo de arranque después de los módulos del lote. Con `--emit` se publica como
+`clausev1_start.{obj,o,ll,bc}` junto a los artefactos de los módulos (el nombre
+no puede colisionar con el artefacto de un módulo). Contiene un
 `abi::v1::StartupDescriptor` constante
 ([startup.hpp](../abi/include/clause/abi/startup.hpp)): revisión de la ABI,
 ancho de término, todos los descriptores de módulo en el orden del código
 fuente, las grafías del módulo y la función de entrada y un indicador de
-escript. Su `int main(int, char **)` llama al `CLAUSE_main_v1` del runtime,
-que:
+escript. Su `int main(int, char **)` llama al `CLAUSE_main_v1` del runtime, que:
 
 1. Comprueba la revisión de la ABI y el ancho del descriptor de arranque y de
-   cada descriptor de módulo antes de registrar nada; una discrepancia sale
-   con 70.
-2. Arranca el runtime y registra todos los módulos; cualquier fallo se
-   detiene antes de la entrada y descarta el runtime (salida 70), de modo que
-   ningún código Erlang se ejecuta sobre un lote parcial.
-3. Crea el proceso de entrada, construye argv y encola la llamada a `M:F/1`
-   como proceso principal; después lo ejecuta, junto con todos los procesos
-   que lanza, en el ejecutor cooperativo ([procesos](processes.md)) hasta que
-   termina.
+   cada descriptor de módulo antes de registrar nada; una discrepancia sale con
+   70.
+2. Arranca el runtime y registra todos los módulos; cualquier fallo se detiene
+   antes de la entrada y descarta el runtime (salida 70), de modo que ningún
+   código Erlang se ejecuta sobre un lote parcial.
+3. Crea el proceso de entrada, construye argv y encola la llamada a `M:F/1` como
+   proceso principal; después lo ejecuta, junto con todos los procesos que
+   lanza, en los hilos de trabajo del planificador ([procesos](processes.md))
+   hasta que termina.
 4. Convierte el resultado en el estado de salida descrito arriba, imprimiendo
    los informes después de vaciar stdout; después libera todos los procesos y
    apaga el runtime en todas las rutas (excepto `halt(abort)`).
@@ -193,8 +194,8 @@ Cualquier enlazado compatible con Clang de los objetos con
 ## Enlazado
 
 `clau [-O0|-O2|-Os] -o PATH a.erl b.erl ...` (o
-`--project FILE [--target T] -o PATH` para un objetivo seleccionado) compila
-el lote en memoria, añade el objeto de arranque para la
+`--project FILE [--target T] -o PATH` para un objetivo seleccionado) compila el
+lote en memoria, añade el objeto de arranque para la
 [entrada](#entry-selection) y enlaza un ejecutable:
 
 ```sh
@@ -202,8 +203,8 @@ clau -O2 -o build/demo examples/compile/answer.erl examples/compile/client.erl
 ./build/demo          # build/demo.exe on Windows
 ```
 
-`-Os` además coloca cada función y objeto de datos generados y del runtime en
-su propia sección y enlaza con `--gc-sections` (ELF), `-dead_strip` (Mach-O) o
+`-Os` además coloca cada función y objeto de datos generados y del runtime en su
+propia sección y enlaza con `--gc-sections` (ELF), `-dead_strip` (Mach-O) o
 `/OPT:REF /OPT:ICF` (MSVC), de modo que se elimina el código al que no llega
 ninguna ruta desde la entrada.
 
@@ -211,12 +212,12 @@ ninguna ruta desde la entrada.
 de a objetos y enlaza con `-flto -fuse-ld=lld`, de modo que LLD optimiza el
 código generado del programa como una sola unidad frente al archivo nativo del
 runtime. Los descriptores de módulo y de arranque, las entradas exportadas y
-`main` siguen referenciados y se conservan; los programas se comportan igual
-que sin la opción. Solo LLD lee el bitcode de este compilador, así que `--lto`
-se acepta para destinos Windows MSVC y ELF; los demás fallan antes del enlazado
-con `--lto is not supported for target <triple>: it needs LLD`. `--lto`
-necesita una salida ejecutable (`-o` o una compilación de proyecto que enlace).
-Clang/LLD instalados deben ser de la misma versión de LLVM que `clau` (23.1).
+`main` siguen referenciados y se conservan; los programas se comportan igual que
+sin la opción. Solo LLD lee el bitcode de este compilador, así que `--lto` se
+acepta para destinos Windows MSVC y ELF; los demás fallan antes del enlazado con
+`--lto is not supported for target <triple>: it needs LLD`. `--lto` necesita
+una salida ejecutable (`-o` o una compilación de proyecto que enlace). Clang/LLD
+instalados deben ser de la misma versión de LLVM que `clau` (23.1).
 
 ### Vivacidad de las exportaciones
 
@@ -233,12 +234,11 @@ argumentos no es literal), y `file:write/2` en cuanto `io:format/3`,
 `io:fwrite/3`, `io:put_chars/2` o `io:nl/1` está vivo (sus builtins escriben
 mediante ella en un dispositivo de proceso). Es conservador:
 
-- un módulo cuyo átomo de nombre se usa como valor en cualquier parte del
-  código vivo (pasado, guardado, enviado, `?MODULE`, una etiqueta de record,
+- un módulo cuyo átomo de nombre se usa como valor en cualquier parte del código
+  vivo (pasado, guardado, enviado, `?MODULE`, una etiqueta de record,
   `M:F(...)` con una función determinada en runtime, `fun M:F/A` con una parte
   determinada en runtime) conserva todas sus exportaciones, lo que también
-  conserva los callbacks de los módulos de comportamiento arrancados por
-  nombre;
+  conserva los callbacks de los módulos de comportamiento arrancados por nombre;
 - en cuanto el código vivo contiene a la vez una llamada con un módulo
   determinado en runtime (`M:F(...)`, `apply/3` o un spawn con un módulo
   variable, `fun M:F/A` con un módulo variable, `binary_to_term/1,2`) y un
@@ -252,34 +252,26 @@ omitida conserva su nombre en la tabla de exportaciones del módulo sin código,
 de modo que `function_exported/3` y `module_info(exports)` responden como si
 estuviera exportada, mientras que una llamada dinámica que la alcance lanza
 `undef` ([diferencias](differences.md#errors-stack-traces-and-reports)). Eso
-solo puede ocurrir cuando un nombre de módulo procede de fuera del análisis:
-una traza de pila, un término de excepción o datos externos al programa.
+solo puede ocurrir cuando un nombre de módulo procede de fuera del análisis: una
+traza de pila, un término de excepción o datos externos al programa.
 `--verbose` traza el resultado por módulo
 (`phase=liveness detail="dropped-exports=3"`, o
 `detail="kept-all-exports reason='m' is used as a value in main:main/1"`).
 
 Una función a la que nada vivo llega tampoco se infiere nunca ni se comprueba
 frente a su `-spec`: la inferencia cubre solo el código vivo, lo que es más
-rápido para programas que usan poco de módulos de biblioteca grandes
-(`bench_gc`: de 68 ms a 10 ms) y solo puede estrechar los hechos de las
-funciones vivas, ya que los llamantes inalcanzables ya no unen sus argumentos.
-Por tanto, una especificación contradicha solo en código inalcanzable se
-informa para los artefactos de `--emit`, pero no para el ejecutable.
+rápido para programas que usan poco de módulos de biblioteca grandes y solo
+puede estrechar los hechos de las funciones vivas, ya que los llamantes
+inalcanzables ya no unen sus argumentos. Por tanto, una especificación
+contradicha solo en código inalcanzable se informa para los artefactos de
+`--emit`, pero no para el ejecutable.
 
 `--keep-exports` (o la opción de proyecto `keep_exports = true`) mantiene
-invocables todas las exportaciones, como antes del step 62C. El análisis se
-aplica a los ejecutables (`-o` o una compilación de proyecto que enlace) y a
-las inspecciones de IR y ensamblador con una entrada (`--entry` o el `entry`
-del manifiesto del objetivo), que entonces muestran el código del ejecutable;
-los artefactos de `--emit`, destinados a otros programas, conservan todas las
-exportaciones.
-
-En su lugar se evaluaron y descartaron las referencias débiles a la tabla de
-exportaciones resueltas por el enlazador: los externos débiles de COFF
-necesitan una definición por defecto y no permiten que `/OPT:REF` elimine el
-destino, y las referencias débiles de Mach-O solo se vinculan a símbolos
-importados de dylib, así que ninguna forma funciona en los tres formatos de
-objeto.
+invocables todas las exportaciones. El análisis se aplica a los ejecutables
+(`-o` o una compilación de proyecto que enlace) y a las inspecciones de IR y
+ensamblador con una entrada (`--entry` o el `entry` del manifiesto del
+objetivo), que entonces muestran el código del ejecutable; los artefactos de
+`--emit`, destinados a otros programas, conservan todas las exportaciones.
 
 `-g` conserva las tablas de líneas de Erlang para los depuradores: en el
 ejecutable (ELF) o en un `<name>.pdb` publicado junto a él (destinos MSVC)
@@ -292,29 +284,28 @@ ejecutable (ELF) o en un `<name>.pdb` publicado junto a él (destinos MSVC)
   `clang++` o `clang` del `PATH` y después (Windows) `%ProgramFiles%/LLVM/bin`.
   Se ejecuta como
   `<clang> --driver-mode=g++ --target=<triple> -o <staged> <objects> <runtime>`,
-  así que Clang elige el enlazador de la plataforma y las bibliotecas de
-  runtime de C/C++ (en Windows localiza MSVC y el SDK por sí mismo; no hace
-  falta un shell de desarrollador).
+  así que Clang elige el enlazador de la plataforma y las bibliotecas de runtime
+  de C/C++ (en Windows localiza MSVC y el SDK por sí mismo; no hace falta un
+  shell de desarrollador).
 - Runtime: `--runtime-library PATH`; si no, el archivo `clause_runtime` de la
   compilación que produjo `clau` (ruta registrada de forma relativa al
   ejecutable, p. ej. `bin/../lib/clause_runtime.lib`). Cada objeto nativo del
-  archivo debe coincidir con la arquitectura y el formato de objeto del
-  destino; por tanto, `--target-triple` para otro destino necesita un runtime
-  compilado para él.
+  archivo debe coincidir con la arquitectura y el formato de objeto del destino;
+  por tanto, `--target-triple` para otro destino necesita un runtime compilado
+  para él.
 - Los objetos y el ejecutable se preparan en un directorio privado
-  `.clause-link-*` junto a la salida, que se elimina después; permanece allí,
-  y no en el [directorio de compilación](projects.md#build-directory), porque
-  el renombrado final no debe cruzar volúmenes. La salida solo
-  se sustituye tras un enlazado correcto, así que cualquier fallo deja sin
-  cambios un archivo existente. La salida no debe ser un directorio ni un
-  alias de una entrada.
+  `.clause-link-*` junto a la salida, que se elimina después; permanece allí, y
+  no en el [directorio de compilación](projects.md#build-directory), porque el
+  renombrado final no debe cruzar volúmenes. La salida solo se sustituye tras un
+  enlazado correcto, así que cualquier fallo deja sin cambios un archivo
+  existente. La salida no debe ser un directorio ni un alias de una entrada.
 - Los avisos del enlazador se reenvían a stderr; `--linker` y
   `--runtime-library` requieren `--output` o una compilación de proyecto que
   enlace.
-- Las compilaciones de proyecto sin `-o` enlazan cada objetivo seleccionado
-  que tenga `output` o `entry` en la salida de su manifiesto, creando los
-  directorios que falten, y sustituyen las salidas solo después de que se
-  hayan enlazado todos los objetivos seleccionados
+- Las compilaciones de proyecto sin `-o` enlazan cada objetivo seleccionado que
+  tenga `output` o `entry` en la salida de su manifiesto, creando los
+  directorios que falten, y sustituyen las salidas solo después de que se hayan
+  enlazado todos los objetivos seleccionados
   ([proyectos](projects.md#executables)).
 
 | Fallo (salida 1) | Diagnóstico |
@@ -328,26 +319,24 @@ ejecutable (ELF) o en un `<name>.pdb` publicado junto a él (destinos MSVC)
 
 ## Escripts
 
-Un archivo fuente cuya primera línea empieza por `#!` se compila como
-escript, en cualquier modo y con cualquier nombre de archivo (entradas
-posicionales o archivos `.erl` de proyecto). Las reglas siguen el `escript` de
-OTP 29 para scripts en código fuente:
+Un archivo fuente cuya primera línea empieza por `#!` se compila como escript,
+en cualquier modo y con cualquier nombre de archivo (entradas posicionales o
+archivos `.erl` de proyecto). Las reglas siguen el `escript` de OTP 29 para
+scripts en código fuente:
 
 - La línea `#!` se ignora. Un comentario opcional en la línea 2 y una línea
-  `%%!` del emulador (línea 2, o línea 3 tras el comentario) son
-  comentarios; los argumentos de `%%!` no pueden aplicarse a código compilado
-  y producen un aviso.
+  `%%!` del emulador (línea 2, o línea 3 tras el comentario) son comentarios;
+  los argumentos de `%%!` no pueden aplicarse a código compilado y producen un
+  aviso.
 - Si la primera forma no es `-module(...)`, el módulo es
   `<file name with '.' replaced by '_'>__escript` (incluido `?MODULE`). OTP
   añade un sufijo de marca de tiempo/único; Clause mantiene el nombre
-  determinista. La declaración sintetizada ocupa la línea 1, así que los
-  números de línea posteriores no cambian.
+  determinista. La declaración sintetizada ocupa la línea 1, así que los números
+  de línea posteriores no cambian.
 - `main/1` es obligatoria (`escript does not define main/1`) y se exporta
-  implícitamente; las demás funciones siguen las reglas normales de
-  exportación.
-- `-mode(compile | interpret | debug | native)` se acepta y se ignora; los
-  demás valores son errores. Fuera de los escripts, `-mode` sigue sin
-  soportarse.
+  implícitamente; las demás funciones siguen las reglas normales de exportación.
+- `-mode(compile | interpret | debug | native)` se acepta y se ignora; los demás
+  valores son errores. Fuera de los escripts, `-mode` sigue sin soportarse.
 - Entrada: sin `--entry`, el único escript del lote es la entrada (prevalece
   sobre los módulos que exportan `main/1`); varios escripts son ambiguos.
 - Estado de salida como en el `escript` de OTP: una excepción que escapa de la
@@ -362,9 +351,9 @@ OTP 29 para scripts en código fuente:
 
 Los goldens de los [fixtures de programas](../tests/fixtures/programs/README.md)
 ejecutan la entrada bajo OTP con las mismas reglas
-([oráculo](../tests/compiler/programs/oracle.escript)); el mismo oráculo
-genera los [casos golden de ejecutables](../tests/fixtures/executables/README.md)
-que el ejecutor de extremo a extremo enlaza y ejecuta con cada política.
-Diferencias con `escript` para los módulos ordinarios: las excepciones no
-capturadas salen con 1 en lugar de 127, y `main/1` debe estar exportada. Los
-fuentes de escript conservan las reglas de OTP (véase arriba).
+([oráculo](../tests/compiler/programs/oracle.escript)); el mismo oráculo genera
+los [casos golden de ejecutables](../tests/fixtures/executables/README.md) que
+el ejecutor de extremo a extremo enlaza y ejecuta con cada política. Diferencias
+con `escript` para los módulos ordinarios: las excepciones no capturadas salen
+con 1 en lugar de 127, y `main/1` debe estar exportada. Los fuentes de escript
+conservan las reglas de OTP (véase arriba).

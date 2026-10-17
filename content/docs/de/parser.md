@@ -1,8 +1,8 @@
 ---
 source: docs/parser.md
-sourceCommit: 6ed3851c
-sourceSha256: 620d520afbba7b5b1d96dcbf60cf55b23bfb6a23153437fd25ee82c424a2afc1
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 86719d7cbbba9250f7167908fc08ac6735ed50c9adf31c9d0655d626a595c815
+translatedAt: 2026-10-17
 ---
 # Parser
 
@@ -61,15 +61,15 @@ for (const auto &id : result.module.forms()) {
 - `NodeSource` ist ein Bereich expandierter Tokens plus Anker;
   `extent()`/`anchor()` verwenden, statt eine zusammenhängende physische
   Schreibweise anzunehmen.
-- Streaming: `ParserSession::consume(event)`, `parse_form(tokens, eof, features)`,
-  dann `std::move(session).finish(features)`. Immer
-  `ParseResult::failed` prüfen; wiederhergestellte Formen bedeuten keinen
-  Erfolg.
+- Streaming: `ParserSession::consume(event)`,
+  `parse_form(tokens, eof, features)`, dann
+  `std::move(session).finish(features)`. Immer `ParseResult::failed` prüfen;
+  wiederhergestellte Formen bedeuten keinen Erfolg.
 - `tests/compiler/parser/consumer.cpp` ist ein kompiliertes Beispiel für den
   Besitz.
 
 Grammatikabdeckung: Attribute und literale Terme, Tupel-/native Records,
-Type/Opaque/Nominal-Deklarationen, Specs/Callbacks, alle Ausdrücke, Muster,
+Type-/Opaque-/Nominal-Deklarationen, Specs/Callbacks, alle Ausdrücke, Muster,
 Guards, Klauseln, Binaries, fun/try/maybe/receive sowie Listen-, Map- und
 Binary-Comprehensions mit den strikten Generatoren und Zip-Gruppen von OTP 29.
 SSA-Testannotationen sind ausgeschlossen. Erfolg bei der Syntax sagt nichts über

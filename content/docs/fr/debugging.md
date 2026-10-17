@@ -1,14 +1,14 @@
 ---
 source: docs/debugging.md
-sourceCommit: 6ed3851c
-sourceSha256: 18d5fe2775a7c01edb18031b8f1ba632b356d04159c88b31692d1cc3d9ccf9da
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b93973504afffd4df57d0a39ac405818a080f79a56515e27f312fdcaec3e3e8b
+translatedAt: 2026-10-17
 ---
 # Déboguer les exécutables
 
-`-g` émet des tables de lignes du source Erlang (backlog F30). Elles
-fonctionnent à tous les niveaux d'optimisation et avec `--emit`, l'édition de
-liens positionnelle `-o` et les cibles de projet.
+`-g` émet des tables de lignes du source Erlang. Elles fonctionnent à tous les
+niveaux d'optimisation et avec `--emit`, l'édition de liens positionnelle `-o`
+et les cibles de projet.
 
 ## Tables de lignes
 
@@ -37,9 +37,8 @@ publié à côté de l'exécutable sous le nom `<name>.pdb`, après l'exécutabl
 dans la même publication différée. Les exécutables ELF gardent le DWARF en
 interne. Les exécutables Mach-O nécessiteraient `dsymutil` sur les objets
 préparés avant la suppression du répertoire de préparation ; ce n'est pas
-encore fait, donc les exécutables macOS perdent leurs tables de lignes à
-l'édition de liens (une lacune jusqu'au
-[step 66](../.agents/11-plan.md#step-66)).
+exécuté, donc les exécutables macOS perdent leurs tables de lignes à l'édition
+de liens.
 
 ## Pile d'appels Erlang
 

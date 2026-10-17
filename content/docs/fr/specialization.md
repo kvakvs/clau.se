@@ -1,8 +1,8 @@
 ---
 source: docs/specialization.md
-sourceCommit: 6ed3851c
-sourceSha256: 896b741de11f8f1f7f9098670798d1de273c0e4be02cb7ebfadca90e184b0e36
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 30fb2421aad552fe8985671c5251c1200101aa35c3ee76024120620bcf97ef7a
+translatedAt: 2026-10-17
 ---
 # Spécialisation par type
 
@@ -39,7 +39,7 @@ anonymes n'obtiennent aucune preuve.
 | élément de tuple | un test de forme ou un fait prouvant le tuple | chargement en ligne de l'élément |
 | motif de liste | fait : sûrement une cellule cons | test de forme supprimé (sinon un test d'étiquette primaire à chaque niveau) |
 | tête, queue | un test de cons ou un fait prouvant la cellule | chargements en ligne |
-| littéral exact `[]`, `{}`, petit entier, atome | toujours (à chaque niveau depuis OPT0.2A) | comparaison de mots : des immédiats égaux sont un seul mot |
+| littéral exact `[]`, `{}`, petit entier, atome | toujours (à chaque niveau) | comparaison de mots : des immédiats égaux sont un seul mot |
 | générateur de liste | fait de l'entrée du générateur : une liste propre | test de cons et lectures de cellules en ligne à chaque itération |
 
 Les faits atteignent les motifs des têtes de fonctions (arguments joints depuis
@@ -50,9 +50,9 @@ stockée dans un emplacement racine comme une sortie de service, de sorte que
 l'abaissement des cadres la garde comme terme à travers les points sûrs
 ([règle de rechargement](runtime-heap.md#reload-rule)). Les seules conversions
 de pointeurs dans le code généré sont ces lectures prouvées et les chargements
-d'en-tête des tests de forme de tuple en ligne (`proven.cell`).
-Les constantes de disposition proviennent de [`abi/term.hpp`](abi.md#terms) ; le
-runtime les vérifie par assertion contre ses dispositions privées de cellules.
+d'en-tête des tests de forme de tuple en ligne (`proven.cell`). Les constantes
+de disposition proviennent de [`abi/term.hpp`](abi.md#terms) ; le runtime les
+vérifie par assertion contre ses dispositions privées de cellules.
 
 ## Variantes
 
@@ -99,8 +99,4 @@ mode rapide exécute `-O0` (générique) et `-O2` avec spécialisation (preuves)
 `codegen_measurements` écrit `measurements/<config>/measurements.json` dans le
 répertoire de build des tests de codegen (temps de compilation, octets d'IR et
 d'objet, variantes, lectures prouvées, temps natif). Les temps sont descriptifs,
-jamais des seuils. Échantillon Windows x64 / LLVM 23.1.2 (2026-09-29, avant les
-preuves) : charge de travail source de 232 876 octets d'IR / 40 498 octets
-d'objet en O0 et 204 408 / 35 886 avec les deux politiques O2, aucune
-variante ; la fixture synthétique a ajouté 30 instructions à une fonction de
-55 instructions pour une variante acceptée.
+jamais des seuils.
