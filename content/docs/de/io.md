@@ -1,17 +1,19 @@
 ---
 source: docs/io.md
-sourceCommit: 6ed3851c
-sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
+translatedAt: 2026-10-17
 ---
 # Konsolenausgabe (`io`)
 
-`io:format/1,2` und `io:put_chars/1` schreiben
-auf die Standardausgabe. Sie sind Runtime-Builtins des Moduls `io` im
-Brückenkatalog ([Builtins](builtins.md)); die Runtime implementiert die Regeln
-von `io_lib_format` und `io_lib_pretty` aus OTP in C++
+`io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` und `io:nl/0,1` sind
+Runtime-Builtins des Moduls `io` im Brückenkatalog
+([Builtins](builtins.md)); die Runtime implementiert die Regeln von
+`io_lib_format` und `io_lib_pretty` aus OTP in C++
 ([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)).
+[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Die
+Eingabefunktionen von `io` sind Erlang in der
+[Bibliothek](library.md#contents).
 
 ## Aufrufe
 
@@ -27,28 +29,28 @@ von `io_lib_format` und `io_lib_pretty` aus OTP in C++
   dieser zurückgibt. Ein nicht registriertes Atom ist `badarg`, eine tote pid
   `error:terminated`, der Aufrufer selbst `error:calling_self`, jeder andere
   Term `function_clause`, wie in OTP.
-- `io:put_chars(Chardata)` schreibt Chardata: Unicode-Zeichen, UTF-8-binaries
-  und verschachtelte Listen, die auf `[]` oder ein binary enden. Alles andere
-  (ein Atom, ein Surrogat, ungültiges UTF-8, ein bitstring) löst `badarg` aus.
+- `io:put_chars(Chardata)` schreibt Chardata: Unicode-Zeichen, UTF-8-Binaries
+  und verschachtelte Listen, die auf `[]` oder ein Binary enden. Alles andere
+  (ein Atom, ein Surrogat, ungültiges UTF-8, ein Bitstring) löst `badarg` aus.
 - Text wird vollständig aufgebaut und dann als UTF-8 geschrieben, wie es das
   Standardausgabegerät von OTP im Modus `-noshell` tut (Kodierung `unicode`).
   Ein Fehler schreibt nichts. Ein abgewiesener Schreibvorgang ist der
   Runtime-Fehler `output_failure` (Exit 70).
 - Qualifizierte Aufrufe, `fun io:format/2`, `apply(io, format, Args)` und
-  `M:format(...)` erreichen alle die Builtins. Andere `io`-Funktionen behalten
-  die Diagnose `unknown module io`. Ein Batch-Modul namens `io` ersetzt die
-  Builtins nicht (das `io` von OTP ist sticky).
+  `M:format(...)` erreichen alle die Builtins. Ein Batch-Modul namens `io`
+  ersetzt die Builtins nicht (das `io` von OTP ist sticky,
+  [Registrierung](builtins.md#registration)).
 
 ## Formate
 
-- `Format` ist ein Atom (seine Zeichen), ein binary (seine Bytes als
+- `Format` ist ein Atom (seine Zeichen), ein Binary (seine Bytes als
   Latin-1-Zeichen) oder eine Liste. Ein Listenelement, das kein Zeichen ist,
   ist Chardata, wird unverändert ohne Steuersequenzen geschrieben und rückt die
   Spalte um eins vor (eine Eigenheit von OTP).
 - Steuersequenzen `~F.P.PadModC`: Feldbreite `F` (negativ oder `-`:
   linksbündig), Genauigkeit `P`, Füllzeichen, `*` entnimmt eine Ganzzahl (oder
   das Füllzeichen) den Argumenten, Modifikatoren `t` (Unicode), `l` (keine
-  String-Erkennung) und `k` (geordnete maps; Clause gibt maps immer in
+  String-Erkennung) und `k` (geordnete Maps; Clause gibt Maps immer in
   Schlüsselreihenfolge aus).
 - Unterstützte `C`: `~w`, `~p`, `~s`, `~c`, `~b`, `~B`, `~i`, `~n`, `~~`, mit
   den Feldregeln von OTP: `~s` kürzt oder füllt auf `P` innerhalb von `F`; `~w`
@@ -57,8 +59,8 @@ von `io_lib_format` und `io_lib_pretty` aus OTP in C++
   `F` schreibt `F` Zeilenumbrüche.
 - Ohne `t` nimmt `~s` nur Latin-1-Zeichen, und `~c` schreibt das niedrige Byte
   seiner Ganzzahl; `~w`/`~p` maskieren Atomzeichen jenseits von Latin-1 als
-  `\x{...}`. Mit `t` liest `~s` binaries als UTF-8 (mit Rückfall auf Latin-1),
-  und `~p` schreibt `<<"..."/utf8>>` für druckbare UTF-8-binaries.
+  `\x{...}`. Mit `t` liest `~s` Binaries als UTF-8 (mit Rückfall auf Latin-1),
+  und `~p` schreibt `<<"..."/utf8>>` für druckbare UTF-8-Binaries.
 - `badarg`: ein unbekanntes Steuerzeichen, fehlende oder überzählige
   Argumente, ein Argument falschen Typs, `F` kleiner als `P` für `~s`/`~c`, ein
   linksbündiges `~p` oder `~n`, eine Basis außerhalb von 2..36, Ausgabe, die
@@ -73,13 +75,13 @@ von `io_lib_format` und `io_lib_pretty` aus OTP in C++
   (Tabs auf Vielfache von 8).
 - Der Term wird zur Zwischenform von OTP: jeder Wert mit seiner einzeiligen
   Länge; Strings (flache Listen druckbarer Latin-1-Zeichen, das standardmäßige
-  `io:printable_range()`), druckbare binaries, Atome und Zahlen sind Text.
+  `io:printable_range()`), druckbare Binaries, Atome und Zahlen sind Text.
 - Was auf den Rest der Zeile passt, wird ganz geschrieben. Listen und Tupel
   brechen zwischen Elementen um, ausgerichtet nach der Klammer; getaggte Tupel
   (`{atom, ...}`) richten sich nach dem Tag aus oder rücken um 4 (oder 1) ein,
-  wenn das über die halbe Zeile hinausginge; map-Paare und Felder von native
-  records, die nicht passen, setzen den Wert in die nächste Zeile; lange
-  binaries brechen zwischen Bytes um.
+  wenn das über die halbe Zeile hinausginge; Map-Paare und Felder nativer
+  Records, die nicht passen, setzen den Wert in die nächste Zeile; lange
+  Binaries brechen zwischen Bytes um.
 - Container, die tiefer als 256 verschachtelt sind, lösen `system_limit` aus
   (das Layout rekursiert auf dem nativen Stack).
 - Die Formatierung läuft bis zum Ende, egal wie groß der Term ist

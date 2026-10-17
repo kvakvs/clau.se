@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: 6ed3851c
-sourceSha256: 8a996bd18e6d699944fde901a3d45fece06aa55859935b3fe26c1518edc03e7d
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b1c98a208a0a72f7ad5b20a2915eb2b39a4142cc65314491f83b019398b3b85a
+translatedAt: 2026-10-17
 ---
 # TOML-projekt
 
@@ -63,20 +63,20 @@ my_dependency = "vendor/my_dependency"
   ([inferenscache](#inference-cache)).
 - Fälten i `options` är valfria typade frontend-alternativ. `defines` använder
   `NAME` (= `true`) eller `NAME=ERLANG_LITERAL_TERM`; dubbletter är fel. En
-  funktion kan inte förekomma i båda funktionslistorna.
-- `entry` (valfritt) väljer den körbara filens ingång `MODULE[:FUNCTION]`; se
-  [körbara filer](executables.md#entry-selection). CLI-flaggan `--entry`
-  åsidosätter den för ett enda valt mål.
+  språkfunktion (feature) kan inte förekomma i båda listorna över
+  språkfunktioner.
+- `entry` (valfritt) väljer den körbara filens ingång
+  `MODULE[:FUNCTION[/ARITY]]`; se [körbara filer](executables.md#entry-selection).
+  CLI-flaggan `--entry` åsidosätter den för ett enda valt mål.
 - `build_dir` (valfritt) är målets [byggkatalog](#build-directory), som
   standard `<manifest-dir>/build`.
 - `output` är den körbara filens destination, som standard
-  `<manifest-dir>/build/<target>` (`.exe` på Windows). Ett mål med `output` eller
-  `entry` är ett körbart mål ([körbara filer](#executables)); `--emit` och
-  kontroll-/utskriftslägen ignorerar båda nycklarnas utdata.
-- Stöds ännu inte: standardvärden på rotnivå, arv, beroenden mellan mål,
-  importer, profiler, paket, bevakning, parallella byggen. Fält läggs till
-  endast tillsammans med sitt beteende. Byggcacher beskrivs under
-  [byggcacher](#build-caches).
+  `<manifest-dir>/build/<target>` (`.exe` på Windows). Ett mål med `output`
+  eller `entry` är ett körbart mål ([körbara filer](#executables)); `--emit`
+  och kontroll-/utskriftslägen ignorerar båda nycklarnas utdata.
+- Stöds inte: standardvärden på rotnivå, arv, beroenden mellan mål, importer,
+  profiler, paket, bevakning, parallella byggen. Fält läggs till endast
+  tillsammans med sitt beteende.
 
 ## CLI och val av mål
 
@@ -88,15 +88,15 @@ clau --new-project <filename>
 
 - Positionella källfiler och `--project` utesluter varandra. En `--project`,
   valfritt antal `--target`, i valfri ordning.
-- Ingen `--target`: alla mål i manifestets ordning. Väljare behåller sin ordning
-  och första förekomst. Okända namn misslyckas före allt frontend-arbete och
-  listar de tillgängliga namnen.
+- Ingen `--target`: alla mål i manifestets ordning. Väljare behåller sin
+  ordning och första förekomst. Okända namn misslyckas före allt
+  frontend-arbete och listar de tillgängliga namnen.
 - `--project test1` läser `test1.toml` när `test1` inte finns.
 - CLI:ns frontend-alternativ gäller varje valt mål. CLI-relativa sökvägar
-  behåller sin betydelse relativt anropskatalogen; manifestsökvägar är relativa
-  till manifestet.
-- Utan `--emit` eller en kontroll-/utskriftsåtgärd länkas körbara mål till sina
-  utdata ([körbara filer](#executables)); andra mål kompileras i minnet.
+  behåller sin betydelse relativt anropskatalogen; manifestsökvägar är
+  relativa till manifestet.
+- Utan `--emit` eller en kontroll-/utskriftsåtgärd länkas körbara mål till
+  sina utdata ([körbara filer](#executables)); andra mål kompileras i minnet.
 - `-o/--output` länkar målet till den sökvägen i stället för dess `output`
   ([länkning](executables.md#linking)); det kräver exakt ett valt mål.
 - `--verbose` spårar `[pp]`-filer/inkluderingar och `[parse]`-källor på stderr.
@@ -136,13 +136,13 @@ rad `<manifest> [target <name>]:` före den första; själva diagnostiken
 
 `clau --project FILE [--target T]...` (ingen `--emit`, ingen
 kontroll-/utskriftsåtgärd) länkar varje valt mål som har en `output`- eller
-`entry`-nyckel, eller som CLI-flaggorna `-o`/`--entry` avser, till en körbar fil
-per mål:
+`entry`-nyckel, eller som CLI-flaggorna `-o`/`--entry` avser, till en körbar
+fil per mål:
 
 - Destination: CLI-flaggan `-o` (relativ till anropet), annars `output`
-  (relativ till manifestet), annars `<manifest-dir>/build/<target>`. Windows-mål
-  lägger till `.exe` till ett namn utan filändelse. Saknade kataloger för
-  manifestutdata skapas; en explicit `-o`-katalog måste finnas.
+  (relativ till manifestet), annars `<manifest-dir>/build/<target>`.
+  Windows-mål lägger till `.exe` till ett namn utan filändelse. Saknade
+  kataloger för manifestutdata skapas; en explicit `-o`-katalog måste finnas.
 - Ingång: CLI-flaggan `--entry`, manifestets `entry`, annars detektering
   ([val av ingång](executables.md#entry-selection)).
 - Mål utan `output`, `entry`, `-o` och `--entry` är bibliotek: de kompileras i
@@ -166,13 +166,14 @@ per mål:
 `--new-project <filename>` skriver ett annoterat manifest och ingenting annat.
 
 - Lägger till `.toml` om namnet inte redan slutar på `.toml` (ASCII,
-  skiftlägesokänsligt): `demo` → `demo.toml`, `demo.config` → `demo.config.toml`.
-- Avvisar tomma eller katalogliknande namn, upprepning och varje kombination med
-  källfiler, `--project`, `--target`, `-o`, kontroll-/utskriftslägen eller
+  skiftlägesokänsligt): `demo` → `demo.toml`, `demo.config` →
+  `demo.config.toml`.
+- Avvisar tomma eller katalogliknande namn, upprepning och varje kombination
+  med källfiler, `--project`, `--target`, `-o`, kontroll-/utskriftslägen eller
   frontend-alternativ.
 - Den överordnade katalogen måste finnas. Skriver aldrig över (exklusivt
-  skapande); städar bort sin egen ofullständiga fil vid skrivfel. Skriver ut den
-  skapade sökvägen vid lyckat utfall.
+  skapande); städar bort sin egen ofullständiga fil vid skrivfel. Skriver ut
+  den skapade sökvägen vid lyckat utfall.
 - Innehållet är deterministiskt UTF-8/LF med kommentarer: ett mål `app`,
   `sources = []`, `source_dirs = ["src"]`, tomma alternativlistor och
   plattformens standardutdata. Det avkodas omedelbart; användaren lägger till
@@ -181,15 +182,14 @@ per mål:
 ## Byggkatalog
 
 Varje projektmål har en byggkatalog där Clause håller sina egna temporära filer
-(och, från plan 11 step 62D2, sina cacher): målets `build_dir`, relativ till
-manifestet, som standard `<manifest-dir>/build`. `--build-dir DIR` (relativ
-till anropet) ersätter den för varje valt mål. Positionella indata får ingen
-om inte `--build-dir` anges.
+och sina cacher: målets `build_dir`, relativ till manifestet, som standard
+`<manifest-dir>/build`. `--build-dir DIR` (relativ till anropet) ersätter den
+för varje valt mål. Positionella indata får ingen om inte `--build-dir` anges.
 
-- Temporära filer hamnar under `<build_dir>/tmp`: i dag arbetsytorna för
-  laddaren av parse transforms ([transformer](transforms.md#loader)). Varje
-  körning tar bort sina egna; en tom `tmp` kan bli kvar. Utan byggkatalog
-  hamnar de i systemets temporära katalog.
+- Temporära filer hamnar under `<build_dir>/tmp`: arbetsytorna för laddaren av
+  parse transforms ([transformer](transforms.md#loader)). Varje körning tar
+  bort sina egna; en tom `tmp` kan bli kvar. Utan byggkatalog hamnar de i
+  systemets temporära katalog.
 - Mellanlagring för länkning (`.clause-link-*`) ligger kvar bredvid den körbara
   utdatafilen, eftersom det slutliga namnbytet måste ske på utdatafilens volym
   ([länkning](executables.md#linking)).
@@ -202,11 +202,12 @@ om inte `--build-dir` anges.
 ### Byggcacher
 
 Resultat som är värda att behålla mellan körningar ligger under
-`<build_dir>/cache` (62D4 och 62D5); `--no-cache` varken läser eller skriver
-dem. De är svaren från laddaren av parse transforms och värd-OTP:ns lista över
-klistriga (sticky) moduler, så att ett varmt bygge inte startar någon `erl` på
-värden för moduler vars transformindata inte har ändrats, samt varje batchs
-[kompileringsutfall](compile.md#compile-cache).
+`<build_dir>/cache`; `--no-cache` varken läser eller skriver dem. De är svaren
+från laddaren av parse transforms och värd-OTP:ns lista över klistriga
+(sticky) moduler, så att ett varmt bygge inte startar någon `erl` på värden för
+moduler vars transformindata inte har ändrats, varje batchs
+[kompileringsutfall](compile.md#compile-cache), och
+[inferensresultaten](#inference-cache) för moduler i konfigurerade kataloger.
 
 - **Gränssnitt.** Anropare använder ett projektinternt lager (`compiler/src/cache/
   store.hpp`): `get`/`put` via indatakatalog, filnamn, resultatsort och nyckel,
@@ -217,16 +218,17 @@ värden för moduler vars transformindata inte har ändrats, samt varje batchs
   modulobjekt), så ingen anropare behöver en egen kodek. En `get` med en annan
   formatversion är en miss. Varje operation är säker från flera trådar
   samtidigt.
-- **Layout (SQLite-backend).** `cache/v2/cache.db` är en SQLite 3.54-databas:
-  tabellen `entries` (indatakatalog, fil, sort, nyckel, format, senaste
-  användning; unik på adressen) och tabellen `parts` (post, ordning, namn,
-  storlek, xxh3-64-kontrollsumma, och antingen byten eller namnet på en
-  blob-fil). Delar större än 256 KB ligger i
-  `cache/v2/blobs/<xxh3-128 of the bytes>`, så lika delar (de identiska
-  objekten i en batch som byggts med två alternativuppsättningar) lagras en
-  gång. En blob-fil skrivs som en temporär fil och byter namn innan raden som
-  namnger den bekräftas, så en rad namnger aldrig en ofullständig fil; en krasch
-  däremellan lämnar endast en föräldralös fil.
+- **Layout.** `cache/v2/cache.db` är en SQLite 3.54-databas: tabellen `entries`
+  (indatakatalog, fil, sort, nyckel, format, senaste användning; unik på
+  adressen) och tabellen `parts` (post, ordning, namn, storlek,
+  xxh3-64-kontrollsumma, och antingen byten eller namnet på en blob-fil). Delar
+  större än 256 KB ligger i `cache/v2/blobs/<xxh3-128 of the bytes>`, så lika
+  delar (de identiska objekten i en batch som byggts med två
+  alternativuppsättningar) lagras en gång; 256 KB är där uppmätta läsningar
+  slutar gynna databasen och skrivningar börjar gynna filer (`cache_store bench`
+  i `tests/compiler/cache`). En blob-fil skrivs som en temporär fil och byter
+  namn innan raden som namnger den bekräftas, så en rad namnger aldrig en
+  ofullständig fil; en krasch däremellan lämnar endast en föräldralös fil.
 - **Nycklar.** En nyckel är 128-bitars innehållshashen av allt som resultatet
   beror på, aldrig en tidsstämpel: versionen av `clau` och den körbara filen
   (sökväg, storlek, ändringstid, så att en ombyggd `clau` ger miss),
@@ -262,57 +264,20 @@ värden för moduler vars transformindata inte har ändrats, samt varje batchs
   på en skrivare) och `--verbose` säger det en gång; när inget journalläge
   fungerar fortsätter körningen utan cache.
 - **Rensning.** I slutet av en körning som skrev till ett lager tas poster som
-  inte använts på 30 dagar bort, sedan blob-filer som ingen post namnger (när de
-  är äldre än 10 minuter, så att en samtidig skrivares nya fil överlever), och
-  de frigjorda sidorna lämnas tillbaka till filsystemet (inkrementell vacuum).
-  Varje körning tar bort ett kvarlämnat `cache/v1`-träd från filbackenden i
-  step 62D2.
+  inte använts på 30 dagar bort, sedan blob-filer som ingen post namnger (när
+  de är äldre än 10 minuter, så att en samtidig skrivares nya fil överlever),
+  och de frigjorda sidorna lämnas tillbaka till filsystemet (inkrementell
+  vacuum). Varje körning tar bort ett kvarlämnat `cache/v1`-träd från den
+  tidigare filbackenden.
 - **Observerbarhet.** `--print-stage-times` markerar återanvända steg
   (`[time] transform src/a.erl: 7.254 ms (cached)`); `--verbose` skriver ut
   `[cache] hit|miss <kind> <file>` med orsaken till en miss (`no entry`,
   `inputs changed`, `damaged entry`). Diagnostik och transformutdata är
   desamma med och utan träff: de lagras med posten.
-- **Mätningar av backends** (2026-10-12, Release, Windows 11,
-  NTFS; `cache_store bench` i `tests/compiler/cache`). Filbackenden från 62D2
-  (ett index som skrivs om per put, paket som endast utökas) mot SQLite:
-
-  | Fall | Filbackend | SQLite |
-  | --- | --- | --- |
-  | 200 put × 8 KB, sedan öppning och 200 get | 788–902 ms, 9–16 ms | 37–41 ms, 8–9 ms |
-  | 2 000 put × 8 KB, sedan öppning och get | 11,1–12,5 s (1–3 poster förlorade), 118–128 ms | 249–258 ms, 32–33 ms |
-  | 3 put × 24 MB, sedan öppning och get | 106–127 ms, 144–157 ms | 85–90 ms, 73 ms (blob-filer) |
-
-  Lagrade inuti databasen tog värdena på 24 MB 379–392 ms att lägga in (loggen
-  skriver dem två gånger). Tjugo olika värden per storlek, inlagda och sedan
-  tillbakalästa: 64 KB i databasen 21 ms / 7 ms mot 30 ms / 12–17 ms som
-  blob-filer; 256 KB 41–43 ms / 9 ms mot 30–31 ms / 10–19 ms; 1 MB
-  105–110 ms / 18 ms mot 37 ms / 18–22 ms; 4 MB 458–466 ms / 82 ms mot 92 ms /
-  71 ms. Läsningar gynnar databasen upp till cirka 256 KB och skrivningar
-  gynnar filer därifrån, vilket sätter inline-gränsen till 256 KB. Byggen av
-  luerl (Release, tre körningar) ändrades inte: kalla 3,75–3,78 s före och
-  3,78–3,80 s efter, varma 1,65–1,68 s före och 1,69–1,70 s efter; de håller få
-  poster.
-- **Ingen cache för katalogsökning** (2026-10-11, Release `clau`, Windows,
-  operativsystemets filcache varm). luerl planeras på 78 ms av ett varmt bygge
-  på 2,77 s (2,8 %). Ett manifest över hela `references/otp/lib` (1 319
-  kataloger, 9 711 filer) planeras på cirka 150 ms:
-  `sources = ["…/lib/**/src/*.erl"]` 74 ms, `source_dirs = ["…/lib"]` 140 ms,
-  `source_search_paths` och `include_dirs` med `**` 35 ms vardera,
-  `ignore_dirs` 0,4 ms. Att lista varje katalog i trädet kostar cirka 28 ms,
-  medan att kontrollera varje katalogs ändringstid (vad en sökcache skulle göra
-  i stället) kostar cirka 13 ms; resten är valideringen per källfil (öppning och
-  identifiering av var och en av 2 000-3 600 källfiler), som en sådan cache
-  inte kan hoppa över. Den första körningen efter att trädet lämnat
-  operativsystemets cache tog 10-20 s, också dominerad av öppning av filer.
-  Sondering efter inkluderingar kostar ingenting mätbart sedan
-  [katalogindexet](#directory-index).
-- **Inferensresultat** för moduler i konfigurerade kataloger
-  ([inferenscache](#inference-cache)).
-- **Cachas inte:** förbehandling och parsning. Ett cachat resultat skulle
-  laddas via de abstrakta formerna (`transforms/import`), och för luerl (169
-  moduler, Release, 2026-10-11) tog enbart importen av dem 1 063 ms mot
-  819 ms för att förbehandla (409 ms) och parsa (410 ms) källfilerna; att
-  exportera formerna för en nyckel tog ytterligare 727 ms.
+- **Cachas inte:** förbehandling och parsning (att läsa in ett cachat resultat
+  via de abstrakta formerna, `transforms/import`, mättes som långsammare än att
+  parsa igen), och katalogsökningar: planeringen domineras av att öppna och
+  identifiera varje källfil, vilket en sökcache inte kan hoppa över.
 
 ### Inferenscache
 
@@ -322,13 +287,12 @@ Biblioteksmoduler (källfiler från OTP:s `stdlib`, `kernel`, `compiler` och
 behåller sina typinferensresultat i byggcachen, per modul, och senare
 kompileringar återanvänder dem i stället för att härleda dem igen.
 
-- Kataloger: de implicita OTP-applikationsmönstren `*/stdlib`,
-  `*/stdlib-*`, `*/kernel`, `*/kernel-*`, `*/compiler`, `*/compiler-*`,
-  `*/syntax_tools` och `*/syntax_tools-*`, sedan målets
-  `cache_inference_in_dirs`, sedan varje `--cache-inference-in-dirs PATTERN`
-  (kan upprepas; även för positionella indata). Mönster använder samma
-  [jokertecken](#paths-and-discovery) som `sources`; Windows-avgränsare
-  godtas.
+- Kataloger: de implicita OTP-applikationsmönstren `*/stdlib`, `*/stdlib-*`,
+  `*/kernel`, `*/kernel-*`, `*/compiler`, `*/compiler-*`, `*/syntax_tools` och
+  `*/syntax_tools-*`, sedan målets `cache_inference_in_dirs`, sedan varje
+  `--cache-inference-in-dirs PATTERN` (kan upprepas; även för positionella
+  indata). Mönster använder samma [jokertecken](#paths-and-discovery) som
+  `sources`; Windows-avgränsare godtas.
 - En modul täcks när en katalog som innehåller dess källfil matchar ett
   mönster. Ett relativt mönster matchar de avslutande katalogerna i vilken
   sökväg som helst, inte sökvägar under manifestets katalog: `*/stdlib` täcker
@@ -339,10 +303,9 @@ kompileringar återanvänder dem i stället för att härleda dem igen.
   Matchningen är lexikal och skiftlägeskänslig. De implicita mönstren täcker
   också ett projekts egen katalog med ett sådant namn (`apps/compiler`), vilket
   bara lagrar fler poster: återanvändning är korrekt för varje modul.
-- `--print-env` skriver ut den effektiva listan som
-  `cache_inference_in_dirs`, implicita mönster först. En konstruktion som inte
-  stöds (`[`, `{`, `!`) är ett manifestfel, eller ett användningsfel
-  (slutstatus 2) på kommandoraden.
+- `--print-env` skriver ut den effektiva listan som `cache_inference_in_dirs`,
+  implicita mönster först. En konstruktion som inte stöds (`[`, `{`, `!`) är
+  ett manifestfel, eller ett användningsfel (slutstatus 2) på kommandoraden.
 - Återanvändning kräver en byggkatalog (varje projektmål; positionella indata
   med `--build-dir`) och är avstängd med `--no-cache`. Den fungerar för varje
   åtgärd som analyserar (kompilering, körbara filer, `--print-types`,
@@ -362,29 +325,31 @@ kompileringar återanvänder dem i stället för att härleda dem igen.
   behållits av en kompilering med fler levande funktioner (till exempel
   `--print-types`) betjänar en körbar fil som behåller färre.
 - `--verbose` skriver ut `[cache] hit|miss inference <file>` per täckt modul
-  (orsaker till miss: `no entry`, `inputs changed`, `damaged entry`,
-  `results do not fit` för behållna resultat som saknar en funktion som är
-  levande nu); `--print-stage-times` skriver ut faserna `inference-cache` (med
-  `N of M covered modules reused`) och `inference-store`.
+  (orsaker till miss: `no entry`, `inputs changed`, `damaged entry`, `results do not
+  fit` för behållna resultat som saknar en funktion som är levande nu);
+  `--print-stage-times` skriver ut faserna `inference-cache` (med `N of M
+  covered modules reused`) och `inference-store`.
 
 ## Sökvägar och sökning
 
 - Projektsökvägen löses mot anropskatalogen; manifestets lexikala överordnade
   katalog är basen för alla manifestsökvägar (även via en symbolisk länk).
   Absoluta sökvägar förblir absoluta; `..` tillåts. Ingen expansion av skal,
-  miljö eller tilde. Använd `/` eller TOML-literalsträngar för Windows-sökvägar.
+  miljö eller tilde. Använd `/` eller TOML-literalsträngar för
+  Windows-sökvägar.
 - Literala relativa källfiler provas först mot basen, sedan mot
-  `source_search_paths` i ordning. En befintlig men oläsbar kandidat är ett fel.
-  Söksökvägar räknar inte upp moduler och påverkar inte inkluderingar.
+  `source_search_paths` i ordning. En befintlig men oläsbar kandidat är ett
+  fel. Söksökvägar räknar inte upp moduler och påverkar inte inkluderingar.
 - När målets källfiler namnger en modul som ingen av dem definierar (ett
   fjärranrop, `fun M:F/A`, `apply` med en literal modul, `-behaviour` eller
   `-import`), söks först Clauses [bibliotek](library.md#how-programs-get-them)
-  och sedan söksökvägarna i ordning efter `Module.erl` (plan step 41K: en
-  installerad OTP ersätter aldrig en Clause-modul, och en modul som Clause
-  registrerar som saknad tas aldrig från en söksökväg); en hittad fil ansluter
-  till målet som en listad källfil, och dess egna referenser löses på samma
-  sätt. En listad källfil med samma namn som en Clause-modul ersätter den, med
-  en varning.
+  och sedan söksökvägarna i ordning efter `Module.erl` (en installerad OTP
+  ersätter aldrig en Clause-modul, och en modul som Clause registrerar som
+  saknad tas aldrig från en söksökväg:
+  [upplösning](library.md#which-module-a-name-resolves-to)); en hittad fil
+  ansluter till målet som en listad källfil, och dess egna referenser löses på
+  samma sätt. En listad källfil med samma namn som en Clause-modul ersätter
+  den, med en varning.
 - Jokertecken: `*` och `?` inom en komponent, `**` som en hel komponent.
   Hakparenteser, klammerparenteser, negation och escape-tecken avvisas.
   Matchning är skiftlägeskänslig; `?` är en Unicode-skalär i ett giltigt
@@ -392,12 +357,13 @@ kompileringar återanvänder dem i stället för att härleda dem igen.
 - Dolda poster inkluderas; upptäckta symboliska länkar till kataloger hoppas
   över (explicita rötter får vara symboliska länkar); symboliska länkar till
   filer följs.
-- Ordning: `sources`-poster i ordning, där varje mönsters träffar sorteras efter
-  sökvägens UTF-8-byte, sedan varje expansion av `source_dirs` sorterad på samma
-  sätt. Saknade literaler, mönster utan träffar och tomma mål är fel.
-- Dubbletter inom ett mål tas bort efter filsystemsidentitet (symboliska länkar,
-  hårda länkar, skiftlägesalias), och den första stavningen behålls. Samma fil i
-  två mål kompileras två gånger eftersom alternativen kan skilja sig.
+- Ordning: `sources`-poster i ordning, där varje mönsters träffar sorteras
+  efter sökvägens UTF-8-byte, sedan varje expansion av `source_dirs` sorterad
+  på samma sätt. Saknade literaler, mönster utan träffar och tomma mål är fel.
+- Dubbletter inom ett mål tas bort efter filsystemsidentitet (symboliska
+  länkar, hårda länkar, skiftlägesalias), och den första stavningen behålls.
+  Samma fil i två mål kompileras två gånger eftersom alternativen kan skilja
+  sig.
 - Endast valda mål rör filsystemet.
 
 ### Katalogindex
@@ -427,10 +393,8 @@ som misslyckas sonderas som tidigare.
   körs (mellanlagring för länkning, utdata) är aldrig sökindata.
 - `--verbose` avslutas med `[index] listed=N walked=N lookups=N misses=N probes=N`
   (kataloger listade vid behov, listningar registrerade av genomgångar,
-  uppslagningar som indexet besvarade och missarna bland dem, uppslagningar som
-  lämnades till en sondering). För luerl (2026-10-11) besvarar det alla 15 215
-  uppslagningar (14 909 missar) från 66 listningar och 1 380 genomgångna
-  kataloger.
+  uppslagningar som indexet besvarade och missarna bland dem, uppslagningar
+  som lämnades till en sondering).
 
 ## Ignorerade källfiler
 
@@ -448,31 +412,31 @@ syntaxfel.
 - `ignore_modules`: modulnamn, eller namnmönster med `*` och `?` som matchas
   mot hela namnet (`*_SUITE`, `legacy_*`, `prim_???`). En källfil med namnet
   `<Module>.erl` (eller `.abstr`) ignoreras när en post matchar `<Module>`, och
-  en refererad modul som matchar söks aldrig efter.
-  Detta inkluderar Clauses [biblioteksmoduler](library.md#which-module-a-name-resolves-to).
+  en refererad modul som matchar söks aldrig efter. Detta inkluderar Clauses
+  [biblioteksmoduler](library.md#which-module-a-name-resolves-to).
 - En källfil som `sources` listar literalt (utan jokertecken) ignoreras aldrig:
   reglerna har ingen verkan på den, och bygget varnar `listed in sources but
-  matched by ignore_modules or ignore_dirs; ignoring it has no effect`
-  (user direction 2026-10-12). Jokerteckenträffar och
-  `source_dirs` ignoreras enligt beskrivningen.
+  matched by ignore_modules or ignore_dirs; ignoring it has no effect`.
+  Jokerteckenträffar och `source_dirs` ignoreras enligt beskrivningen.
 - Båda gäller för `sources`, `source_dirs`, literala källfiler som hittas via
   `source_search_paths`, [modulsökningen](#paths-and-discovery) i
   `source_search_paths` och biblioteket, och sökningen efter
   [källfiler för parse transforms](transforms.md#transform-modules). En sökning
   går förbi en ignorerad `Module.erl` och fortsätter leta i senare kataloger.
-- En modul ignoreras när `ignore_modules` namnger den, eller när ingen
-  källfil i batchen definierar den och dess enda hittade källfiler ignorerades
-  (av sökningen, eller överhoppade bland målets källfiler, efter filnamn). En
-  modul som definieras av en kompilerad källfil ignoreras aldrig.
+- En modul ignoreras när `ignore_modules` namnger den, eller när ingen källfil
+  i batchen definierar den och dess enda hittade källfiler ignorerades (av
+  sökningen, eller överhoppade bland målets källfiler, efter filnamn). En modul
+  som definieras av en kompilerad källfil ignoreras aldrig.
 - Referenser till en ignorerad modul (`M:F(...)`, `-import`, `fun M:F/A`,
   `apply(M, F, [...])` med literala namn) når en genererad platshållarmodul
   `M` som exporterar varje funktion som namnges på detta sätt; var och en
   returnerar `{module_ignored, M}` i stället för att köras. En funktion som
   batchen aldrig namnger literalt förblir `undef` för dynamiska anrop. En typ i
   en ignorerad modul som namnges i en spec eller typ (`helper:result()`) ger
-  varningen `attempt to import a type from a module ignored in project
-  settings: helper:result` och behandlas som `term()`. `-behaviour(M)` med en
-  ignorerad `M` ger varningen `behaviour M undefined`.
+  varningen `attempt to import a type from a
+  module ignored in project settings: helper:result` och behandlas som
+  `term()`. `-behaviour(M)` med en ignorerad `M` ger varningen
+  `behaviour M undefined`.
 - `--print-inputs` listar varje ignorerad refererad modul efter de tillagda
   källfilerna som `ignored module <name> (referenced at <file>:<line>)`;
   `--print-env` skriver ut båda nycklarna.
@@ -492,7 +456,7 @@ ignore_modules = ["telemetry", "*_SUITE"]
 | `source_search_paths` | Reservrötter för literala källfiler och de moduler som målet namnger men inte listar; mönster expanderas som för `include_dirs` (utan träff: `unmatched source search path pattern`) |
 | `defines` | Manifestet först, sedan CLI; dubbletter mellan dem är fel |
 | `applications` | Manifestets map; CLI-poster ersätter matchande namn |
-| Funktionslistor | Manifestets inställningar, sedan ordnade CLI-ändringar; CLI vinner |
+| Listor över språkfunktioner | Manifestets inställningar, sedan ordnade CLI-ändringar; CLI vinner |
 | `output` | Per mål, endast körbara mål; CLI-flaggan `-o` åsidosätter för ett enda valt mål |
 | `entry` | Per mål; CLI-flaggan `--entry` åsidosätter för ett enda valt mål |
 | `cache_inference_in_dirs` | Implicita OTP-mönster, sedan manifestets, sedan CLI-flaggan `--cache-inference-in-dirs` ([inferenscache](#inference-cache)) |
@@ -521,6 +485,6 @@ och stänger av nedladdningen.
 ## Gränser
 
 Manifestets storlek 1 MiB; högst 1 024 mål och 100 000 TOML-noder. Varje
-källexpansion tillåter 100 000 besökta poster, 128 katalognivåer och 16 000 000
-jokerteckenövergångar. Uttömning är ett explicit fel; detta är arbetsgränser,
-inte tidsfrister för I/O.
+källexpansion tillåter 100 000 besökta poster, 128 katalognivåer och
+16 000 000 jokerteckenövergångar. Uttömning är ett explicit fel; detta är
+arbetsgränser, inte tidsfrister för I/O.

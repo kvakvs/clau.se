@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 6ed3851c
-sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: c542e68489672ac575517c6517e5952bc91a1aa3d15f5b5da6474cffc0302f6e
+translatedAt: 2026-10-17
 ---
 # Comunicação de funcionalidades adiadas
 
@@ -26,8 +26,17 @@ pronta; o seu ID mantém-se reservado.
 | --- | --- |
 | Análise semântica do compilador | Verificações de capacidade sobre todas as funções, incluindo código não usado |
 | Rebaixamento do compilador | Rejeição defensiva nas operações alcançadas; limpa os artefactos preparados |
-| Driver | `-o/--output` [liga](executables.md#linking) as entradas posicionais ou um alvo de projeto; as compilações de projetos ligam cada alvo executável ao [`output`](projects.md#executables) do seu manifesto |
+| Driver | Nada adiado: `executable linking` está implementado ([ligação](executables.md#linking)) |
 | Serviços do runtime | Ver [serviços adiados do runtime](runtime.md#deferred-services) |
+
+Funcionalidades do compilador adiadas hoje, cada uma coberta por
+`codegen_placeholders`:
+
+| Funcionalidade | Exemplo que a comunica |
+| --- | --- |
+| `heap expressions` | Atribuições em comprehensions `compr_assign` (`[Y \|\| X <- L, Y = X]`) |
+| `dynamic calls` | Uma fun builtin de `apply` (`fun erlang:apply/2`) |
+| `behavior-changing attributes` | `-on_load`, `-nifs`, opções `-compile` não inertes, módulos parametrizados ([subconjunto aceite](compile.md#accepted-source-subset)) |
 
 ## Regras das mensagens
 
@@ -39,9 +48,8 @@ pronta; o seu ID mantém-se reservado.
   `--verbose`.
 - Uma funcionalidade adiada que o compilador pudesse saltar sem alterar o que
   aceita seria comunicada como aviso e a compilação continuaria; hoje nenhuma
-  o faz (`parse transforms` fazia-o até o step 73F do plano as aplicar, ver
-  [transforms](transforms.md)). `codegen_placeholders` verifica uma mensagem
-  por cada funcionalidade adiada do compilador.
+  o faz. `codegen_placeholders` verifica uma mensagem por cada funcionalidade
+  adiada do compilador.
 - Compilador: [reject_feature](../compiler/src/codegen/features.hpp) comunica
   a primeira falha de um lote, regista a falha, descarta a saída preparada e
   marca o diagnóstico como `reported`, para que os drivers não o voltem a

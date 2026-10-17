@@ -123,7 +123,7 @@ export const de = {
           "Typinferenz mit Funktionstypen pro Klausel; eine Spezifikation, die den inferierten Argumenttypen widerspricht, ist ein Kompilierfehler, andere Widersprüche sind Warnungen",
           "Die Inferenz erfasst nur Code, den die Einstiegsfunktion erreicht; Ergebnisse für OTP und konfigurierte Bibliotheksverzeichnisse werden pro Modul zwischengespeichert",
           "LLVM O0, O2 und Os; Objektdateien, IR und Bitcode pro Modul; IR-Snapshots und Assembler-Listings mit Erlang-Quellcode als Kommentar",
-          "Generierter Code alloziert, prüft Typen, liest Tupel, Listen und Maps, baut und matcht Binaries, erzeugt Closures und rechnet mit Gleitkommazahlen inline und ruft die Laufzeitumgebung nur auf langsamen Pfaden auf",
+          "Generierter Code alloziert, prüft Typen, liest Tupel, Listen und Maps, hängt kurze Listen an, baut und matcht Binaries, erzeugt Closures und rechnet mit Gleitkommazahlen inline und ruft die Laufzeitumgebung nur auf langsamen Pfaden auf",
           "O2 entfernt durch die Inferenz bewiesene Typ- und Formprüfungen, mit einer begrenzten Zahl typspezialisierter Varianten",
           "Modulübergreifende Link-Time-Optimierung mit --lto",
           "Programme lassen Exporte weg, die ihre Einstiegsfunktion nicht erreichen kann; --keep-exports behält alle",
@@ -139,7 +139,7 @@ export const de = {
           "LLVM-freie C++23-Laufzeitbibliothek, in jedes Programm gelinkt",
           "Ganzzahlen beliebiger Genauigkeit, Gleitkommazahlen, Atome, Tupel, Listen, Maps, Bitstrings, Records, Funs, Pids, Ports und Referenzen",
           "Prozesse, Nachrichten, selektives receive, Links, Monitore, registrierte Namen und Timer auf mehreren Scheduler-Threads, jeder mit eigener Run-Queue",
-          "Heap pro Prozess mit generationellem kopierendem Garbage Collector, min_heap_size, Binärdaten und großen Maps außerhalb des Heaps, Literalbereichen pro Modul und optionalen Speicherlimits",
+          "Heap pro Prozess mit generationellem kopierendem Garbage Collector, min_heap_size, gemeinsam genutzten Binärdaten außerhalb des Heaps, Literalbereichen pro Modul und optionalen Speicherlimits",
           "Ports für Dateien, Standard-I/O, Unterprozesse und TCP/UDP-Sockets auf einem ereignisgesteuerten I/O-Thread",
           "Das Modul erlang: Prozess-Dictionary, externes Termformat mit Kompression, Zeit und Timer, Prozess-Introspektion, spawn-Optionen, Aliase und Hashing",
           "Jeder Export von OTP 29 eines Clause-Bibliotheksmoduls lässt sich kompilieren; noch nicht implementierte Funktionen lösen beim Aufruf not_implemented aus",
@@ -185,7 +185,7 @@ export const de = {
     featured: {
       gettingStarted: {
         title: "Erste Schritte",
-        text: "Voraussetzungen: CMake, ein C++23-Compiler, Clang, das LLVM SDK, Boost und toml++.",
+        text: "Voraussetzungen: CMake, ein C++23-Compiler, Clang, das LLVM 23 SDK, Boost und toml++; die übrigen Bibliotheken lädt CMake herunter. Erlang/OTP ist optional.",
       },
       building: {
         title: "Den Compiler bauen",

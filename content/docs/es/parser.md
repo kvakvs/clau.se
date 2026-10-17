@@ -1,8 +1,8 @@
 ---
 source: docs/parser.md
-sourceCommit: 6ed3851c
-sourceSha256: 620d520afbba7b5b1d96dcbf60cf55b23bfb6a23153437fd25ee82c424a2afc1
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 86719d7cbbba9250f7167908fc08ac6735ed50c9adf31c9d0655d626a595c815
+translatedAt: 2026-10-17
 ---
 # Analizador sintáctico
 
@@ -36,7 +36,7 @@ etiquetas `[depth=N]`. El texto del AST es solo para inspección; no hay lector.
 
 ## API
 
-Cabecera `clause/compiler/parser.hpp`, objetivo de CMake `clause_frontend`:
+Cabecera `clause/compiler/parser.hpp`, destino de CMake `clause_frontend`:
 
 ```cpp
 clause::ParseResult load(const std::filesystem::path &path) {
@@ -51,8 +51,8 @@ for (const auto &id : result.module.forms()) {
 ```
 
 - `ast::Module` solo admite movimiento y posee las formas, las arenas planas de
-  nodos, los búferes de código fuente y las instantáneas de funcionalidades. Los
-  movimientos conservan los identificadores.
+  nodos, los búferes de código fuente y las instantáneas de funcionalidades.
+  Los movimientos conservan los identificadores.
 - Identificadores distintos `ExprId`, `PatternSyntaxId`, `TermId`, `TypeId`,
   `FormId`; las comprobaciones de propietario/generación rechazan los
   identificadores ajenos u obsoletos.
@@ -101,5 +101,5 @@ tiempo real. El agotamiento de recursos detiene la sesión.
   con asignaciones `-I`/`--app-dir`, `maybe_expr` activado, `compr_assign`
   desactivado y `-DCOMPILER_VSN='"parser-compatibility"'`.
 - `parser_stress` (cadena de 12.000 operadores), `parser_mutations_0`..`3`
-  (particiones de 900 mutaciones con semilla, semilla `0x29a016`, ejecutadas dos
-  veces) y `parser_hardening` acotan el comportamiento.
+  (particiones de 900 mutaciones con semilla, semilla `0x29a016`, ejecutadas
+  dos veces) y `parser_hardening` acotan el comportamiento.

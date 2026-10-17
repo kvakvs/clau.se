@@ -1,44 +1,44 @@
 ---
 source: docs/terms.md
-sourceCommit: 6ed3851c
-sourceSha256: 117cb0d9a710183b84c1f3474a4ae07fa185ffa3bdb502b383d297027e183aff
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: ceb9d797b2321fa19ef5f072328d39fd9fca241aa41e24f7a8fceea9ff69a78b
+translatedAt: 2026-10-17
 ---
 # Termrepresentationer
 
-Tillåtna sorter: atomer/booleska värden, godtyckliga heltal, ändliga binary64-flyttal,
-tupler, äkta/oäkta listor och strängar, maps, bitstrings och vanliga tupel-records;
-native records ([native records](native-records.md)); funs
-([funktionsvärden](funs.md)); lokala pids, portar och referenser
-([nedan](#pids-and-references), [portar](ports.md#identity)). Ordkodningar finns i
-[abi.md](abi.md#terms).
+Tillåtna sorter: atomer/booleska värden, godtyckliga heltal, ändliga
+binary64-flyttal, tupler, äkta/oäkta listor och strängar, maps, bitstrings och
+vanliga tupel-records; native records ([native records](native-records.md));
+funs ([funktionsvärden](funs.md)); lokala pids, portar och referenser
+([nedan](#pids-and-references), [portar](ports.md#identity)). Ordkodningar
+finns i [abi.md](abi.md#terms).
 
 ## Ägarskap
 
-- Sammansatta värden lever i processens heap ([runtime](runtime.md#process-memory)).
-  Processpekare pekar alltid på början av ett objekt. Admissionen kontrollerar
-  ägarskap: ordet pekar, ordjusterat, under toppen av processens heapblock eller
-  ett av dess fragment,
-  och huvudet (eller cons-cellen) där matchar dess tagg
-  ([admission](runtime-heap.md#admission)). Främmande och inaktuella ord avvisas
-  utan någon läsning. Sort och utsträckning avkodas från huvudet.
+- Sammansatta värden lever i sin processheap ([heapkontrakt](runtime-heap.md))
+  eller i en moduls skrivskyddade literalområde
+  ([områden](runtime-heap.md#areas)). Processpekare pekar alltid på början av
+  ett objekt. Admissionen kontrollerar det ägda intervallet och huvudets form
+  och avvisar främmande och inaktuella ord
+  ([admission](runtime-heap.md#admission)); sort och utsträckning avkodas från
+  huvudet.
 - En värd-`Term` för ett heapvärde är ett rått taggat ord, giltigt till heapens
   nästa skräpsamling ([rötter](runtime-heap.md#roots-and-safe-points)); den
   fäster inte heapens minne. Efter att kontexten rivits returnerar åtkomst
-  `expired_context`; efter en senare skräpsamling `stale_term`. Termer är alltid
-  säkra att förstöra.
-  Kontrollen av nedrivning läser kontextens livstidstoken utan att låsa den: en
-  kontext och dess termer används av en tråd åt gången.
+  `expired_context`; efter en senare skräpsamling `stale_term`. Termer är
+  alltid säkra att förstöra. Kontrollen av nedrivning läser kontextens
+  livstidstoken utan att låsa den: en kontext och dess termer används av en
+  tråd åt gången.
 - Konstruktion validerar barn, reserverar, initierar och publicerar sedan i ett
   steg; vid fel rullas minne och räknare tillbaka.
 - `Term::from_word(word)` tillåter endast ägaroberoende omedelbara värden;
   `Term::from_word(word, context)` tillåter även atomer och heaptermer från den
-  kontexten. Överlämning inom samma heap behåller identiteten. `copy_to`/`ProcessHeap::add`
-  kopierar en graf från en annan process i samma runtime med dess delning;
-  termfabriker vägrar främmande indata med `wrong_owner`
-  ([kopiering mellan heapar](runtime-heap.md#copying-between-heaps)).
-- Celler lever tills en explicit skräpsamling finner dem onåbara, eller tills
-  heapen rivs.
+  kontexten. Överlämning inom samma heap behåller identiteten.
+  `copy_to`/`ProcessHeap::add` kopierar en graf från en annan process i samma
+  runtime med dess delning; termfabriker vägrar främmande indata med
+  `wrong_owner` ([kopiering mellan heapar](runtime-heap.md#copying-between-heaps)).
+- Celler lever tills en skräpsamling finner dem onåbara, eller tills heapen
+  rivs ([skräpsamling](runtime-heap.md#collection)).
 
 ## Atomer
 
@@ -49,13 +49,13 @@ native records ([native records](native-records.md)); funs
 - Upp till 255 Unicode-skalärer; tom sträng, NUL och supplementära tecken
   tillåts; felaktig/överlång/surrogat-UTF-8 avvisas.
 - Nyttolaster kommer från en räknare för hela processen så att en främmande
-  runtimes atomord kan upptäckas. 32-bitarsprocesser har totalt 2^26 identiteter
-  under sin livstid.
+  runtimes atomord kan upptäckas. 32-bitarsprocesser har totalt 2^26
+  identiteter under sin livstid.
 - Att godta ett atomord läser ett låsfritt index efter atomnummer (de fasta
   atomerna direkt, sedan block om 4 096 poster som publiceras en gång under
   interneringslåset); nummer bortom 2^24 faller tillbaka på den låsta tabellen.
-- Värdens atom-Terms fäster stavningen och överlever att runtime rivs. Att flytta
-  en atom mellan runtimes innebär att `atom_utf8()` interneras i målet.
+- Värdens atom-Terms fäster stavningen och överlever att runtime rivs. Att
+  flytta en atom mellan runtimes innebär att `atom_utf8()` interneras i målet.
 - Booleska värden är atomerna `true`/`false`. De fasta atomerna `false`,
   `true`, `undefined`, `ok` och `error` (`abi::v1::fixed_atom_spellings`) har
   orden för atomnummer 0–4 i varje runtime, läggs in tillsammans med
@@ -80,39 +80,44 @@ native records ([native records](native-records.md)); funs
 
 - Värden som ryms i målets 28/60-bitars nyttolast är omedelbara värden; större
   är oföränderliga celler med tecken/belopp. Noll och små värden normaliseras
-  alltid till omedelbara värden. Ingen avsmalning av literaler till värdens bredd.
+  alltid till omedelbara värden. Ingen avsmalning av literaler till värdens
+  bredd.
 - Vid `-O2` hoppar operander som inferensen bevisar vara små över sina
   taggtester, och ett bevisat resultatintervall hoppar även över
   overflow-kontrollen och reservvägen ([bevis](specialization.md#proofs)).
-- Genererade `+`, `-`, `*` provar en inline snabbväg för två omedelbara värden
-  (beräkning med dubbel bredd och explicita gränser), annars anropas
-  runtime-tjänsten; detsamma gör `band`, `bor`, `bxor`, `bsr`, `div`, `rem` och
-  jämförelser av två små heltal ([inline-former](abi.md#runtime-services)).
+- Genererade `+`, `-`, `*` provar en inline snabbväg för två omedelbara värden,
+  annars anropas runtime-tjänsten: `+` och `-` adderar eller subtraherar de
+  taggade orden direkt (`a + (b ^ 15)`) och faller tillbaka när ordet
+  svämmar över, vilket sker exakt när resultatet lämnar det lilla intervallet;
+  `*` beräknar med dubbel bredd och explicita gränser. Detsamma gör `band`,
+  `bor`, `bxor`, `bsr`, `div`, `rem` och jämförelser av två små heltal
+  ([inline-former](abi.md#runtime-services)).
 - `div` trunkerar mot noll; `rem` får dividendens tecken; bitvisa operationer
   använder oändligt tvåkomplement; negativa skiftantal vänder riktning; enorma
   högerskift mättas till 0 eller -1.
 - Fel: felaktiga operander och nolldivisor → `badarith`; `abs/1` → `badarg`.
 - Gränser: som i ERTS, ett belopp på högst `BIG_ARITY_MAX` ord: 4 194 240 bitar
   på 64-bitarsmål (65 535 ord), 4 194 272 på 32-bitars (131 071 ord); decimal
-  text följer (1 262 593 och 1 262 602 siffror). Ett större aritmetiskt resultat
-  ger `error:system_limit` i en kropp (`ValueOutcome::system_limit`,
+  text följer (1 262 593 och 1 262 602 siffror). Ett större aritmetiskt
+  resultat ger `error:system_limit` i en kropp (`ValueOutcome::system_limit`,
   [ABI](abi.md#failure-channel-revision-2)) och får en guard att misslyckas; ett
   heltalssegment som extraherar ett större värde matchar inte. Kompilatorn
-  avvisar en literal över 4 194 240 bitar (`illegal integer`, som OTP:s scanner)
-  och ett konstant mönster över gränsen (`illegal pattern`).
+  avvisar en literal över 4 194 240 bitar (`illegal integer`, som OTP:s
+  scanner) och ett konstant mönster över gränsen (`illegal pattern`).
 
 ## Flyttal
 
 - IEEE binary64-bitar skickas till runtime som åtta byte i nätverksordning; NaN
   och oändlighet avvisas. Ingen fast-math.
 - `+ - *` förblir exakta för två heltal; en flyttalsoperand ger binary64. `/`
-  konverterar alltid båda. Icke-ändliga resultat och nolldivisorer → `badarith`.
+  konverterar alltid båda. Icke-ändliga resultat och nolldivisorer →
+  `badarith`.
 - `float/1` avrundar till närmaste jämna; `round/1` avrundar lika avstånd bort
   från noll; `trunc`, `floor`, `ceil` returnerar godtyckliga heltal. Felaktiga
   operander → `badarg`.
-- Exakt likhet skiljer `1` från `1.0` och `0.0` från `-0.0`; numerisk jämförelse
-  jämför flyttalets exakta heltalsdel och bråkdel och avrundar aldrig heltalet.
-  `min/max` returnerar den första operanden vid lika värden.
+- Exakt likhet skiljer `1` från `1.0` och `0.0` från `-0.0`; numerisk
+  jämförelse jämför flyttalets exakta heltalsdel och bråkdel och avrundar aldrig
+  heltalet. `min/max` returnerar den första operanden vid lika värden.
 
 ## Tupler, listor, strängar
 
@@ -120,8 +125,8 @@ native records ([native records](native-records.md)); funs
   omedelbara värden. Strängar är listor av kodpunkter. Listor har ingen
   längdgräns utöver minnet (inklusive en valfri heapbudget). Tupler rymmer upp
   till 16 777 215 element (`MAX_TUPLE_ARITY`, OTP:s `MAX_ARITYVAL`);
-  konstruktorer rapporterar en större som `resource_limit`, inbyggda funktioner kommer att
-  ge `badarg`.
+  konstruktorer rapporterar en större som `resource_limit`; inbyggda funktioner
+  (`make_tuple`, `list_to_tuple/1`) ger `badarg`.
 - Tjänster: `hd`, `tl`, `length`, `tuple_size`, `size`, ettbaserad `element`.
 
 ## Maps
@@ -130,11 +135,10 @@ native records ([native records](native-records.md)); funs
   konstruktion behåller det sista värdet. Konstruktion sorterar nycklarna
   (O(n log n) jämförelser; redan stigande nycklar kontrolleras bara). Upp till
   32 poster är en map en heapcell och en uppdatering infogar med binärsökning i
-  en kopia; däröver är den ett B+-träd utanför heapen som uppdateras genom
-  sökvägskopiering i O(log n)
-  ([maps utanför heapen](runtime-heap.md#off-heap-maps)). Ingen storleks- eller
-  arbetsgräns utöver minnet, som i OTP. Heltals- och flyttalsnycklar skiljer sig
-  (även `0.0` mot `-0.0`, även nästlat).
+  en kopia; däröver är den ett B+-träd av heapceller som uppdateras genom
+  sökvägskopiering i O(log n) ([map-träd](runtime-heap.md#map-trees)). Ingen
+  storleks- eller arbetsgräns utöver minnet, som i OTP. Heltals- och
+  flyttalsnycklar skiljer sig (även `0.0` mot `-0.0`, även nästlat).
 - Uppdateringar med `K := V` kräver nyckeln; `K => V` infogar eller ersätter.
   Uppdateringar förbereder en ny tabell och publicerar en gång.
 - Fel i kroppar: `{badmap, M}`, `{badkey, K}`; guards avvisar i stället.
@@ -143,48 +147,44 @@ native records ([native records](native-records.md)); funs
 
 ## Bitstrings
 
-- Packade med mest signifikanta bit först, exakt bitlängd och nollad utfyllnad.
-  Upp till 64 byte lever inline i en heap-binary dimensionerad efter datat; större
-  värden använder en delad oföränderlig buffert utanför heapen, som visas genom
-  binary-celler utanför heapen som extraherade svansar delar. Bufferten belastar
-  den skapande processen en gång. Det finns ingen storleksgräns utöver en valfri
-  heapbudget för processen; heltalssegment skrivs utan att ett heltal lika brett
-  som segmentet byggs.
+- Packade med mest signifikanta bit först, exakt bitlängd och nollad
+  utfyllnad. Upp till 64 byte lever inline i en heap-binary dimensionerad efter
+  datat; större värden använder en delad oföränderlig buffert utanför heapen,
+  och utsnitt är sub-binary-celler av sitt original
+  ([binaries utanför heapen](runtime-heap.md#off-heap-binaries)). Det finns
+  ingen storleksgräns utöver en valfri heapbudget för processen;
+  heltalssegment skrivs utan att ett heltal lika brett som segmentet byggs.
 - Konstruktion förbereder alla segment före publicering. Heltalssegment
   trunkeras; inbyggd byteordning kommer från målets datalayout. Ett
   heltalssegment med ett litet värde och en bredd på högst 64 bitar skrivs från
   sitt maskinord (hela byte åt gången på en bytegräns); andra tar vägen med
-  godtycklig precision. På 64-bitarsmål skriver genererad kod en binary av
-  heltalssegment med hela byte och konstanta bredder (högst 64 byte) direkt in
-  i heapblocket som en inline-binary när varje värde är ett litet heltal och
-  heapen har utrymme; annars bygger bittjänsten den och läser segment med små
-  heltal från deras argumentord.
-- Tillägg (som OTP:s skrivbara binaries): en konstruktion som börjar med en
-  hel binary (`<<Acc/binary, ...>>`) bygger sitt resultat i en buffert med
-  extra utrymme (dubbla storleken, minst 256 byte) vars cell utanför heapen i
-  den skapande processen registrerar dess använda bitar och kapacitet (noll i
+  godtycklig precision. Genererad kod bygger små konstruktioner med konstant
+  bredd inline ([ramar och överföringar](abi.md#frames-and-transfers)).
+- Tillägg, som OTP:s skrivbara binaries: en konstruktion som börjar med en hel
+  binary (`<<Acc/binary, ...>>`) bygger sitt resultat i en buffert med extra
+  utrymme (dubbla storleken, minst 256 byte) vars cell utanför heapen i den
+  skapande processen registrerar dess använda bitar och kapacitet (noll i
   varje annan cell, även kopior). Ett senare tillägg vars ackumulatorvy slutar
   exakt där skriver de nya byten i det extra utrymmet, som ingen vy täcker, och
   returnerar en längre vy av samma buffert: en sub-binary av buffertens egen
-  cell utanför heapen, som kan nå bortom den cellens bitar. Genererad kod gör
-  detta inline för heltalssegment med hela byte, konstant bredd och små värden;
-  varje annan ackumulator (en äldre vy, en annan process, en ojusterad, en full
-  buffert) kopieras till en ny fördubblad buffert. Andra vyer av bufferten
-  ändras aldrig.
+  cell utanför heapen, som kan nå bortom den cellens bitar. Varje annan
+  ackumulator (en äldre vy, en annan process, en ojusterad, en full buffert)
+  kopieras till en ny fördubblad buffert. Andra vyer av bufferten ändras
+  aldrig.
 - Flyttalssegment: bredderna 16/32/64; konstruktion kan koda oändlighet, men
   matchning avvisar oändliga fält och NaN-fält. Flyttalsmatchningar med bredd
   noll extraherar `0.0`.
 - UTF-8/16/32-segment validerar skalärer, surrogat och trunkering.
 - Matchning flyttar fram en explicit bitmarkör endast vid lyckat utfall; `:all`
   som explicit storlek är ogiltigt.
-- Tjänster: `is_binary`, `is_bitstring`, `bit_size`, `byte_size` (avrundar uppåt),
-  `size` (avrundar nedåt), `binary_part/2,3`. Fel → `badarg`.
+- Tjänster: `is_binary`, `is_bitstring`, `bit_size`, `byte_size` (avrundar
+  uppåt), `size` (avrundar nedåt), `binary_part/2,3`. Fel → `badarg`.
 
 ## Records
 
-- Vanliga records expanderas till tupler `{Tag, Fields...}`. Deklarationer måste
-  komma före användning; dubbletter, okända fält, framåt-/självreferenser och
-  ogiltiga jokerteckenfält är fel.
+- Vanliga records expanderas till tupler `{Tag, Fields...}`. Deklarationer
+  måste komma före användning; dubbletter, okända fält, framåt-/självreferenser
+  och ogiltiga jokerteckenfält är fel.
 - Konstruktion utvärderar fält i deklarationsordning: explicit värde, annars
   jokerteckenstandard `_ = V`, annars deklarerat standardvärde, annars
   `undefined`. Varje standardvärde utvärderas separat vid varje användning.
@@ -196,11 +196,11 @@ native records ([native records](native-records.md)); funs
   atomtagg och en heltalsaritet (icke-positiv → falskt; fel typer → `badarg`);
   en atom som tredje argument är frågan för native records och returnerar
   falskt. Guards kräver literala argument.
-- Uppdateringen `Expr#r{f = V, ...}` utvärderar de nya värdena i källkodsordning,
-  sedan `Expr`, kontrollerar därefter aritet och tagg (`{badrecord, Value}` vid
-  avvikelse, även för `Expr#r{}`) och bygger en ny tupel; övriga fält kopieras.
-  `_ = V` avvisas i uppdateringar; uppdateringar är otillåtna i mönster och
-  guards.
+- Uppdateringen `Expr#r{f = V, ...}` utvärderar de nya värdena i
+  källkodsordning, sedan `Expr`, kontrollerar därefter aritet och tagg
+  (`{badrecord, Value}` vid avvikelse, även för `Expr#r{}`) och bygger en ny
+  tupel; övriga fält kopieras. `_ = V` avvisas i uppdateringar; uppdateringar är
+  otillåtna i mönster och guards.
 - `record_info(fields | size, r)` expanderas vid kompilering till listan med
   fältnamn eller tupelstorleken. Båda argumenten måste vara literala atomer och
   `r` ett tupel-record som deklarerats tidigare; det är otillåtet i guards, och
@@ -210,8 +210,8 @@ native records ([native records](native-records.md)); funs
 
 ## Pids och referenser
 
-`self/0` returnerar den anropande processens pid, `make_ref/0`
-en ny referens; `pid_to_list/1` och `ref_to_list/1` returnerar deras text.
+`self/0` returnerar den anropande processens pid, `make_ref/0` en ny referens;
+`pid_to_list/1` och `ref_to_list/1` returnerar deras text.
 
 - En pid är ett omedelbart ord (låga fyra bitar `0x3`) som innehåller
   processens nummer. Nummer kommer från en enda sekvens för hela processen och
@@ -220,15 +220,15 @@ en ny referens; `pid_to_list/1` och `ref_to_list/1` returnerar deras text.
   `wrong_owner`. Pid:en för en avslutad process förblir en giltig term, som i
   OTP. 32-bitarsmål har 2^28 nummer per programkörning, 64-bitarsmål 2^60; att
   skapa en process bortom dem misslyckas med `resource_limit`.
-- En port är ett omedelbart ord (låga fyra bitar `0x7`) som
-  innehåller dess nummer från en egen sekvens som aldrig återanvänds, och tillåts
-  som en pid; den skrivs ut som `#Port<0.N>` och ordnas mellan funs och pids
+- En port är ett omedelbart ord (låga fyra bitar `0x7`) som innehåller dess
+  nummer från en egen sekvens som aldrig återanvänds, och tillåts som en pid;
+  den skrivs ut som `#Port<0.N>` och ordnas mellan funs och pids
   ([portar](ports.md#identity)).
 - En referens är en heapcell (`reference`: huvud plus ett ospårat 64-bitars
   nummer) som tillåts som alla heaptermer: endast i sin egen process, inaktuell
-  efter en skräpsamling för en värd-`Term`, kopieras som värde mellan processer.
-  Nummer kommer från en räknare för hela processen, så varje referens i en
-  programkörning är unik.
+  efter en skräpsamling för en värd-`Term`, kopieras som värde mellan
+  processer. Nummer kommer från en räknare för hela processen, så varje
+  referens i en programkörning är unik.
 - En handtagsreferens (en magisk referens i OTP) är en referenscell som också
   innehåller en buffert utanför heapen; den är samma referens för varje tjänst
   och delar sin buffert med varje kopia
@@ -243,12 +243,15 @@ en ny referens; `pid_to_list/1` och `ref_to_list/1` returnerar deras text.
 
 Iterativ utan arbetsgräns, som i OTP: endast minnet för väntande par begränsar
 en jämförelse, inklusive nyckelsökningar i maps, och identiska ord är lika utan
-genomgång. Byte-justerade bitstrings jämför hela byte åt gången. Ordning: tal < atomer < referenser < funs < pids < tupler < native records < maps < nil < listor <
-bitstrings ([funs](funs.md#comparison-and-printing) ordnas sinsemellan). Atomer jämförs efter UTF-8-stavning (kodpunktsordning); tupler efter aritet
-och sedan fält; maps efter storlek, sedan nycklar, sedan värden; bitstrings efter
-logiska bitar.
-Två små heltal, två flyttal eller två binaries med hela byte ordnas direkt
-från sina ord eller celler (`detail::word_order`), utan admission av termer.
+genomgång. Byte-justerade bitstrings jämför hela byte åt gången. Ordning: tal <
+atomer < referenser < funs < portar < pids < tupler < native records < maps <
+nil < listor < bitstrings ([funs](funs.md#comparison-and-printing) ordnas
+sinsemellan).
+Atomer jämförs efter UTF-8-stavning (kodpunktsordning); tupler efter aritet och
+sedan fält; maps efter storlek, sedan nycklar, sedan värden; bitstrings efter
+logiska bitar. Två små heltal, två flyttal eller två binaries med hela byte
+ordnas direkt från sina ord eller celler (`detail::word_order`), utan admission
+av termer.
 
 ## Utskrift
 
@@ -266,13 +269,13 @@ tupler) och nästling ser likadana ut i båda.
 
 - Maps skrivs ut i map-nyckelordning (`maps:iterator(M, ordered)`, som OTP:s
   `~kw`). OTP:s standard-`~w` och `erlang:display/1` följer i stället dess
-  interna layout: atomtabellens ordning för atomnycklar i små maps (den varierar
-  mellan VM-körningar) och hashordning över 32 nycklar. Clause återskapar inte
-  den ordningen.
-- Återgivningen är iterativ, så djupet begränsas endast av termen. Texten är som
-  standard begränsad till 64 MiB; att överskrida den (till exempel med en vitt
-  delad delterm) misslyckas med `resource_limit` och returnerar ingen deltext.
-- Goldens: `runtime_printing` jämför båda stilarna med OTP för
-  9 542 värden (alla korpusresultat plus författade gränsfall); display-rader
-  vars map-ordning i OTP är intern hoppas över
-  ([fixturer](../tests/fixtures/printing/README.md)).
+  interna layout: atomtabellens ordning för atomnycklar i små maps (den
+  varierar mellan VM-körningar) och hashordning över 32 nycklar. Clause
+  återskapar inte den ordningen.
+- Återgivningen är iterativ, så djupet begränsas endast av termen. Texten är
+  som standard begränsad till 64 MiB; att överskrida den (till exempel med en
+  vitt delad delterm) misslyckas med `resource_limit` och returnerar ingen
+  deltext.
+- Goldens: `runtime_printing` jämför båda stilarna med OTP (alla korpusresultat
+  plus författade gränsfall); display-rader vars map-ordning i OTP är intern
+  hoppas över ([fixturer](../tests/fixtures/printing/README.md)).

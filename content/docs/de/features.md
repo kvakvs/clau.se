@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 6ed3851c
-sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: c542e68489672ac575517c6517e5952bc91a1aa3d15f5b5da6474cffc0302f6e
+translatedAt: 2026-10-17
 ---
 # Meldung zurückgestellter Features
 
@@ -26,8 +26,17 @@ seine ID bleibt reserviert.
 | --- | --- |
 | Semantische Analyse des Compilers | Capability-Prüfungen über jede Funktion, auch ungenutzten Code |
 | Lowering im Compiler | Defensive Abweisung an erreichten Operationen; verwirft bereitgestellte Artefakte |
-| Treiber | `-o/--output` [linkt](executables.md#linking) positionale Eingaben oder ein Projektziel; Projekt-Builds linken jedes ausführbare Ziel zu seinem Manifest-[`output`](projects.md#executables) |
+| Treiber | Nichts zurückgestellt: `executable linking` ist implementiert ([Linken](executables.md#linking)) |
 | Runtime-Dienste | Siehe [zurückgestellte Runtime-Dienste](runtime.md#deferred-services) |
+
+Heute zurückgestellte Compiler-Features, jeweils durch `codegen_placeholders`
+abgedeckt:
+
+| Feature | Beispiel, das es meldet |
+| --- | --- |
+| `heap expressions` | Zuweisungen in Comprehensions `compr_assign` (`[Y \|\| X <- L, Y = X]`) |
+| `dynamic calls` | Ein Builtin-Fun von `apply` (`fun erlang:apply/2`) |
+| `behavior-changing attributes` | `-on_load`, `-nifs`, nicht wirkungslose `-compile`-Optionen, parametrisierte Module ([akzeptierte Teilmenge](compile.md#accepted-source-subset)) |
 
 ## Regeln für Meldungen
 
@@ -38,9 +47,8 @@ seine ID bleibt reserviert.
 - Genau eine Meldung pro fehlgeschlagener Operation, unabhängig von `--verbose`.
 - Ein zurückgestelltes Feature, das der Compiler überspringen könnte, ohne zu
   ändern, was er akzeptiert, würde als Warnung gemeldet, und die Kompilierung
-  liefe weiter; heute tut das keines (`parse transforms` tat es, bis plan step
-  73F sie anwendete, siehe [Transforms](transforms.md)). `codegen_placeholders`
-  prüft eine Meldung pro zurückgestelltem Compiler-Feature.
+  liefe weiter; heute tut das keines. `codegen_placeholders` prüft eine Meldung
+  pro zurückgestelltem Compiler-Feature.
 - Compiler: [reject_feature](../compiler/src/codegen/features.hpp) meldet den
   ersten Fehlschlag eines Batches, hält den Fehlschlag fest, verwirft
   bereitgestellte Ausgaben und markiert die Diagnose als `reported`, damit

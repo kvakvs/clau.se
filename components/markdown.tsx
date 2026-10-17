@@ -1,4 +1,3 @@
-import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { resolveDocHref } from "@/lib/docs";
@@ -41,7 +40,7 @@ export function Markdown({ source, locale, headingIds }: Props) {
         a: ({ href = "", children }) => {
           const target = resolveDocHref(href, locale);
           if (target.startsWith("/") || target.startsWith("#")) {
-            return <Link href={target}>{children}</Link>;
+            return <a href={target}>{children}</a>;
           }
           return (
             <a href={target} rel="noopener noreferrer">

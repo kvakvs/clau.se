@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 6ed3851c
-sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
+translatedAt: 2026-10-17
 ---
 # Referência das fontes do Erlang/OTP
 
@@ -16,8 +16,9 @@ O Clause acompanha o ramo oficial `maint-29`. A fixação revista encontra-se em
 `references/otp` é um checkout ignorado. As compilações e os testes normais
 usam goldens pertencentes ao projeto e não precisam nem do checkout nem de um
 OTP instalado. A configuração e os testes nunca obtêm nem avançam a
-referência. As auditorias ao vivo são opcionais, com `-DCLAUSE_OTP_AUDITS=ON`;
-ver [regeneração de fixtures](../tests/fixtures/patternmatch/generated/README.md).
+referência. As auditorias em direto são opcionais, com
+`-DCLAUSE_OTP_AUDITS=ON`; ver
+[regeneração de fixtures](../tests/fixtures/patternmatch/generated/README.md).
 
 As fontes do OTP, os auxiliares copiados e os cabeçalhos gerados pelo OTP nunca
 entram no Git. As entradas de teste registadas no repositório são de autoria

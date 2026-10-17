@@ -1,224 +1,109 @@
 ---
 source: docs/building.md
-sourceCommit: 6ed3851c
-sourceSha256: 588e40c653165e5d39e7f284cf3173a4f04d81079cba804e17b7444a1f40662d
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 94c0fac180752b278facfe18589c191a0a15ee95e55d9dbf7d4d049c4774e079
+translatedAt: 2026-10-17
 ---
 # Compilar el compilador
 
-Desde la raíz del repositorio:
+Configuración y compilación desde la raíz del repositorio:
 
 ```sh
-cmake --preset debug
+cmake --preset debug                    # build/debug, single configuration
 cmake --build --preset debug
 ```
 
-En Windows se usa el preset clang-cl/Ninja Multi-Config desde el shell de
-desarrollador:
+En Windows, desde un shell de desarrollador x64 con `clang-cl` y `ninja` en el
+`PATH`:
 
 ```powershell
-cmake --preset windows
+cmake --preset windows                  # build/windows, Ninja Multi-Config
 cmake --build --preset windows-debug
 cmake --build --preset windows-release
 ```
 
-Las pruebas y sus ejecutables auxiliares son opcionales. Para las pruebas hay
-que configurar explícitamente:
+El preset `debug` coloca `clau` en `build/debug/bin`; el preset `windows`, en
+`build/windows/bin/<Config>/clau.exe`, con el runtime en
+`build/windows/lib/<Config>/clause_runtime.lib`. `clau` localiza el archivo del
+runtime y los módulos de `library/` en relación con su propia ubicación.
+
+Scripts envoltorio (variables de entorno que los modifican: `BUILD_DIR`,
+`TOOL_BUILD_DIR`, `BUILD_TYPE`, `JOBS`, `CMAKE`, `CTEST`, `CMAKE_ARGS`,
+`CLANG_FORMAT`):
+
+| Makefile | Windows | Función |
+| --- | --- | --- |
+| `make build` | `make-build.bat` | Compila `clau` en `build/tool` sin pruebas (el script por lotes compila en Release y también el runtime) |
+| `make test`, `make test-full` | `make-test.bat` | Configura `build/debug` con pruebas, lo compila todo y ejecuta CTest |
+| `make format`, `make format-all` | `make-format.bat` | Aplica clang-format a los archivos C++ modificados (o, con `FORMAT_SCOPE=all`, a todos) |
+| `make benchmark` | `make-benchmark.bat` | Compilación Release en `build/bench` y después comparación con el OTP del host |
+| `make clean` | `make-clean.bat` | Elimina `build/` y `cmake-build*/` |
+
+Los scripts por lotes entran por sí mismos en el entorno x64 de Visual Studio
+cuando hace falta, añaden `%ProgramFiles%\LLVM\bin` al `PATH` cuando falta
+`clang-cl` y reconfiguran un directorio de compilación creado con otro generador
+o compilador; con `CLAUSE_TOOLCHAIN=default` se conserva la elección propia de
+CMake. `clau.bat` (Windows) y `run-macos.sh` compilan primero `build/tool` y
+después ejecutan `clau` con todos los argumentos, conservando el directorio de
+trabajo y el código de salida del llamador.
+
+Opciones de configuración:
+
+| Opción | Propósito |
+| --- | --- |
+| `-DBUILD_TESTING=ON` | Compila las pruebas y sus programas auxiliares (por defecto OFF) |
+| `-DCLAUSE_BUILD_COMPILER=OFF` | Compila solo la biblioteca del runtime, sin LLVM |
+| `-DCLAUSE_BUILD_RUNTIME=OFF` | Compila solo el compilador |
+| `-DLLVM_DIR=/prefix/lib/cmake/llvm` | Selecciona un SDK de LLVM 23.1.x (una ruta explícita no válida falla) |
+| `-DCLAUSE_DOWNLOAD_LLVM=OFF` | Exige un SDK instalado |
+| `-DCLAUSE_BOOST_ROOT=...`, `-DCLAUSE_TOML_ROOT=...`, `-DCLAUSE_SQLITE_ROOT=...`, `-DCLAUSE_PCRE2_ROOT=...` | Selecciona las fuentes o la instalación de una dependencia (configuración sin conexión) |
+| `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Selecciona el ejecutable de Clang en Windows |
+| `-DCLAUSE_OTP_AUDITS=ON`, `-DCLAUSE_ESCRIPT=/path/to/escript` | Activa las auditorías opcionales en vivo con OTP y selecciona el OTP 29 que se usa |
+| `-DCLAUSE_TEST_DEBUG_INFO=ON` | Compila los programas de prueba con información de depuración (para depurar un fallo) |
+
+Notas para Windows: el CRT por defecto es `/MDd` (Debug) o `/MD`; un valor
+explícito de `CMAKE_MSVC_RUNTIME_LIBRARY` debe coincidir con el SDK de LLVM.
+`cl` de MSVC funciona en un directorio de compilación aparte; MinGW no está
+soportado. Los objetivos del proyecto tratan las advertencias como errores e
+incluyen las dependencias como cabeceras `SYSTEM`, por lo que conviene no añadir
+rutas de dependencias mediante flags `-I` globales como `CXXFLAGS` (en CLion, el
+valor en caché se borra con `-DCMAKE_CXX_FLAGS:STRING=`); en su lugar se usan
+las opciones de raíz.
+
+## Pruebas
+
+Las pruebas se activan explícitamente al configurar:
 
 ```sh
 cmake --preset debug -DBUILD_TESTING=ON
 cmake --build --preset debug
-ctest --preset debug --no-tests=error
+ctest --preset debug-fast                # or windows-debug-fast
+ctest --preset debug -j 16               # full mode
 ```
 
-En Windows:
+`CLAUSE_TEST_MODE=fast` (los presets `*-fast`, `make test`, `make-test.bat`)
+ejecuta una matriz reducida de optimización/driver y omite las pruebas
+`full_only`; `full` (el valor por defecto si no se define, `make test-full`,
+`TEST_MODE=full`) lo ejecuta todo. Cada prueba reserva dos slots de CTest, de
+modo que `-j N` ejecuta N/2 pruebas a la vez. Las pruebas compilan fuentes
+Erlang reales mediante la CLI y comparan los ejecutables con resultados de
+referencia (goldens) generados con OTP; véase [validación](validation.md) para
+la línea base, los fixtures y el diseño de las pruebas.
 
-```powershell
-cmake --preset windows -DBUILD_TESTING=ON
-cmake --build --preset windows-debug
-ctest --preset windows-debug --no-tests=error
-cmake --build --preset windows-release
-ctest --preset windows-release --no-tests=error
-```
-
-Las pruebas tienen dos modos, seleccionados con `CLAUSE_TEST_MODE`:
-
-- `fast` para el desarrollo: los corpus golden ejecutan dos combinaciones
-  de política/driver (O0 posicional y O2 sin especialización mediante un
-  proyecto) en lugar de las ocho, los casos de mutación se ejecutan una vez y se
-  excluyen las pruebas etiquetadas `full_only` (proyectos consumidores de CMake
-  independientes y mediciones de tiempo).
-- `full` (el valor por defecto si no se define) ejecuta todas las combinaciones
-  y todas las pruebas; conviene usarlo cuando se completa una funcionalidad
-  importante.
+Control de calidad (Lizard y clang-tidy, herramientas fijadas en
+`tools/requirements-quality.txt` e instaladas en `.venv-quality/`; fuera de
+Windows se usa `.venv-quality/bin/python`):
 
 ```sh
-ctest --preset debug-fast            # or windows-debug-fast; tests use half the logical CPUs
-ctest --preset debug -j 32           # full mode; -j N runs N/2 tests at once
-make test                            # fast; make test-full or TEST_MODE=full for full
+python -m venv .venv-quality
+.venv-quality/Scripts/python -m pip install -r tools/requirements-quality.txt
+cmake --build build/debug --target check-quality       # changed files
+cmake --build build/debug --target check-quality-all   # whole tree
 ```
 
-`make-test.bat` sigue los mismos ajustes `TEST_MODE` (por defecto `fast`) y
-`TEST_JOBS` (por defecto todas las CPU lógicas). Cada prueba reserva dos slots
-de procesador de CTest (`PROCESSORS 2`), de modo que con N slots se ejecutan
-como máximo N/2 pruebas a la vez, lo que deja margen para los compiladores y
-las compilaciones nativas anidadas que lanzan las pruebas. En un anfitrión
-Windows x64 de 32 hilos, el modo rápido tarda alrededor de un minuto y el modo
-completo unos 85 segundos con 16 trabajos (729 segundos en serie).
-
-Para un directorio de compilación sin preset, se pasa `-DBUILD_TESTING=ON` a
-`cmake -S . -B <dir>` para las pruebas. CMake guarda este ajuste en caché; hay
-que pasar `-DBUILD_TESTING=OFF` al reutilizar ese directorio para compilaciones
-ordinarias. Los presets normales y los scripts envoltorio lo fijan a `OFF`.
-
-Los scripts por lotes reflejan los objetivos `build`, `format` y `clean` del
-Makefile: `make-build.bat`, `make-test.bat`, `make-format.bat` y
-`make-clean.bat`. Los scripts de compilación y de pruebas configuran clang-cl
-con Ninja Multi-Config, como el preset `windows`; entran por sí mismos en el
-entorno x64 de Visual Studio cuando el shell no es un shell de desarrollador y
-añaden `%ProgramFiles%\LLVM\bin` al `PATH` cuando falta `clang-cl`. Un
-directorio de compilación configurado con otro generador o compilador se
-reconfigura desde cero; con `CLAUSE_TOOLCHAIN=default` se conserva la elección
-propia de CMake (por ejemplo, `cl` de MSVC en un directorio aparte). Los valores
-por defecto de compilación son `BUILD_DIR=build/debug` (pruebas),
-`TOOL_BUILD_DIR=build/tool` (`make build`, `make-build.bat`, `clau.bat`,
-`run-macos.sh`: pruebas desactivadas, para que nunca reconfiguren la
-compilación de pruebas), `BUILD_TYPE=Debug` y el paralelismo de la herramienta
-de compilación nativa (se cambia con `JOBS=N`);
-las variables de entorno `CMAKE`, `CTEST`, `CMAKE_ARGS` y `CLANG_FORMAT` también
-sustituyen las herramientas u opciones correspondientes. `make-test.bat`
-configura con las pruebas activadas, compila todos los objetivos y después
-ejecuta CTest, igual que `make test`, propagando los fallos de configuración,
-compilación o pruebas. Clean elimina los directorios `build/` y `cmake-build*/`
-locales del repositorio.
-
-`make benchmark` y `make-benchmark.bat` ejecutan la comparación manual de
-rendimiento con el Erlang/OTP del host (compilación Release en `build/bench`,
-nunca forma parte de las pruebas); véase
-[benchmarks](validation.md#benchmarks).
-
-`decompile-debug.bat <module>` y `decompile-release.bat <module>` recompilan un
-archivo fuente C++ (nombre sin ruta ni extensión; se añaden directorios padre
-cuando es ambiguo, p. ej. `ast/attributes`) con sus opciones registradas de
-Debug o Release y escriben `<module>.debug.asm` / `<module>.release.asm` en el
-directorio actual. Envuelven `tools/asm.py` (solo compilaciones con clang-cl),
-que toma la orden de compilación de `build/tool` y después de `build/debug`
-(`--build-dir` lo cambia). La salida conserva código y datos con comentarios de
-línea de fuente y nombres desmanglados, sin directivas de información de
-depuración, de desenrollado (unwinding) ni de tabla de símbolos.
-`--function TEXT` conserva solo las funciones cuyo nombre desmanglado contiene
-`TEXT`, y `--raw` escribe el listado sin filtrar.
-
-Las comprobaciones de calidad y el formateo se aplican por defecto a los
-archivos modificados: todo lo que difiere de `HEAD` en el árbol de trabajo, más
-los archivos no rastreados.
-
-Las herramientas de calidad residen en el entorno ignorado `.venv-quality/`,
-fijado por `tools/requirements-quality.txt`:
-`python -m venv .venv-quality` y después `.venv-quality/Scripts/python -m pip install -r tools/requirements-quality.txt`
-(`.venv-quality/bin/python` fuera de Windows).
-
-- `cmake --build build/debug --target check-quality` ejecuta Lizard sobre los
-  archivos C++ de producción modificados y clang-tidy sobre las unidades de
-  traducción modificadas más las que incluyen una cabecera modificada (según las
-  dependencias registradas por Ninja). Los cambios en `.clang-tidy`, `cmake/` o
-  en los `CMakeLists.txt` de producción, o la falta de datos de dependencias,
-  comprueban todas las unidades de traducción. Con `CLAUSE_QUALITY_BASE` (por
-  ejemplo `origin/master`) se compara con otra base.
-- `check-quality-all` (y `check-complexity-all`, `check-clang-tidy-all`)
-  comprueban todos los archivos.
-- clang-tidy se ejecuta en lotes de `4 x jobs` unidades de traducción e imprime
-  una línea passed/FAILED tras cada uno; se ejecutan todos los lotes y después la
-  comprobación falla si alguno falló. Para dividir una ejecución larga en
-  invocaciones separadas más cortas, se llama al script directamente con una
-  partición, por ejemplo
-  `cmake -DQUALITY_SCOPE=all -DQUALITY_BUILD_DIR=build/debug -DQUALITY_SHARD=1/4 -P cmake/CheckClangTidy.cmake`
-  para el primer cuarto (`QUALITY_BATCH` y `QUALITY_JOBS` cambian el tamaño de
-  lote y los trabajos; por defecto los trabajos son la mitad de los núcleos
-  lógicos).
-- `make format` / `make-format.bat` formatean los archivos C++ modificados;
-  `make format-all` o `FORMAT_SCOPE=all make-format.bat` lo formatean todo.
-
-`clau.bat --help` compila primero y después reenvía todos los argumentos al
-ejecutable de la configuración seleccionada. Los fallos de compilación detienen
-la ejecución; las rutas de entrada del compilador siguen siendo relativas al
-directorio de trabajo del llamador, y se conserva su código de salida.
-
-Para desarrollar el runtime sin descargar ni usar el SDK de C++ de
-LLVM, se configura con `cmake --preset windows -DCLAUSE_BUILD_COMPILER=OFF`; se
-aplican los mismos presets de compilación y pruebas. La opción se vuelve a poner
-a `ON` cuando el SDK está disponible. También se acepta `cl` de MSVC en un
-directorio de compilación aparte; MinGW no está soportado para compilaciones de
-desarrollo nativas en Windows. x86 o x64 se seleccionan mediante el entorno de
-desarrollador (o con `-A` con un generador de Visual Studio), y se usan un SDK
-de LLVM y un runtime de esa arquitectura.
-
-El CRT por defecto en Windows es `/MDd` para Debug y `/MD` para las demás
-configuraciones, incluida la biblioteca estática del runtime y sus
-consumidores. Un ajuste explícito de `CMAKE_MSVC_RUNTIME_LIBRARY` se respeta;
-debe coincidir con el SDK de LLVM y con todas las bibliotecas C++ enlazadas.
-Conviene no mezclar artefactos STL/CRT de Debug y Release. Los fuentes del
-proyecto en Windows y los fixtures de CLI/rutas usan UTF-8.
-
-Todos los objetivos del proyecto usan C++23 y tratan las advertencias del
-compilador como errores. El ejecutable es `build/debug/bin/clau`. Los presets
-de compilación y los scripts envoltorio solicitan compilaciones en paralelo en
-Windows, Linux y macOS con el número de trabajos por defecto de la herramienta
-de compilación nativa (`jobs: 0` en los presets, `--parallel` en los scripts).
-Se fija un límite explícito con `cmake --build --preset debug --parallel 8` o
-con `JOBS=8` para los scripts. Para un directorio de compilación sin preset, se
-usa `cmake --build <dir> --parallel`. El preset de Windows coloca el ejecutable
-en `build/windows/bin/<Config>/clau.exe` y el runtime en
-`build/windows/lib/<Config>/clause_runtime.lib`.
-
-Como alternativa, `make build` compila solo `clau` y sus dependencias en
-`build/tool`, y
-`make test` compila y ejecuta el conjunto completo de pruebas. Para otra
-configuración:
-
-```sh
-make test BUILD_DIR=build/release BUILD_TYPE=Release JOBS=4
-```
-
-CMake detecta las instalaciones de Boost y Erlang, incluidas las de Homebrew.
-Estas opciones, pasadas al configurar, sustituyen los valores por defecto:
-
-| Opción                                      | Propósito                                                     |
-|---------------------------------------------|---------------------------------------------------------------|
-| `-DCLAUSE_BOOST_ROOT=/path/to/boost`    | Selecciona una instalación de Boost o un árbol de fuentes completo |
-| `-DCLAUSE_TOML_ROOT=/path/to/tomlplusplus-3.4.0` | Selecciona la dependencia TOML fijada |
-| `-DCLAUSE_SQLITE_ROOT=/path/to/sqlite-amalgamation-3540000` | Selecciona la amalgamación de SQLite fijada (caché de compilación) |
-| `-DCLAUSE_OTP_AUDITS=ON` | Activa las auditorías opcionales en vivo de OTP/referencia; por defecto OFF |
-| `-DCLAUSE_ESCRIPT=/path/to/bin/escript` | Selecciona OTP 29+ para las auditorías opcionales; las pruebas normales no lo usan |
-| `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Selecciona un ejecutable de Clang instalado en Windows |
-| `-DLLVM_DIR=/prefix/lib/cmake/llvm` | Selecciona un SDK de LLVM 23.1.x existente (las rutas explícitas no válidas fallan) |
-| `-DCLAUSE_DOWNLOAD_LLVM=OFF` | Exige un SDK instalado; desactiva las descargas automáticas de LLVM |
-| `-DBUILD_TESTING=ON`                        | Activa las pruebas, los ejecutables auxiliares y su dependencia de Erlang (por defecto: OFF) |
-| `-DCLAUSE_BUILD_COMPILER=OFF`           | Compila solo la biblioteca del runtime           |
-| `-DCLAUSE_BUILD_RUNTIME=OFF`            | Compila solo el compilador                                    |
-
-Con generadores multiconfiguración, se añade `--config Debug` al compilar y
-`-C Debug` al ejecutar las pruebas. Los IDE compatibles con CMake pueden abrir
-el repositorio con el preset `debug`, o con el preset `windows` y una cadena de
-herramientas de desarrollo de Visual Studio.
-
-Las cabeceras de Boost y toml++ usan includes `SYSTEM` de CMake, lo que mantiene
-las advertencias como errores para el código del proyecto. En las compilaciones
-nativas de macOS, CMake también marca como `SYSTEM` el directorio de includes
-enlazado de Homebrew cuando sus cabeceras de Boost corresponden a la
-instalación seleccionada. Así, flags heredados como
-`CXXFLAGS=-I/opt/homebrew/include` no exponen advertencias de Boost, incluso
-cuando CMake ya tiene ese flag en caché. Para otras instalaciones, conviene no
-añadir rutas de dependencias mediante flags `-I` globales (incluido
-`CXXFLAGS`): una ruta de include ordinaria puede tener prioridad sobre la ruta
-de sistema de una dependencia. Si CLion informa de advertencias de Boost como
-errores, hay que eliminar esos flags globales y borrar el valor en caché, por
-ejemplo:
-
-```sh
-cmake -S . -B cmake-build-debug -DCMAKE_CXX_FLAGS:STRING=
-```
-
-Después se recarga CMake en CLion. Para seleccionar instalaciones se usan las
-opciones de raíz de dependencias anteriores en lugar de añadir flags de include
-globales.
+`check-quality` comprueba los archivos modificados desde `HEAD` (o desde
+`CLAUSE_QUALITY_BASE`) más las unidades de traducción que incluyen una cabecera
+modificada, y necesita una compilación con el compilador y el runtime
+activados; `check-complexity-all` y `check-clang-tidy-all` ejecutan una sola
+herramienta. `cmake/CheckClangTidy.cmake` acepta `QUALITY_SHARD=K/N` para
+dividir una ejecución larga.

@@ -1,15 +1,15 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 6ed3851c
-sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 57dcb1da3315eb173341c8100e17e37df776b01f85f4c06585c1b7e5d3503daf
+translatedAt: 2026-10-17
 ---
 # Preprocessor
 
 Inbyggd C++-omimplementation av OTP:s `epp` för den fastlåsta
-`maint-29`-källkoden. Boost.Parser hanterar teckenregler; delad kompilatormetadata
-tillhandahåller operatorprioritet. Expanderade token görs aldrig om till
-källtext.
+`maint-29`-källkoden. Boost.Parser hanterar teckenregler; delad
+kompilatormetadata tillhandahåller operatorprioritet. Expanderade token görs
+aldrig om till källtext.
 
 `PreprocessorSession` returnerar expanderade former (inklusive implicita
 `-file`-attribut), strukturerad diagnostik och oföränderliga ögonblicksbilder av
@@ -81,9 +81,9 @@ Varningar får inget att misslyckas; fel låser fast misslyckandet medan
 
 ## Tester
 
-Goldens för token (`semantic/*.erl.tokens`) registrerar epp:s tokensorter,
-avkodade värden (flyttal som binary64-bitar) och diagnostikens ordning;
-formuleringen behöver inte vara densamma som i OTP.
-Lokala fragment `semantic/headers/*.hrl` ersätter tidigare kopierade
-OTP-headerfiler. `preprocessor_workflow` täcker verkliga inkluderingsträd,
+Goldens för token (`tests/fixtures/preprocessor/semantic/*.erl.tokens`)
+registrerar epp:s tokensorter, avkodade värden (flyttal som binary64-bitar) och
+diagnostikens ordning; formuleringen behöver inte vara densamma som i OTP.
+Inkluderade headerfiler (`semantic/headers/*.hrl`) är skrivna lokalt, inte
+kopierade från OTP. `preprocessor_workflow` täcker verkliga inkluderingsträd,
 alternativens ordning, miljö, Latin-1 och villkorsfall via CLI:n.

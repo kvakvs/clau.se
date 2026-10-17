@@ -1,163 +1,168 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 6ed3851c
-sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
+translatedAt: 2026-10-17
 ---
 # Modelo de ejecución: marcos y continuaciones
 
-Fija cómo las funciones Erlang
-generadas llaman, retornan, se suspenden y fallan una vez que llegan la
-recursión, las llamadas de cola (tail calls) y los procesos. El step 19
-implementó las llamadas, los retornos, las llamadas de cola y los marcos
-([Implementación](#implementation) enumera lo que sigue abierto); los steps
-23, 24, 26 y 43 se apoyan en él.
+Cómo las funciones Erlang generadas llaman, retornan, se suspenden y fallan. El
+modelo se eligió tras la comparación de prototipos de
+[alternativas comparadas](#alternatives-compared); la parte de su ABI
+correspondiente al código generado está en
+[marcos y transferencias](abi.md#frames-and-transfers).
 
 ## Decisión
 
 Cada proceso Erlang se ejecuta sobre su propia **pila plana de marcos
 explícitos**, y el código generado pasa de una función a otra solo mediante
-**transferencias de cola garantizadas** (`musttail` de LLVM). Una llamada que
-no es de cola guarda la continuación del llamante en el marco del llamante y
-salta al llamado; un retorno salta de vuelta a esa continuación. Por tanto, la
-pila nativa se mantiene a una sola llamada de profundidad por encima del
+**transferencias de cola garantizadas** (`musttail` de LLVM). Una llamada que no
+es de cola guarda la continuación del llamante en el marco del llamante y salta
+al llamado; un retorno salta de vuelta a esa continuación. Por tanto, la pila
+nativa se mantiene a una sola llamada de profundidad por encima del
 planificador, sea cual sea la profundidad de recursión en Erlang, y un proceso
 puede detenerse en cualquier transferencia y reanudarse más tarde en cualquier
 hilo.
 
-- Una pila plana por proceso sustituye a la pila de raíces segmentada de 8F.
-  Contiene las cabeceras de los marcos y sus ranuras, crece moviéndose y se
-  direcciona como base más desplazamiento.
-- Cada función que necesita un marco se traduce en el lowering a una
-  **entrada** y un **cuerpo**. El cuerpo empieza con un `switch` sobre el
-  índice de continuación del marco, de modo que una sola función LLVM
-  conserva todos los bloques, uniones y manejadores de la función.
-- Los argumentos y los resultados viajan en los registros del proceso
-  `x[0..n)` (registros X de BEAM); todo puntero a código tiene la firma única
-  `void code(Process *)`.
-- Las excepciones desenrollan marcos hasta el marco más interno cuya cabecera
-  nombra una continuación manejadora.
+- Una única pila plana por proceso (`ProcessStack`, `process/stack`) contiene
+  las cabeceras de los marcos y sus ranuras, crece moviéndose y se direcciona
+  como base más desplazamiento.
+- Cada función es una función LLVM, su **cuerpo**, que empieza con un `switch`
+  sobre el índice de continuación del marco, de modo que conserva todos los
+  bloques, uniones y manejadores de la función.
+- Los argumentos y los resultados viajan en los registros del proceso `x[]`
+  (registros X de BEAM). Todo puntero a código tiene la firma única
+  `abi::v1::Code`, `void(void *context, TermWord x0, ..., TermWord x5)`: los
+  primeros `abi::v1::register_arguments` (6) registros también se pasan como
+  parámetros, de modo que los primeros argumentos de una llamada y el resultado
+  de un retorno permanecen en registros de máquina.
+- Un fallo retorna a través de cada llamante, que comprueba el canal de fallos
+  después de la llamada ([canal de fallos](abi.md#failure-channel-revision-2)).
 
 ## Estado del proceso
 
+`abi::v1::FrameState` encabeza cada contexto, de modo que el código generado lo
+lee y lo actualiza en línea:
+
 | Campo | Significado |
 | --- | --- |
-| `stack`, `capacity` | Un único array de palabras ampliable; se mueve cuando crece |
-| `frame`, `top` | Desplazamientos en palabras de la cabecera del marco actual y de la primera palabra libre |
-| `x[]`, `live` | Registros de argumentos/resultados; las primeras `live` palabras son raíces en una transferencia |
-| `reductions` | Llamadas que quedan en la porción de tiempo |
-| `resume_at` | Entrada en la que continúa un proceso suspendido |
-| canal de fallos | El canal actual de la revisión 2: razón, carga útil, traza de pila, `halted` |
+| `stack`, `top`, `limit` | El bloque de pila (se mueve cuando crece), su primera palabra libre y las palabras que un apilamiento puede alcanzar sin crecer ni superar el límite de la pila |
+| `frame` | Desplazamiento en palabras de la cabecera del marco actual |
+| `registers`, `live` | Los 256 registros de argumentos/resultados; las primeras `live` palabras son raíces en una transferencia |
+| `reductions` | Entradas de función que quedan en la porción de tiempo |
+| `slow`, `failed` | Bits que envían las transferencias a los servicios (`slow_collect`, `slow_profile`); distinto de cero mientras el canal de fallos contiene un fallo |
+
+`heap_top`/`heap_limit`, `runtime` y `self` sirven a la asignación en línea, a
+la carga de átomos y a `self/0` ([marcos y transferencias](abi.md#frames-and-transfers)).
+Un proceso suspendido registra en `ProcessStack::resume_` la entrada en la que
+continúa.
 
 ## Marcos
 
-Un marco es una cabecera fija seguida de las ranuras de la función (registros
-Y de BEAM). Las ranuras se ponen a cero al apilarse, como ocurre hoy con los
-marcos de raíces.
+Un marco es una cabecera de 4 palabras seguida de las ranuras de la función
+(registros Y de BEAM): ranuras de términos, que son raíces, y después ranuras en
+bruto para valores nativos volcados.
 
 | Palabra de cabecera | Significado |
 | --- | --- |
 | `previous` | Desplazamiento de la cabecera del llamante (los marcos se enlazan por desplazamientos, nunca por punteros) |
-| `function` | El descriptor de la función |
+| `function` | El `FrameDescriptor` de la función |
 | `resume` | Índice de continuación sobre el que conmuta el cuerpo cuando el control vuelve aquí |
-| `handler` | Índice de continuación del manejador activo más interno, 0 si no hay ninguno |
+| `handler` | Índice del manejador; siempre 0, ya que los fallos retornan a través de los llamantes |
 
-El descriptor amplía el actual `abi::v1::FrameDescriptor` (descriptor de
-módulo, ranuras de átomo de módulo y de función, aridad) con los punteros a
-código de la entrada y del cuerpo y el número de ranuras. Las palabras de
-cabecera no son términos; un recorredor sigue `previous` y lee el número de
-ranuras de los descriptores. Un **marco inferior** propiedad del runtime está
-debajo de la primera llamada de cada proceso: la continuación 1 es una salida
-normal (resultado en `x[0]`) y la continuación 2 es el manejador de una
-excepción no capturada.
+El descriptor `<symbol>.frame` nombra el módulo, la función y la aridad, y
+contiene el puntero al código del cuerpo y los recuentos de ranuras
+([abi](abi.md#frames-and-transfers)). Las palabras de cabecera no son términos;
+un recorrido sigue `previous` y lee los recuentos de ranuras de los
+descriptores. Un **marco inferior** propiedad del runtime se sitúa bajo la
+primera llamada de cada proceso y de cada invocación del anfitrión: retornar a
+él guarda el resultado en el primer registro y termina la llamada nativa.
 
 ## Operaciones
 
-- **Llamada (no de cola).** Los valores vivos ya están en ranuras (la regla de
-  enraizamiento actual). El llamante fija su propio `resume` al siguiente
-  índice de continuación, escribe los argumentos en `x[0..n)` y transfiere a
-  la entrada del llamado. Una llamada remota transfiere al símbolo de entrada
-  exportado.
-- **Entrada.** Cuenta una reducción (véase la cesión), apila un marco puesto a
-  cero (moviendo la pila cuando está llena), copia `x[0..n)` en las ranuras,
-  fija `resume = 0` y transfiere al cuerpo.
-- **Retorno.** El llamado escribe el resultado en `x[0]`, desapila su marco
+- **Llamada (no de cola).** Los valores vivos después de la llamada se vuelcan
+  a ranuras. El llamante fija su propio `resume` al siguiente índice de
+  continuación, coloca los argumentos en los registros y transfiere al llamado.
+  Las llamadas locales, remotas, de fun y dinámicas son la misma transferencia;
+  una llamada de fun o dinámica pide primero a un servicio de preparación el
+  `FrameDescriptor` del llamado ([funs](funs.md#dynamic-calls)).
+- **Entrada.** Consume una reducción, apila un marco puesto a cero (haciendo
+  crecer la pila cuando está llena), copia en ranuras los argumentos que van
+  más allá de los parámetros, fija `resume = 0` y transfiere al cuerpo del
+  llamado.
+- **Retorno.** El llamado pasa el resultado como `x0`, desapila su marco
   (`top = frame`, `frame = previous`) y transfiere al cuerpo del llamante, que
   conmuta sobre el `resume` del llamante.
-- **Llamada de cola.** Los argumentos van a `x[0..n)`, el llamante desapila su
-  propio marco sin transferir y después transfiere a la entrada del llamado.
-  El llamante del llamante sigue siendo el destino del retorno, así que la
-  recursión de cola se ejecuta con pila Erlang y nativa constantes. Las
-  llamadas de cola locales, mutuas y remotas son el mismo salto.
-- **Cesión (yield).** Cada entrada gasta una reducción. Al llegar a cero se
-  registra a sí misma en `resume_at` y vuelve al planificador en lugar de
-  apilar un marco; los argumentos se quedan en `x[0..arity)`, que pasan a ser
-  los únicos registros del proceso que hay que enraizar. Al reanudar se
-  rellena el presupuesto y se transfiere a `resume_at`, que repite la entrada.
-  Las esperas posteriores (`receive`) guardan un índice de
-  continuación del cuerpo en lugar de una entrada.
-- **Salida.** Retornar al marco inferior registra una salida normal;
-  desenrollar hasta él registra una excepción no capturada. En ambos casos el
-  código vuelve al planificador.
-- **Propagación de excepciones.** Un raise o una comprobación de servicio
-  fallida registra el error en el canal como hoy y nombra para la traza los 8
-  marcos más internos de la cadena de marcos. Después, el desenrollador
-  desapila los marcos cuyo `handler` es 0, fija `resume = handler` en el
-  primer marco que tenga uno y transfiere a su cuerpo. Los manejadores de
-  `catch`, `try` y `after` son índices de continuación; entrar en una región
-  protegida fija `handler` y salir de ella restaura el índice envolvente,
-  ambos conocidos estáticamente dentro de una función. Los halts y los fallos
-  de infraestructura se saltan todos los manejadores y desenrollan
-  directamente hasta el marco inferior, igual que hoy se saltan los
-  manejadores. El manejador recoge la excepción con los servicios actuales
-  (`CLAUSE_catch_v1`, `CLAUSE_exception_v2`) y la relanza a través del
-  desenrollador.
-- **Invocación desde el anfitrión.** El runtime apila un marco inferior, carga
-  `x[]` y ejecuta el bucle del planificador hasta alcanzar ese marco. Los
-  servicios del runtime siguen siendo llamadas nativas ordinarias y nunca
-  vuelven a entrar en el código generado; solo este bucle del anfitrión lo
-  inicia.
+- **Llamada de cola (tail call).** El llamante desapila su propio marco sin
+  transferir y después entra en el llamado en su lugar. El llamante del
+  llamante sigue siendo el destino del retorno, por lo que la recursión de cola
+  se ejecuta con pila Erlang y nativa constantes. Una llamada de cola a sí misma
+  mantiene su marco donde está: consume una reducción, restablece las palabras
+  resume y handler del marco y el recuento de vivos y copia los argumentos que
+  van más allá de los parámetros, sin reescribir la cabecera ni poner a cero las
+  ranuras; LLVM la convierte en un bucle. Una llamada de cola a otro miembro del
+  ciclo de llamadas de cola del llamante (funciones de un mismo módulo que se
+  alcanzan entre sí mediante llamadas de cola) conserva el enlace al llamante y
+  las ranuras de términos que tienen ambos marcos: escribe el descriptor del
+  llamado, pone a cero solo las ranuras de términos del llamado que van más allá
+  de las del llamante y omite la comprobación del límite de la pila cuando el
+  marco del llamado no es más grande. Como en una llamada de cola a sí misma,
+  una ranura conservada puede contener un término de un miembro anterior hasta
+  que el llamado la escriba, por lo que las recolecciones pueden mantener vivo
+  ese término un poco más de tiempo.
+- **Cesión (yield).** Sin reducciones restantes, una entrada no apila: se
+  registra en `ProcessStack::resume_`, conserva sus argumentos como raíces de
+  registro (`ProcessStack::keep_registers`) y devuelve código que termina la
+  porción de tiempo, de modo que la pila nativa se desenrolla hasta el
+  ejecutor, que más tarde repone el presupuesto y repite la entrada. Las
+  cabeceras de bucle de las comprehensions también consumen una reducción y
+  ceden a través de una entrada cuando no queda ninguna. Un `receive` espera a
+  través del builtin `CLAUSE_wait_frame_v1`, al que se entra como a una llamada
+  ([receive](processes.md#receive)).
+- **Salida.** Retornar al marco inferior termina el proceso con su resultado;
+  un fallo que retorna a él termina el proceso con el fallo.
+- **Excepciones.** Una excepción lanzada o una comprobación de servicio fallida
+  registra el error en el canal y copia los 8 marcos más internos de la cadena
+  para la traza de pila ([trazas de pila](abi.md#stack-traces)). Cada llamante
+  comprueba el canal después de la llamada y retorna de inmediato, o salta al
+  bloque manejador de un `catch`, `try` o `after` envolvente en el mismo cuerpo
+  ([canal de fallos](abi.md#failure-channel-revision-2)). Las detenciones
+  (halts) y los fallos de infraestructura omiten todos los manejadores y
+  retornan al marco inferior.
+- **Invocación del anfitrión.** Un símbolo exportado conserva una firma nativa y
+  ejecuta su función por encima de un marco inferior con `CLAUSE_invoke_v1`,
+  reanudándola tras cada cesión; las excepciones nativas lanzadas por los
+  servicios se contienen allí. Los servicios del runtime siguen siendo llamadas
+  nativas ordinarias y nunca vuelven a entrar en el código generado.
 
-Una función que no hace ninguna llamada que no sea de cola y no conserva
-ninguna ranura a través de un punto seguro puede omitir su marco y retornar
-directamente al cuerpo de su llamante. Es una optimización que el compilador
-puede añadir más adelante, no parte del contrato.
+Cada llamada apila un marco; las funciones hoja no lo omiten, de modo que cada
+función conserva su entrada en la traza de pila.
 
 ## Visibilidad de las raíces
 
-En cada transferencia y en cada punto seguro, las raíces de un proceso son:
-todas las ranuras de todos los marcos de su pila, `x[0..live)` y la carga
-útil, la lista de argumentos y el término de pila del canal de fallos (que ya
-son raíces del proceso). Las palabras de entrega de resultados de la pila de
-raíces actual desaparecen; `x[0]` asume su papel.
+En cada transferencia y en cada punto seguro, las raíces de un proceso son: las
+ranuras de términos de todos los marcos de su pila, `x[0..live)` y la carga
+útil, la lista de argumentos y el término de pila del canal de fallos
+([raíces](runtime-heap.md#roots-and-safe-points)).
 
 Los valores nunca sobreviven a una transferencia en registros nativos ni en
-valores SSA. Cada cuerpo recarga la dirección de su marco desde
-`stack + frame` tras entrar, y lee los valores vivos de las ranuras. Dentro de
-una continuación, un servicio que puede apilar un marco o mover el heap
-invalida todo puntero a ranura y todo puntero al heap guardados en valores
-SSA; la regla de recarga para las recolecciones se fija en
-[recolección en el código generado](runtime-heap.md#collection-in-generated-code).
+valores SSA, salvo los parámetros de la propia transferencia. Cada cuerpo
+vuelve a cargar la dirección de su marco desde `stack + frame` después de
+entrar, y lee los valores vivos de las ranuras. Dentro de una continuación, un
+servicio que puede apilar un marco o mover el heap invalida todo puntero a
+ranura y todo puntero al heap guardado en valores SSA; la regla de recarga para
+las recolecciones está fijada en [regla de recarga](runtime-heap.md#reload-rule).
 
-## Sucesor de la pila de raíces de 8F
-
-La pila segmentada existe solo porque el código generado mantiene punteros
-absolutos a marcos a través de las llamadas. Con este modelo ningún puntero a
-marco sobrevive a una transferencia, así que la pila pasa a ser un único
-bloque plano por proceso:
-
-- las cabeceras de los marcos viven en la pila, y las ranuras se direccionan
-  como `stack + frame + header + index`;
-- el bloque crece duplicándose y moviéndose (`realloc`), nunca se reduce
-  durante la ejecución y está separado del bloque de heap;
-- se elimina el límite de 4.096 marcos; las palabras de pila cuentan para el
-  presupuesto de memoria del proceso, y superarlo es el fallo documentado del
-  step 20.
+El bloque de pila crece duplicándose y moviéndose mientras el límite de todo el
+runtime lo permita, nunca se reduce durante la ejecución y está separado del
+bloque de heap. No tiene límite de número de marcos; las palabras de la pila
+cuentan para el
+[límite de memoria del runtime](runtime-heap.md#runtime-memory-limit).
 
 ## Destinos
 
-`musttail` con la firma uniforme `void (Process *)` es aceptado por todos los
-destinos requeridos en O0 y O2 (prototipo más abajo, clang 23.1.2):
+`musttail` con una firma de código uniforme es aceptado por todos los destinos
+requeridos en O0 y O2 (prototipo más abajo, clang 23.1.2):
 
 | Destino | Palabra | Resultado |
 | --- | --- | --- |
@@ -166,178 +171,88 @@ destinos requeridos en O0 y O2 (prototipo más abajo, clang 23.1.2):
 | `aarch64-unknown-linux-gnu`, `arm64-apple-macosx14.0` | 64 | saltos de cola |
 | `armv7-unknown-linux-gnueabihf` | 32 | saltos de cola |
 
-El backend informa un error cuando no puede respetar una llamada `musttail`,
-así que una compilación correcta es la garantía. Alternativa para un futuro
-destino que la rechace: un **trampolín**. Cada código devuelve el siguiente
-puntero a código al bucle del planificador en lugar de saltar (null
-suspende); los marcos, las raíces y los índices de continuación no cambian.
+El backend informa de un error cuando no puede respetar una llamada
+`musttail`, de modo que una compilación correcta es la garantía. Alternativa
+para un destino futuro que lo rechace: un **trampolín**, donde cada código
+devuelve el siguiente puntero a código al bucle del planificador en lugar de
+saltar; los marcos, las raíces y los índices de continuación no cambian.
 Ningún destino requerido lo necesita.
 
 ## Implementación
 
-El step 19 (2026-10-05) implementa el modelo con estas decisiones y
-carencias:
-
-- **Dos etapas.** El lowering sigue emitiendo *forma nativa*: una
-  función `TermWord(context, arguments)` por cada función Erlang, llamadas
-  ordinarias entre ellas, una llamada provisional `clause.frame` que nombra
-  las ranuras de términos, y `ret` del resultado de una llamada en posición de
-  cola. Después, `lower_frames` (`compiler/src/codegen/frames.cpp`) mueve cada
-  cuerpo a `<symbol>.body`, añade el prólogo (cabecera del marco, registros,
-  switch de reanudación), divide los bloques tras las llamadas que no son de
-  cola y los puntos seguros de las cabeceras de bucle, vuelca los valores
-  usados después de ellos (términos a ranuras de términos, otras palabras a
-  ranuras en bruto), eleva al prólogo las direcciones constantes de las
-  ranuras, y convierte las llamadas, las llamadas de cola y los retornos en
-  transferencias `musttail`. La especialización de tipos y los puntos de
-  prueba trabajan sobre la forma nativa; el backend ejecuta `lower_frames`
-  antes de la inspección de la IR y `optimize` lo ejecuta si aún hace falta.
-- **Entrada y cuerpo.** No hay una función de entrada separada. La tabla de
-  estado del proceso anterior es `abi::v1::FrameState`, al comienzo de cada
-  contexto, de modo que el código generado se transfiere en línea (revisión
-  de ABI 9): una entrada gasta una reducción, apila el marco puesto a cero,
-  copia los argumentos desde los registros y se transfiere al cuerpo del
-  llamado; una entrada de cola reutiliza primero el lugar del llamante; un
-  retorno desapila y se transfiere al cuerpo del llamante. Cada ruta recurre a
-  `CLAUSE_enter_v1`, `CLAUSE_tail_v1` o `CLAUSE_return_v1` cuando el heap
-  quiere una recolección, el proceso está en perfilado, no queda ninguna
-  reducción, la pila debe crecer o alcanza su límite, o el llamado es un
-  builtin. La comprobación de fallo tras una llamada lee la palabra `failed`
-  del estado. Una llamada de cola a sí misma mantiene su marco donde está:
-  gasta una reducción, restablece las palabras de reanudación y de manejador
-  del marco y el recuento de vivos y copia los argumentos más allá de los
-  registros, sin reescribir la cabecera ni poner a cero las ranuras (cada una
-  contiene cero o una palabra de término que las recolecciones reescriben, y
-  el cuerpo escribe una ranura antes de leerla).
-- **Parámetros en registros** (revisión de ABI 10). El código es
-  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: cada transferencia
-  pasa los tres primeros registros X como parámetros de C, de modo que los
-  primeros argumentos de una llamada y el resultado de un retorno permanecen
-  en registros de la máquina. Un cuerpo lee sus primeros argumentos de los
-  parámetros al empezar y el resultado de la llamada de `x0` al reanudarse;
-  `lower_frames` vuelca cualquiera de ellos a una ranura solo cuando está vivo
-  a través de una llamada o un punto seguro. Las rutas de servicio guardan los
-  parámetros en el array de registros antes del servicio y los vuelven a
-  cargar después. Como todos los cuerpos comparten un mismo prototipo, LLVM
-  convierte en un bucle una llamada de cola a sí misma cuyo apilado en línea
-  vuelve al mismo cuerpo.
-- **Las posiciones de cola** son la última expresión del cuerpo de una
-  cláusula, seguida a través de bloques, paréntesis y cuerpos de cláusulas de
-  `case` e `if`. Las llamadas dentro de `catch`, `try`, `maybe` y de los
+- **Dos etapas.** El lowering emite la *forma nativa*: una función
+  `TermWord(context, arguments)` por función Erlang, llamadas ordinarias entre
+  ellas, una llamada marcadora `clause.frame` que nombra las ranuras de
+  términos y `ret` del resultado de una llamada en posición de cola.
+  `lower_frames` (`compiler/src/codegen/frames.cpp`) mueve después cada cuerpo
+  a `<symbol>.body`, añade el prólogo (cabecera del marco, registros, switch de
+  reanudación), divide los bloques tras las llamadas que no son de cola y los
+  puntos seguros de cabecera de bucle, vuelca los valores usados después de
+  ellos (términos a ranuras de términos, otras palabras a ranuras en bruto),
+  eleva al prólogo las direcciones constantes de ranuras y convierte las
+  llamadas, las llamadas de cola y los retornos en transferencias `musttail`.
+  La especialización de tipos y los puntos de inyección de pruebas trabajan
+  sobre la forma nativa; el backend ejecuta `lower_frames` antes de la
+  inspección del IR y `optimize` lo ejecuta si todavía hace falta.
+- **Transferencias en línea.** Las entradas, las entradas de cola y los
+  retornos se ejecutan en línea sobre `FrameState`. Cada una recurre a
+  `CLAUSE_enter_v1`, `CLAUSE_tail_v1` o `CLAUSE_return_v1` cuando el heap pide
+  una recolección, el proceso está en perfilado, no quedan reducciones, la pila
+  debe crecer o alcanza su límite, o el llamado es un builtin. La comprobación
+  de fallos tras una llamada lee la palabra `failed` del estado. Las rutas de
+  servicio guardan los parámetros en el array de registros antes del servicio y
+  los vuelven a cargar después.
+- **Parámetros.** Un cuerpo lee sus primeros argumentos de los parámetros
+  cuando empieza y el resultado de la llamada de `x0` cuando se reanuda;
+  `lower_frames` vuelca cualquiera de ellos a una ranura solo cuando está vivo a
+  través de una llamada o de un punto seguro.
+- **Posiciones de cola**: son la última expresión del cuerpo de una cláusula,
+  siguiendo a través de bloques, paréntesis y los cuerpos de las cláusulas de
+  `case`, `if` y `receive`. Las llamadas en `catch`, `try`, `maybe` y en los
   operandos de `andalso`/`orelse` no son llamadas de cola.
-- **Las excepciones** retornan a través de cada llamante, que comprueba el
-  canal después de la llamada como antes; los índices de manejador y el
-  desenrollado directo siguen siendo una optimización. Las trazas de pila leen
-  la cadena de marcos en el momento del raise.
 - **Bucles.** Los generadores de las comprehensions son bucles dentro de un
-  mismo cuerpo. Sus cursores y su acumulador viven en ranuras de términos, así
-  que ningún valor SSA da la vuelta a un bucle y un punto de reanudación
-  dentro de él no necesita nada más que los volcados habituales.
-- **Cesiones** ([procesos](processes.md)). Cada entrada, en línea o a
-  través de `CLAUSE_enter_v1` y `CLAUSE_tail_v1`, gasta una de las reducciones
-  del proceso; si no queda ninguna, toman el control los servicios, que
-  registran la función en la que se entra
-  (`ProcessStack::resume_`, el `resume_at` del modelo), conservan sus
-  argumentos como raíces de registro y devuelven un código que termina la
-  porción de tiempo, de modo que la pila nativa se desenrolla hasta el
-  ejecutor, que más tarde repite la entrada. Las cabeceras de bucle no ceden
-  el control. El recolector enumera las ranuras de términos de los marcos, los
-  registros que una suspensión mantiene vivos
-  (`ProcessStack::keep_registers`) y el canal de fallos
-  ([raíces](runtime-heap.md#roots-and-safe-points)). Las entradas de función y
-  las cabeceras de los bucles de comprehension son puntos seguros que
-  recolectan cuando el heap lo pide
+  cuerpo. Sus cursores y su acumulador residen en ranuras de términos, por lo
+  que ningún valor SSA se arrastra a lo largo de un bucle y un punto de
+  reanudación dentro de él no necesita nada más allá de los volcados
+  habituales.
+- **Puntos seguros.** Las entradas de función y las cabeceras de bucle de las
+  comprehensions recolectan cuando el heap lo pide
   ([recolección en el código generado](runtime-heap.md#collection-in-generated-code));
   las ranuras de volcado en bruto nunca contienen términos.
-- **Sin límite.** La pila crece hasta que el anfitrión rechaza la memoria, lo
-  que falla con `out_of_memory` (salida 70, [ejecutables](executables.md)),
-  igual que crece un proceso de OTP. Un `StackOptions::limit_words` opcional
-  por proceso (separado del presupuesto opcional del heap) hace fallar con
-  `resource_limit` un apilamiento que lo supere. Hoy los marcos ocupan 4
-  palabras de cabecera más 1-40 ranuras.
-- **Entrada desde el anfitrión.** Un símbolo exportado conserva la firma
-  nativa y ejecuta su función sobre un marco inferior del runtime con
-  `CLAUSE_invoke_v1`; las excepciones nativas lanzadas por los servicios
-  quedan contenidas ahí.
+- **Sin límite.** La pila crece hasta que el anfitrión deniega memoria, lo que
+  falla con `out_of_memory` (salida 70, [ejecutables](executables.md)), igual
+  que crece un proceso de OTP. Un `StackOptions::limit_words` opcional por
+  proceso (separado del presupuesto opcional del heap) hace fallar con
+  `resource_limit` un apilamiento que lo supere.
 
 ## Alternativas comparadas
 
-Prototipo en [tests/prototypes/execution_model](../tests/prototypes/execution_model/):
-las mismas funciones Erlang (`sum/1` con recursión de cuerpo, `loop/2` con
-recursión de cola, `fail/1` que lanza `boom` a profundidad N, `catcher/1` que
-la captura) con lowering hecho a mano de tres maneras. Anfitrión:
-Windows x64, clang 23.1.2; los tiempos son ejecuciones únicas en O2. Ejecutar
-`python tests/prototypes/execution_model/run.py`.
-
-| | Marcos explícitos + `musttail` (elegido) | Llamadas nativas + marcos de raíces (actual) | Corrutinas de LLVM (C++20) |
-| --- | --- | --- | --- |
-| Recursión de cuerpo de 1M de profundidad | ok, 17 ms; 5 palabras por marco; 17 movimientos de pila | 80 B de pila nativa por nivel: unos 13.000 niveles en un hilo de 1 MiB | ok, 60 ms; una asignación de heap de 64–80 B por llamada |
-| 10M de llamadas de cola | ok, 5 ms; pila constante | O0 crece 80 B por llamada; O2 solo por suerte con las sibling calls | sin llamadas de cola: 1M de iteraciones mantienen 1M de marcos |
-| Cesión / reanudación | en cada entrada; dos procesos se intercalan | imposible sin una pila nativa por proceso | transferencia simétrica (que a su vez es `musttail`) |
-| Pila nativa a profundidad 1M | 136–144 B | crece en cada nivel | 144–520 B |
-| Raíces visibles para el GC | ranuras en marcos conocidos | ranuras en marcos conocidos | disposición del marco de la corrutina elegida por LLVM; los términos necesitarían una segunda copia enraizada |
-| Excepciones | desenrollado hasta el marco manejador | comprobación del canal en cada retorno | comprobación del canal en cada retorno |
-
-La variante con trampolín del modelo elegido supera las mismas ejecuciones
-(20 ms de recursión, 16 ms para 10M de llamadas de cola en O2). Descartadas:
+[tests/prototypes/execution_model](../tests/prototypes/execution_model/) hace
+manualmente el lowering de las mismas funciones Erlang (`sum/1` con recursión
+de cuerpo, `loop/2` con recursión de cola, `fail/1` que lanza una excepción a
+profundidad N, `catcher/1` que la captura) de tres maneras y las compila para
+todos los destinos anteriores en O0 y O2
+(`python tests/prototypes/execution_model/run.py`). En Windows x64 en O2, el
+modelo elegido ejecutó una recursión de cuerpo de 1M de profundidad en 17 ms
+con 5 palabras por marco y 10M de llamadas de cola con pila constante; su
+variante de trampolín superó las mismas ejecuciones. Rechazadas:
 
 - **Llamadas nativas con marcos de raíces explícitos.** La recursión profunda
   necesita una pila nativa por proceso dimensionada para la llamada más
-  profunda; la suspensión necesita cambio de pila específico de cada destino;
-  los destinos de 32 bits no pueden reservar pilas grandes para muchos
-  procesos.
-- **Corrutinas de LLVM.** Una asignación por llamada, sin llamadas de cola,
-  marcos opacos para el recolector, pases de corrutinas incluso en O0, y la
-  transferencia simétrica depende de `musttail` de todos modos.
+  profunda (unos 13.000 niveles en un hilo de 1 MiB); la suspensión necesita
+  cambio de pila específico de cada destino; los destinos de 32 bits no pueden
+  reservar pilas grandes para muchos procesos.
+- **Corrutinas de LLVM.** Una asignación en el heap por llamada, sin llamadas de
+  cola, marcos cuya disposición el recolector no puede ver, pasadas de
+  corrutinas incluso en O0, y la transferencia simétrica depende de todos modos
+  de `musttail`.
 - **Una función LLVM por continuación** (CPS clásico). Las mismas
   transferencias, pero las uniones y los manejadores alcanzados desde varias
   continuaciones tendrían que dividirse en más funciones; el switch de
-  reanudación conserva el recorredor actual de una sola función.
+  reanudación mantiene un recorrido de una sola función.
 
 Costes aceptados: un salto indirecto por retorno más un despacho por switch;
-los valores vivos a través de las llamadas se recargan desde las ranuras (ya
-están guardados ahí); las trazas inversas del depurador nativo solo muestran
-la función actual, mientras que las trazas de pila de Erlang salen de la
-cadena de marcos.
-
-## Evidencia del prototipo
-
-`run.py` construye el modelo elegido (`musttail` y trampolín), la línea base
-nativa y el modelo de corrutinas para el anfitrión en O0 y O2, los ejecuta, y
-compila las funciones con lowering hecho a mano (`generated.cpp`,
-freestanding) para cada destino anterior en O0 y O2, contando las
-llamadas `musttail` en la IR y los saltos de cola en el ensamblador.
-Resultado del 2026-10-05: PASS. Para el modelo elegido en ambos niveles:
-retorno (42), recursión de cuerpo de 1.000.000 de profundidad, 10.000.000 de llamadas de cola, un error lanzado a
-profundidad 100.000 capturado por un marco manejador, el mismo error sin
-capturar (marco inferior, traza de 8 marcos `fail`), y dos procesos que se
-intercalan en porciones de 4.000 reducciones (1.002 porciones). Los 15 puntos
-de transferencia son `musttail` en O0 en todos los destinos (14 en O2 tras el
-inlining).
-
-El cuerpo de `sum/1` para `i686-pc-windows-msvc` (IR en O2, nombres
-abreviados). La IR de `x86_64-pc-windows-msvc` es la misma con palabras `i64`
-y desplazamientos duplicados.
-
-```llvm
-%2 = load ptr, ptr %0, align 4                      ; stack base
-%3 = getelementptr inbounds nuw i8, ptr %0, i32 8
-%4 = load i32, ptr %3, align 4                      ; current frame offset
-%5 = getelementptr inbounds nuw [4 x i8], ptr %2, i32 %4
-%6 = getelementptr inbounds nuw i8, ptr %5, i32 16  ; slot 0 (N)
-%7 = getelementptr inbounds nuw i8, ptr %5, i32 8   ; header: resume index
-%8 = load i32, ptr %7, align 4
-%9 = icmp eq i32 %8, 0                              ; switch on resume
-...
-16:                                                 ; N > 0: call sum(N - 1)
-  store i32 1, ptr %7, align 4                      ; resume = 1
-  ...                                               ; x0 = N - 1
-  %19 = tail call ptr @call(ptr %0, ptr @SUM)       ; push frame or park
-  musttail call void %19(ptr nonnull %0)
-  ret void
-20:                                                 ; resume 1: x0 += N
-  ...
-  %24 = tail call ptr @leave(ptr %0)                ; pop, caller body
-  musttail call void %24(ptr nonnull %0)
-  ret void
-```
+los valores vivos a través de llamadas se vuelven a cargar desde las ranuras;
+las trazas inversas del depurador nativo muestran solo la función actual,
+mientras que las trazas de pila de Erlang proceden de la cadena de marcos
+([depuración](debugging.md)).

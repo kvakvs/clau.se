@@ -1,8 +1,8 @@
 ---
 source: docs/compile.md
-sourceCommit: 6ed3851c
-sourceSha256: 3702a6fe367aab0776ef6b6345f19e09f34fcd9bd96ff7e67047a19b92c95805
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 070de594787444f6afefbf3760848986bda8c85ff204932e596a67502385ae50
+translatedAt: 2026-10-17
 ---
 # Kompilierung
 
@@ -11,41 +11,27 @@ oder nativen Objekten. `-o/--output` linkt positionale Eingaben (oder ein
 ausgewähltes Projektziel), ihr [Einstiegs](executables.md)-Startobjekt und die
 Runtime zu einer ausführbaren Datei ([Linken](executables.md#linking));
 Projekt-Builds linken ausführbare Ziele zu den Ausgaben ihres Manifests
-([Projekte](projects.md#executables)). Erzeugte
-Objekte können auch über ein C++-Harness laufen, das mit der Runtime gelinkt ist
-(siehe Beispiel unten).
+([Projekte](projects.md#executables)). Erzeugte Objekte können auch über ein
+C++-Harness laufen, das mit der Runtime gelinkt ist (siehe Beispiel unten).
 
 ## Akzeptierte Teilmenge des Quelltexts
 
-Benannte Module mit Exporten und geordneten Funktionsklauseln. Köpfe und Matches
-im Rumpf akzeptieren Variablen, `_`, Aliase, wiederholte Namen und Muster über
-Atome, beliebige Ganzzahlen, endliche Gleitkommazahlen, Tupel,
-Listen/Zeichenketten, Maps, Bitstrings und gewöhnliche Tupel-Records. Rümpfe
-sind Folgen von Matches, Konstruktoren, geprüften Operatoren/Guard-BIFs,
-`erlang:display/1` ([Ausgabe](terms.md#printing)),
-`halt/0,1` ([Exit-Status](executables.md#exit-status)), den auslösenden
-`error/1,2,3`, `exit/1`, `throw/1` und `erlang:raise/3`
-([ABI](abi.md#failure-channel-revision-2)), den übrigen
-[Brücken-Builtins](builtins.md) (`erlang:function_exported/3`) und Funs von
-Builtins, `case`/`if`, `catch Expr`,
-`try ... of ... catch Class:Reason:Stack ... after` mit
-[Stacktraces](abi.md#stack-traces), `maybe ... else ... end`, Listen-, Binary-
-und Map-Comprehensions
-([Muster](patterns.md#comprehensions)) sowie direkten lokalen oder
-literalen entfernten Aufrufen innerhalb des Batches, einschließlich Selbst-,
-wechselseitiger und modulübergreifender Rekursion auf expliziten Prozess-Frames
-mit echten Endaufrufen (tail calls)
-([Ausführungsmodell](execution-model.md#implementation)); Rumpfrekursion ist
-durch den Prozess-Stack begrenzt (standardmäßig unbegrenzt), nicht durch den
-nativen Stack. Guards unterstützen den vollständigen zugelassenen
-Katalog. Siehe [Muster](patterns.md), [Guards](guards.md) und [Terme](terms.md).
+Benannte Module der gewöhnlichen Sprache von OTP 29: geordnete
+Funktionsklauseln mit [Mustern](patterns.md) und [Guards](guards.md); Matches,
+Konstruktoren, Operatoren und Builtins ([Builtins](builtins.md)); `case`, `if`,
+`receive`, `catch`, `try ... of ... catch Class:Reason:Stack ... after` mit
+[Stacktraces](abi.md#stack-traces), `maybe ... else ... end`; Listen-, Binary-
+und Map-Comprehensions ([Muster](patterns.md#comprehensions)); Tupel- und
+[native Records](native-records.md); [Funs](funs.md), lokale, entfernte und
+dynamische Aufrufe (`M:F(...)`, `apply/2,3`); [Prozesse](processes.md) und
+[Ports](ports.md). Aufrufe laufen auf expliziten Prozess-Frames mit echten
+Endaufrufen (tail calls) ([Ausführungsmodell](execution-model.md#implementation));
+Rumpfrekursion ist durch den Prozess-Stack begrenzt (standardmäßig unbegrenzt),
+nicht durch den nativen Stack. Module, die ein Batch nennt, aber nicht
+deklariert, stammen aus der [Bibliothek](library.md). Match-Qualifier in
+Comprehensions aus dem experimentellen Feature `compr_assign` werden als
+`[heap expressions] notimpl` abgewiesen.
 
-Funktionswerte `fun F/A`, `fun M:F/A`, anonyme und benannte Funs mit
-erfassten Variablen, Aufrufe von Funs und dynamische Aufrufe (`M:F(...)`,
-`apply/2,3`) laufen ([Funs](funs.md)). Mit Diagnosen abgewiesen, selbst in
-unbenutzten Funktionen:
-`receive`, Funs von Builtins,
-Prozesse und Nachrichtenaustausch.
 Akzeptierte Attribute: `module`, `export`, `file`, Tupel- und native `record`,
 `export_record`, `import_record`, Type/Spec-Formen, `doc`/`moduledoc`,
 `behaviour`/`behavior` ([Behaviours](semantic.md#behaviours)), jedes
@@ -64,12 +50,11 @@ der Analyse auf dem Erlang/OTP des Hosts aus
 `compile`-Optionen und parametrisierte Module werden abgewiesen; die Diagnose
 nennt sie, zum Beispiel
 `[behavior-changing attributes] notimpl [module="m" operation="-compile option export_all"]`.
-Jedes Modul erhält `module_info/0,1`.
-Quellen, die mit `#!` beginnen, folgen den [Escript-Regeln](executables.md#escripts)
-(implizites Modul und Export von `main/1`, `-mode` wird akzeptiert).
-Type/Spec-Formen werden analysiert, ändern aber nie den generierten Code. Reine
-Syntaxmodi (`--parse-check`, `--print-ast`, `--print-source`, ...) akzeptieren
-die vollständige Grammatik.
+Jedes Modul erhält `module_info/0,1`. Quellen, die mit `#!` beginnen, folgen
+den [Escript-Regeln](executables.md#escripts) (implizites Modul und Export von
+`main/1`, `-mode` wird akzeptiert). Type/Spec-Formen werden analysiert, ändern
+aber nie den generierten Code. Reine Syntaxmodi (`--parse-check`,
+`--print-ast`, `--print-source`, ...) akzeptieren die vollständige Grammatik.
 
 ## Das Beispiel mit kompilierten Modulen ausführen
 
@@ -80,8 +65,8 @@ die vollständige Grammatik.
 ./build/demo     # prints 42, -7 and {record,map,binary,list,integer,other}
 ```
 
-Dieselben Module laufen auch über ein C++-Harness. Aus einer Windows-x64-
-Developer-PowerShell mit dem gebauten Compiler:
+Dieselben Module laufen auch über ein C++-Harness. Aus einer
+Windows-x64-Developer-PowerShell mit dem gebauten Compiler:
 
 ```powershell
 $tool = './build/debug/bin/clau.exe'
@@ -94,9 +79,9 @@ cmake --build build/example-native
 Es gibt `42`, `-7`, `record`, `map`, `binary`, `list`, `integer`, `other` aus,
 je eines pro Zeile. Das Harness registriert Module explizit, erzeugt einen
 Kontext und dekodiert Ergebnisse; es ist ein Beispiel-Host, kein produktiver
-Einstiegspunkt. Unter Unix
-`build/debug/bin/clau`, `clang++` und `-DGENERATED_DIR="$PWD/build/example-aot"`
-verwenden (native Läufe sind dort noch nicht validiert).
+Einstiegspunkt. Unter Unix `build/debug/bin/clau`, `clang++` und
+`-DGENERATED_DIR="$PWD/build/example-aot"` verwenden. Der CTest
+`codegen_examples` führt diese Befehle mit jeder Policy aus.
 
 Weitere Aktionen auf denselben Quellen:
 
@@ -136,8 +121,8 @@ wiederverwendbar:
   Ausgeben ergibt denselben Text (CTest `printing_source` über die parsebaren
   Fixtures).
 - `SourceNotes` fügt einem Ausdruck eine Notiz hinzu, ausgegeben als
-  nachgestellter Kommentar `% Text` nach der Interpunktion der Zeile, in der
-  der Ausdruck endet, sowie Kommentarzeilen über einer Form. Nur Ausdrücke, die
+  nachgestellter Kommentar `% Text` nach der Interpunktion der Zeile, in der der
+  Ausdruck endet, sowie Kommentarzeilen über einer Form. Nur Ausdrücke, die
   ganze Zeilen einnehmen, tragen Notizen (Rumpfausdrücke und der geprüfte Wert
   eines `case`; einer pro Zeile, der äußerste), sodass lange verschachtelte
   Ausdrücke lesbar bleiben und der Text Erlang bleibt. Muster und Guards tragen
@@ -154,7 +139,7 @@ wiederverwendbar:
 | `--no-cache` | [Build-Caches](projects.md#build-caches) weder lesen noch schreiben |
 | `--cache-inference-in-dirs PATTERN` | Wiederholbar: Module in passenden Verzeichnissen behalten ihre Inferenzergebnisse im Build-Cache, zusätzlich zu den impliziten OTP-Anwendungsverzeichnissen ([Inferenz-Cache](projects.md#inference-cache)) |
 | `--build-dir DIR` | Wo Clause temporäre Dateien ablegt (unter `DIR/tmp`); ersetzt das `build_dir` jedes ausgewählten Projektziels; positionale Eingaben haben ohne die Option keines ([Build-Verzeichnis](projects.md#build-directory)) |
-| `--entry MODULE[:FUNCTION]` | Einstiegsfunktion/1 der ausführbaren Datei; wird in jedem Kompiliermodus validiert und fügt das Startartefakt `clausev1_start` hinzu ([ausführbare Dateien](executables.md#startup-object)); IR- und Assembly-Inspektionen lassen dann weg, was sie nicht erreicht ([Lebendigkeit von Exporten](executables.md#export-liveness)) |
+| `--entry MODULE[:FUNCTION[/ARITY]]` | Einstiegsfunktion/1 der ausführbaren Datei (sonst Funktion/0; `/0` oder `/1` wählt eine aus); wird in jedem Kompiliermodus validiert und fügt das Startartefakt `clausev1_start` hinzu ([ausführbare Dateien](executables.md#startup-object)); IR- und Assembly-Inspektionen lassen dann weg, was er nicht erreicht ([Lebendigkeit von Exporten](executables.md#export-liveness)) |
 | `--target-triple TRIPLE` | Zielmaschine; `--target` ist die Auswahl des Projektziels |
 | `-O0` / `-O2` / `-Os` | Generischer Standardcode + LLVM O0 / begrenzte Spezialisierung + LLVM O2 / LLVM Os, keine Spezialisierung, ein Abschnitt pro Symbol und Entfernen nicht referenzierten Codes und nicht referenzierter Daten durch den Linker |
 | `--no-type-specialization` | Varianten unabhängig von der Optionsreihenfolge deaktivieren |
@@ -207,23 +192,23 @@ auf ARM):
 - Ein `ir`-Kommentar eröffnet jede Folge von Instruktionen, die aus einer
   IR-Instruktion ausgewählt wurden, geschrieben so, wie `--print-optimized-ir`
   sie ausgibt (dieselbe Wertnummerierung, `switch` auf eine Zeile
-  zusammengefasst, kein `!dbg`). Code, der über Instruktionen hinweg
-  verschoben oder zusammengeführt wurde, wiederholt oder überspringt
-  Kommentare, wie es die Zeilentabelle sagt.
+  zusammengefasst, kein `!dbg`). Code, der über Instruktionen hinweg verschoben
+  oder zusammengeführt wurde, wiederholt oder überspringt Kommentare, wie es die
+  Zeilentabelle sagt.
 - Ein `erlang`-Kommentar nennt die physische Datei, Zeile und den Text, wie
   IR-Quelltextkommentare, wenn sich die Zeile innerhalb einer Funktion ändert.
   Instruktionen, deren Lowering nirgends verortet ist (Wrapper,
   Frame-Einrichtung), haben keinen.
-- Das Listing kompiliert eine Kopie, deren Zeilentabelle IR-Instruktionen
-  statt Erlang-Zeilen nummeriert; die Direktiven, Debug-Abschnitte und Labels
-  dieser Zeilentabelle entfallen. Neu assembliert ergibt es das Objekt, das
+- Das Listing kompiliert eine Kopie, deren Zeilentabelle IR-Instruktionen statt
+  Erlang-Zeilen nummeriert; die Direktiven, Debug-Abschnitte und Labels dieser
+  Zeilentabelle entfallen. Neu assembliert ergibt es das Objekt, das
   `--emit obj` schreibt.
 - Mit anderen Inspektionen gibt jedes Modul nacheinander `before`, `after` und
   `assembly` aus, jeweils nach einem Kopf (`stage=assembly`). Wie die
   IR-Inspektion weist es `--emit`, `--artifact-dir`, `--output` und
   `--print-types` ab. x86-Listings verwenden AT&T-Syntax.
-- Mit `--entry` lassen IR- und Assembly-Inspektionen die Funktionen weg, die
-  der Einstiegspunkt nicht erreichen kann, wie es die ausführbare Datei tut
+- Mit `--entry` lassen IR- und Assembly-Inspektionen die Funktionen weg, die der
+  Einstiegspunkt nicht erreichen kann, wie es die ausführbare Datei tut
   (`--keep-exports` behält sie).
 
 ## Umgebungsbericht
@@ -295,11 +280,11 @@ und `--no-cache` liest und schreibt nichts.
   Spezialisierungsbudgets (pro Ziel), Lebendigkeit von Exporten und das
   Startmodul erstrecken sich über jedes Modul, daher hängt das Objekt eines
   Moduls von Fakten anderer ab (Typen der Aufgerufenen, Records, Behaviours,
-  welche Funktionen lebendig bleiben). Diese Fakten haben heute keine
-  kanonische Form, die sich pro Modul hashen ließe, daher ließe sich ein
-  Schlüssel pro Modul nicht als korrekt beweisen; jede Änderung an irgendeinem
-  Modul des Batches kompiliert den Batch neu. Nur Inferenzergebnisse werden für
-  abgedeckte Bibliotheksverzeichnisse pro Modul behalten
+  welche Funktionen lebendig bleiben). Diese Fakten haben heute keine kanonische
+  Form, die sich pro Modul hashen ließe, daher ließe sich ein Schlüssel pro
+  Modul nicht als korrekt beweisen; jede Änderung an irgendeinem Modul des
+  Batches kompiliert den Batch neu. Nur Inferenzergebnisse werden für abgedeckte
+  Bibliotheksverzeichnisse pro Modul behalten
   ([Inferenz-Cache](projects.md#inference-cache)), sodass eine solche
   Neukompilierung sie wiederverwendet.
 - **Schlüssel.** Die Version von `clau` und die Identität der ausführbaren
@@ -326,8 +311,8 @@ und `--no-cache` liest und schreibt nichts.
   fehlende Backends schlagen fehl; es gibt keinen Rückfall auf den Host.
 - Die Verifikation läuft vor und nach der Optimierung; sie prüft die Gültigkeit
   des IR, nicht die Korrektheit des Erlang-Codes.
-- Budgets pro Ziel: 1.024 Module, 250.000 AST-Knoten pro Modul, 1.000.000 pro
-  Batch. Serialisierte Ausgabe: 64 MiB pro Modul, 256 MiB pro Batch. Das
+- Budgets pro Ziel: 16.384 Module, 1.500.000 AST-Knoten pro Modul, 16.000.000
+  pro Batch. Serialisierte Ausgabe: 64 MiB pro Modul, 256 MiB pro Batch. Das
   Überschreiten eines Budgets ist eine gewöhnliche Ressourcendiagnose.
 
 ## LLVM-SDK
@@ -348,15 +333,13 @@ abgewickelt werden. Die Runtime verwendet LLVM nie.
   x64/ARM64 oder macOS ARM64. `CLAUSE_DOWNLOAD_LLVM=OFF` deaktiviert Downloads.
 - Eine Link-Probe zur Konfigurationszeit prüft die ABI-Kompatibilität.
 
-Referenz-Setup Windows x64 (2026-09-29): Host-clang-cl 23.1.2 in
-`C:/Program Files/LLVM/bin`, SDK `thirdparty/clang+llvm-23.1.2-x86_64-pc-windows-msvc`,
+Referenz-Setup Windows x64: Host-clang-cl 23.1.2 in
+`C:/Program Files/LLVM/bin`, SDK
+`thirdparty/clang+llvm-23.1.2-x86_64-pc-windows-msvc`,
 Visual-Studio-18-x64-Werkzeuge, Windows SDK 10.0.26100.0, Ninja, `/MT`,
 `_ITERATOR_DEBUG_LEVEL=0`. Die automatische Auswahl wendet die Einstellungen für
 `/MT` und Iteratoren an; ein explizites `LLVM_DIR` tut das nicht, und die
 Link-Probe schlägt dann fehl.
-
-Historische macOS-Referenz: Homebrew `llvm` 23.1.1_1 (arm64, gemeinsame
-`libLLVM.23.1.dylib`, Assertions aus) mit AppleClang 21.
 
 ## PCRE2
 
@@ -392,9 +375,8 @@ Archiv (eine Eingabe pro Zeile), die `clau` jedem Link hinzufügt; eine
 gemeinsame Bibliothek macht die ausführbaren Dateien zur Laufzeit von ihr
 abhängig. Pro Plattform: Windows verwendet den Download (praktisch wird kein
 PCRE2 des Systems gesucht); Linux und macOS verwenden ein installiertes PCRE2
-ab 10.47, wenn vorhanden, sonst den Download. Vorerst immer in die Runtime
-gelinkt (entschieden 2026-10-14); es nur in Programme zu linken, die `re`
-aufrufen, oder eine dynamisch geladene Bibliothek ist zurückgestellt.
+ab 10.47, wenn vorhanden, sonst den Download. PCRE2 wird immer in die Runtime
+gelinkt, auch in Programme, die `re` nie aufrufen.
 
 ## zlib
 
@@ -411,6 +393,6 @@ Vorrang, andernfalls wird das Release auf jedem Host nach
 Lizenz von zlib ist die zlib-Lizenz. Das LLVM des Compilers behält sein eigenes
 zlib; beide treffen nie in einer Binärdatei zusammen.
 
-Weitere Voraussetzungen: CMake ≥ 3.28, ein C++23-Compiler, Boost ≥ 1.90, toml++
-3.4.0 und die Qualitätswerkzeuge. OTP wird nur für optionale Audits und die
-Neuerzeugung von Fixtures benötigt.
+Weitere Voraussetzungen: CMake ≥ 3.28, ein C++23-Compiler, Boost ≥ 1.90,
+toml++ 3.4.0 und die Qualitätswerkzeuge. OTP wird nur für optionale Audits und
+die Neuerzeugung von Fixtures benötigt.

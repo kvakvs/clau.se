@@ -17,7 +17,7 @@ Arguments (`$ARGUMENTS`, any order):
 - `docs`: also bring the translated documentation in `content/docs/<locale>/`
   up to date after the sync (step 7).
 - `full`: ignore the last recorded source commit and review all text against
-  the whole project, not only what changed since.
+  the whole project, not only what changed since. Implies `docs`.
 
 ## Sources
 
@@ -121,11 +121,11 @@ of this skill: it is refreshed with `/update-benchmarks`
 6. **Record the source commit.** Write `content/home-meta.json` with the
    short `git -C ../clau rev-parse --short HEAD` and today's date
    (`updatedAt`), formatted like `content/docs-meta.json`.
-7. **Docs translations (only with `docs`).** For each file that step 2 listed
+7. **Docs translations (only with `docs` or `full`).** For each file that step 2 listed
    as outdated or missing, translate or update it per `.agents/translation.md`
    (one subagent per locale), stamp it with `pnpm -s docs-stamp <locale>
 <file>.md...`, then rerun `pnpm docs-status` until it shows no `ERROR` and
-   no outdated files. Without `docs`, only report the outdated list.
+   no outdated files. Without `docs` or `full`, only report the outdated list.
 8. **Quality gates.** Run, stopping at the first failure and fixing it:
 
    ```powershell

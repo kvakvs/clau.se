@@ -1,42 +1,43 @@
 ---
 source: docs/io.md
-sourceCommit: 6ed3851c
-sourceSha256: 66dc714b12c1c9b117cfcabd5ac63dc68c134dc7a995c6548ba5de931204f6c2
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
+translatedAt: 2026-10-17
 ---
 # Saída para a consola (`io`)
 
-`io:format/1,2` e `io:put_chars/1` escrevem
-na saída padrão. São builtins do runtime do módulo `io` no catálogo da ponte
+`io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` e `io:nl/0,1` são
+builtins do runtime do módulo `io` no catálogo da ponte
 ([builtins](builtins.md)); o runtime implementa as regras de `io_lib_format` e
-`io_lib_pretty` do OTP em C++ ([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)).
+`io_lib_pretty` do OTP em C++
+([io_format.cpp](../runtime/src/builtins/io_format.cpp),
+[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). As funções de entrada
+de `io` são Erlang na [biblioteca](library.md#contents).
 
 ## Chamadas
 
 - `io:format(Format)` equivale a `io:format(Format, [])`. Ambas devolvem `ok`.
   `io:fwrite/1,2,3` são iguais a `io:format/1,2,3`; `io:nl/0,1` escrevem uma
-  quebra de linha.
-- Dispositivos de `io:format/3`, `io:fwrite/3`, `io:put_chars/2`
-  e `io:nl/1`: `standard_io` e `user` são a saída padrão, `standard_error` é
-  o erro padrão (a saída padrão é despejada primeiro, para que as duas
-  mantenham a sua ordem). Um pid, ou um átomo registado para um, é um servidor
-  de I/O: o texto é-lhe enviado em UTF-8 através de `file:write/2` (um
-  ficheiro aberto do módulo `file` do Clause) e a chamada devolve o que essa
-  devolver. Um átomo não registado é `badarg`, um pid morto
-  `error:terminated`, o próprio chamador `error:calling_self` e qualquer outro
-  termo `function_clause`, como no OTP.
-- `io:put_chars(Chardata)` escreve chardata: carateres Unicode, binaries
-  UTF-8 e listas aninhadas terminadas em `[]` ou num binary. Qualquer outra
-  coisa (um átomo, um surrogate, UTF-8 inválido, um bitstring) lança `badarg`.
+  mudança de linha.
+- Dispositivos de `io:format/3`, `io:fwrite/3`, `io:put_chars/2` e `io:nl/1`:
+  `standard_io` e `user` são a saída padrão, `standard_error` é o erro padrão
+  (a saída padrão é despejada primeiro, para que as duas mantenham a sua
+  ordem). Um pid, ou um átomo registado para um, é um servidor de I/O: o texto
+  é-lhe enviado em UTF-8 através de `file:write/2` (um ficheiro aberto do
+  módulo `file` do Clause) e a chamada devolve o que essa devolver. Um átomo
+  não registado é `badarg`, um pid morto `error:terminated`, o próprio chamador
+  `error:calling_self` e qualquer outro termo `function_clause`, como no OTP.
+- `io:put_chars(Chardata)` escreve chardata: carateres Unicode, binaries UTF-8
+  e listas aninhadas terminadas em `[]` ou num binary. Qualquer outra coisa (um
+  átomo, um surrogate, UTF-8 inválido, um bitstring) lança `badarg`.
 - O texto é construído por inteiro e depois escrito em UTF-8, tal como faz o
   dispositivo de saída padrão do OTP no modo `-noshell` (codificação
   `unicode`). Um erro não escreve nada. Uma escrita rejeitada é a falha do
   runtime `output_failure` (código de saída 70).
 - Chamadas qualificadas, `fun io:format/2`, `apply(io, format, Args)` e
-  `M:format(...)` chegam todas aos builtins. As outras funções de `io` mantêm o
-  diagnóstico `unknown module io`. Um módulo do lote chamado `io` não substitui
-  os builtins (o `io` do OTP é sticky).
+  `M:format(...)` chegam todas aos builtins. Um módulo do lote chamado `io` não
+  substitui os builtins (o `io` do OTP é sticky,
+  [registo](builtins.md#registration)).
 
 ## Formatos
 
@@ -57,12 +58,12 @@ na saída padrão. São builtins do runtime do módulo `io` no catálogo da pont
 - Sem `t`, `~s` aceita apenas carateres Latin-1 e `~c` escreve o byte menos
   significativo do seu inteiro; `~w`/`~p` escapam os carateres de átomos fora
   do Latin-1 como `\x{...}`. Com `t`, `~s` lê binaries como UTF-8 (recorrendo
-  a Latin-1 em alternativa) e `~p` escreve `<<"..."/utf8>>` para binaries
-  UTF-8 imprimíveis.
-- `badarg`: um carater de controlo desconhecido, argumentos em falta ou a
-  mais, um argumento do tipo errado, `F` menor do que `P` para `~s`/`~c`, um
-  `~p` ou `~n` alinhado à esquerda, uma base fora de 2..36, uma saída que não
-  é Unicode.
+  a Latin-1 em alternativa) e `~p` escreve `<<"..."/utf8>>` para binaries UTF-8
+  imprimíveis.
+- `badarg`: um carater de controlo desconhecido, argumentos em falta ou a mais,
+  um argumento do tipo errado, `F` menor do que `P` para `~s`/`~c`, um `~p` ou
+  `~n` alinhado à esquerda, uma base fora de 2..36, uma saída que não é
+  Unicode.
 - Não implementado (`badarg`, ver [diferenças](differences.md#io)): `~e`, `~f`,
   `~g`, `~x`, `~X`, `~+`, `~#`, `~W`, `~P` e o modificador `K`.
 

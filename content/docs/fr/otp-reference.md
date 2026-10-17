@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 6ed3851c
-sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
+translatedAt: 2026-10-17
 ---
 # Référence des sources Erlang/OTP
 
@@ -15,10 +15,10 @@ vérifiée, se trouve dans
 - Oracle installé utilisé pour les résultats de référence (goldens) et les
   audits : OTP 29.1.1 / ERTS 17.1.
 
-`references/otp` est un checkout ignoré par Git. Les builds et tests normaux
-utilisent des goldens appartenant au projet et n'ont besoin ni du checkout ni
-d'un OTP installé. La configuration et les tests ne récupèrent ni n'avancent
-jamais la référence. Les audits en direct sont optionnels, avec
+`references/otp` est un checkout ignoré par Git. Les compilations et tests
+normaux utilisent des goldens appartenant au projet et n'ont besoin ni du
+checkout ni d'un OTP installé. La configuration et les tests ne récupèrent ni
+n'avancent jamais la référence. Les audits en direct sont optionnels, avec
 `-DCLAUSE_OTP_AUDITS=ON` ; voir
 [régénération des fixtures](../tests/fixtures/patternmatch/generated/README.md).
 

@@ -1,14 +1,14 @@
 ---
 source: docs/debugging.md
-sourceCommit: 6ed3851c
-sourceSha256: 18d5fe2775a7c01edb18031b8f1ba632b356d04159c88b31692d1cc3d9ccf9da
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b93973504afffd4df57d0a39ac405818a080f79a56515e27f312fdcaec3e3e8b
+translatedAt: 2026-10-17
 ---
 # Depuración de ejecutables
 
-`-g` emite tablas de líneas del código fuente Erlang (backlog F30). Funcionan
-en todos los niveles de optimización y con `--emit`, con el enlazado
-posicional mediante `-o` y con los destinos de proyecto.
+`-g` emite tablas de líneas del código fuente Erlang. Funcionan en todos los
+niveles de optimización y con `--emit`, con el enlazado posicional mediante
+`-o` y con los destinos de proyecto.
 
 ## Tablas de líneas
 
@@ -35,9 +35,8 @@ que el ejecutable nombra solo por el nombre de archivo
 (`/PDBALTPATH:%_PDB%`); se publica junto al ejecutable como `<name>.pdb`,
 después del ejecutable, en la misma publicación diferida. Los ejecutables ELF
 conservan DWARF en su interior. Los ejecutables Mach-O necesitarían `dsymutil`
-sobre los objetos preparados antes de eliminar la preparación; esto aún no se
-hace, así que los ejecutables de macOS pierden las tablas de líneas al enlazar
-(una carencia hasta el [step 66](../.agents/11-plan.md#step-66)).
+sobre los objetos preparados antes de eliminar la preparación; no se ejecuta,
+así que los ejecutables de macOS pierden las tablas de líneas al enlazar.
 
 ## Pila de llamadas de Erlang
 

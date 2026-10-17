@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: 6ed3851c
-sourceSha256: 84319a420ecb674ad4d7c524783b1696997988d90503989810d27f6feb553bc4
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
+translatedAt: 2026-10-17
 ---
 # Exécutables
 
@@ -17,22 +17,25 @@ sélectionnée à son `output` du manifeste
 Le point d'entrée est une fonction exportée d'arité 1 qui reçoit la liste des
 arguments. Une `FUNCTION` sélectionnée sans `FUNCTION/1` peut à la place être
 une `FUNCTION/0` exportée : elle s'exécute sans les arguments du programme (les
-options du runtime en sont tout de même retirées). Le choix par défaut (sans
-sélection) est toujours `main/1`.
+options du runtime en sont tout de même retirées). Un suffixe `/0` ou `/1` ne
+sélectionne que cette arité, donc `--entry benchmarks:run/0` exécute `run/0`
+même si `run/1` est aussi exportée. Le choix par défaut (sans sélection) est
+toujours `main/1`.
 
 | Source | Écriture | Portée |
 | --- | --- | --- |
-| CLI | `--entry MODULE[:FUNCTION]` | Lot positionnel, ou l'unique cible de projet sélectionnée |
-| Manifeste | `entry = "MODULE[:FUNCTION]"` dans une table `[[targets]]` | Cette cible |
+| CLI | `--entry MODULE[:FUNCTION[/ARITY]]` | Lot positionnel, ou l'unique cible de projet sélectionnée |
+| Manifeste | `entry = "MODULE[:FUNCTION[/ARITY]]"` dans une table `[[targets]]` | Cette cible |
 | Par défaut | L'unique escript, sinon l'unique module exportant `main/1` | Seulement lorsqu'un exécutable est demandé (`-o`, ou une cible de projet avec `output`) |
 
 - `FUNCTION` vaut `main` par défaut. Les noms sont du texte d'atome sans
   guillemets : 1 à 255 scalaires Unicode, UTF-8 valide, sans caractères de
-  contrôle ni `:`. Les autres écritures sont des erreurs d'utilisation (CLI,
-  code de sortie 2) ou des erreurs de manifeste (code de sortie 1).
-- `entry` est une clé optionnelle du schéma 1 ; les anciens manifestes restent
-  valides. Le manifeste entier est décodé, donc un `entry` mal formé échoue
-  même dans les cibles non sélectionnées.
+  contrôle ni `:`. Un `/DIGITS` final après `FUNCTION` est l'arité et doit
+  valoir `0` ou `1` ; les autres barres obliques font partie du nom. Les autres
+  écritures sont des erreurs d'utilisation (CLI, code de sortie 2) ou des
+  erreurs de manifeste (code de sortie 1).
+- Le manifeste entier est décodé, donc un `entry` mal formé échoue même dans
+  les cibles non sélectionnées ([manifeste](projects.md)).
 - L'option CLI `--entry` remplace la clé du manifeste et exige exactement une
   cible sélectionnée. Elle est incompatible avec les actions de vérification
   et d'affichage et avec `--new-project` ; ces actions ignorent l'`entry` du
@@ -45,19 +48,22 @@ sélection) est toujours `main/1`.
 | --- | --- |
 | Module absent du lot | `<origin>: entry module M is not among the compiled modules` (origine : `--entry` ou manifeste `file:line:col [target t] (entry)`) |
 | Ni `F/1` ni `F/0` | `<file>:<line>:<col>: entry function M:F/1 is not defined` à la déclaration du module |
+| `F/A` explicite absente | `... entry function M:F/A is not defined; found F/N` à une définition de même nom, sinon à la déclaration du module |
 | Seulement d'autres arités | `... is not defined; found F/N, but the entry takes the argument list (FUNCTION/1) or nothing (FUNCTION/0)` à cette définition |
 | `F/1` (sinon `F/0`) non exportée | `<file>:<line>:<col>: entry function M:F/A is not exported` à la définition |
-| Pas de sélection, aucun export `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main)` |
+| Pas de sélection, aucun export `main/1` | `no entry point: no module exports main/1; choose the entry with --entry MODULE[:FUNCTION[/ARITY]] (an exported FUNCTION/1, or FUNCTION/0 run without the program arguments; FUNCTION defaults to main, ARITY to 1, else 0)` |
 | Pas de sélection, plusieurs | `ambiguous entry point: main/1 is exported by a, b; choose the entry with ...` (même indication) |
 
-Pour les cibles de projet, l'indication nomme aussi la clé du manifeste : `... --entry MODULE[:FUNCTION] or with
-entry = "MODULE[:FUNCTION]" in this target's [[targets]] table of the project manifest ...`, par exemple :
+Pour les cibles de projet, l'indication nomme aussi la clé du manifeste :
+`... --entry
+MODULE[:FUNCTION[/ARITY]] or with entry = "MODULE[:FUNCTION[/ARITY]]" in this
+target's [[targets]] table of the project manifest ...`, par exemple :
 
 ```toml
 [[targets]]
 name = "app"
 sources = ["src/*.erl"]
-entry = "app:start"   # calls app:start/1 (or app:start/0); plain "app" calls app:main/1
+entry = "app:start"   # calls app:start/1 (or app:start/0); "app:start/0" calls app:start/0; plain "app" calls app:main/1
 ```
 
 ## Arguments
@@ -88,6 +94,7 @@ l'argument suivant ou après `=`.
 | `--max-atoms N` | Taille de la table des atomes, de 1 à 2^26 (67 108 864) ; 2^20 (1 048 576) par défaut, comme `+t` d'OTP |
 | `--max-heap BYTES` | Plafond du bloc de tas, des fragments et des binaries hors tas de chaque processus, au moins le tas minimal (233 mots) ; non plafonné par défaut |
 | `--max-stack BYTES` | Plafond de la pile de cadres de chaque processus ; non plafonné par défaut |
+| `--min-heap-size WORDS` | `min_heap_size` par défaut de chaque processus, au moins 1, arrondi à une taille de tas supérieure, comme `+hms` d'OTP ; au plus `--max-heap` ; 233 par défaut ([dimensionnement](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Plafond de la mémoire de l'ensemble des processus (tas, binaries hors tas, piles) ; non plafonné par défaut |
 | `--schedulers N` | Workers de l'ordonnanceur exécutant les processus, de 1 à 1 024 ; un par processeur logique par défaut, comme `+S` d'OTP ([workers](processes.md#workers)) |
 | `--profile FILE` | Écrit dans `FILE`, à la fin du programme, un rapport des entrées et du temps propre par fonction et par processus ([profilage](profiling.md)) ; désactivé par défaut |
@@ -131,11 +138,11 @@ que ce processus ([processus](processes.md)).
 `halt/0,1`, `error/1,2,3`, `exit/1` et `throw/1` peuvent être appelées avec ou
 sans le préfixe `erlang:` ; une définition locale ou
 `-compile({no_auto_import, ...})` garde le nom non qualifié local, comme dans
-OTP. `halt/2` n'est pas disponible.
-`halt(N)` garde les 31 bits de poids faible de tout entier non négatif, comme
-le fait OTP. Un slogan est une liste propre d'au plus 1 023 points de code
-Unicode. Un halt déroule le point d'entrée à travers le canal d'erreur vérifié
-comme une erreur, il n'arrête donc le programme qu'après le nettoyage généré.
+OTP. `halt/2` n'est pas disponible. `halt(N)` garde les 31 bits de poids
+faible de tout entier non négatif, comme le fait OTP. Un slogan est une liste
+propre d'au plus 1 023 points de code Unicode. Un halt déroule le point
+d'entrée à travers le canal d'erreur vérifié comme une erreur, il n'arrête
+donc le programme qu'après le nettoyage généré.
 
 ## Flux de sortie
 
@@ -146,8 +153,8 @@ comme une erreur, il n'arrête donc le programme qu'après le nettoyage génér�
   les échecs du runtime et les rapports d'erreur des autres processus qui
   plantent ([processus](processes.md#exits)).
 - Le rapport est une ligne `uncaught exception <class>: <reason in ~w form>`,
-  suivie plus tard des cadres de pile. Son texte exact n'est pas une
-  interface stable ; les tests le comparent par motif.
+  sans cadres de pile. Son texte exact n'est pas une interface stable ; les
+  tests le comparent par motif.
 
 ## Objet de démarrage
 
@@ -169,15 +176,16 @@ noms du module et de la fonction d'entrée et un indicateur escript. Son
    aucun code Erlang ne s'exécute sur un lot partiel.
 3. Crée le processus d'entrée, construit argv et met en file l'appel de
    `M:F/1` comme processus principal, puis l'exécute, ainsi que chaque
-   processus qu'il crée, sur l'exécuteur coopératif ([processus](processes.md))
-   jusqu'à sa fin.
+   processus qu'il crée, sur les workers de l'ordonnanceur
+   ([processus](processes.md)) jusqu'à sa fin.
 4. Convertit le résultat en code de sortie ci-dessus, en affichant les
    rapports après le vidage de stdout, puis libère chaque processus et arrête
    le runtime sur chaque chemin (sauf `halt(abort)`).
 
 `clau -o` lie lui-même ces objets ([édition de liens](#linking)). Édition de
-liens manuelle (la [recette du harnais natif](compile.md#run-the-compiled-module-example)
-sans source de harnais) :
+liens manuelle (la
+[recette du harnais natif](compile.md#run-the-compiled-module-example) sans
+source de harnais) :
 
 ```powershell
 & $tool --emit obj --entry app --artifact-dir build/app app.erl helper.erl
@@ -260,24 +268,17 @@ programme. `--verbose` trace le résultat par module
 Une fonction qu'aucun code vivant n'atteint n'est jamais non plus soumise à
 l'inférence de types ni vérifiée contre sa `-spec` : l'inférence ne couvre que
 le code vivant, ce qui est plus rapide pour les programmes qui utilisent peu de
-gros modules de bibliothèque (`bench_gc` : de 68 ms à 10 ms) et ne peut que
-restreindre les faits des fonctions vivantes, puisque les appelants
-inaccessibles ne joignent plus leurs arguments. Une spécification contredite
-uniquement dans du code inaccessible est donc signalée pour les artefacts
-`--emit` mais pas pour l'exécutable.
+gros modules de bibliothèque et ne peut que restreindre les faits des fonctions
+vivantes, puisque les appelants inaccessibles ne joignent plus leurs
+arguments. Une spécification contredite uniquement dans du code inaccessible
+est donc signalée pour les artefacts `--emit` mais pas pour l'exécutable.
 
 `--keep-exports` (ou l'option de projet `keep_exports = true`) garde chaque
-export appelable, comme avant le step 62C. L'analyse s'applique aux exécutables
-(`-o` ou un build de projet qui lie) et aux inspections d'IR et d'assembleur
-dotées d'un point d'entrée (`--entry` ou l'`entry` du manifeste de la cible),
-qui montrent alors le code de l'exécutable ; les artefacts `--emit`, destinés à
-d'autres programmes, gardent chaque export.
-
-Des références faibles de la table d'exports résolues par l'éditeur de liens
-ont été évaluées à la place et rejetées : les externes faibles COFF exigent une
-définition par défaut et ne laissent pas `/OPT:REF` supprimer la cible, et les
-références faibles Mach-O ne se lient qu'aux symboles importés de dylib, donc
-aucune forme ne fonctionne sur les trois formats d'objets.
+export appelable. L'analyse s'applique aux exécutables (`-o` ou un build de
+projet qui lie) et aux inspections d'IR et d'assembleur dotées d'un point
+d'entrée (`--entry` ou l'`entry` du manifeste de la cible), qui montrent alors
+le code de l'exécutable ; les artefacts `--emit`, destinés à d'autres
+programmes, gardent chaque export.
 
 `-g` garde les tables de lignes Erlang pour les débogueurs : dans l'exécutable
 (ELF), ou dans un `<name>.pdb` publié à côté (cibles MSVC)
@@ -302,10 +303,10 @@ aucune forme ne fonctionne sur les trois formats d'objets.
 - Les objets et l'exécutable sont préparés dans un répertoire privé
   `.clause-link-*` à côté de la sortie, qui est supprimé ensuite ; il reste
   là, et non dans le [répertoire de build](projects.md#build-directory), car
-  le renommage final ne doit pas traverser de volumes. La sortie
-  n'est remplacée qu'après une édition de liens réussie, donc chaque échec
-  laisse un fichier existant inchangé. La sortie ne doit pas être un
-  répertoire ni un alias d'une entrée.
+  le renommage final ne doit pas traverser de volumes. La sortie n'est
+  remplacée qu'après une édition de liens réussie, donc chaque échec laisse un
+  fichier existant inchangé. La sortie ne doit pas être un répertoire ni un
+  alias d'une entrée.
 - Les avertissements de l'éditeur de liens sont transmis à stderr ;
   `--linker` et `--runtime-library` exigent `--output` ou un build de projet
   avec édition de liens.

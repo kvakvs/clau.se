@@ -1,154 +1,160 @@
 ---
 source: docs/execution-model.md
-sourceCommit: 6ed3851c
-sourceSha256: 662633c074adf6d3159dce2c7df1099c01e46ae9c66d8589bca3e6a13daca6a2
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
+translatedAt: 2026-10-17
 ---
 # Exekveringsmodell: ramar och fortsättningar
 
-Det fastställer hur genererade
-Erlang-funktioner anropar, returnerar, suspenderas och misslyckas när
-rekursion, svansanrop och processer tillkommer. Step 19 implementerade anrop,
-returer, svansanrop och ramar ([Implementation](#implementation) listar vad
-som fortfarande är öppet); steps 23, 24, 26 och 43 bygger på det.
+Hur genererade Erlang-funktioner anropar, returnerar, suspenderas och
+misslyckas. Modellen valdes efter prototypjämförelsen i
+[jämförda alternativ](#alternatives-compared); den genererade kodens sida av
+dess ABI finns i [ramar och överföringar](abi.md#frames-and-transfers).
 
 ## Beslut
 
 Varje Erlang-process körs på sin egen **platta stack av explicita ramar**, och
 genererad kod rör sig mellan funktioner endast genom **garanterade
 svansöverföringar** (LLVM `musttail`). Ett anrop som inte är ett svansanrop
-lagrar anroparens fortsättning (continuation) i anroparens ram och hoppar
-till den anropade; en retur hoppar tillbaka till den fortsättningen. Den
-inbyggda (native) stacken förblir därför ett anrop djup ovanför
-schemaläggaren, oavsett Erlang-rekursionens djup, och en process kan stanna
-vid vilken överföring som helst och återupptas senare på vilken tråd som
-helst.
+lagrar anroparens fortsättning (continuation) i anroparens ram och hoppar till
+den anropade; en retur hoppar tillbaka till den fortsättningen. Den inbyggda
+(native) stacken förblir därför ett anrop djup ovanför schemaläggaren, oavsett
+Erlang-rekursionens djup, och en process kan stanna vid vilken överföring som
+helst och återupptas senare på vilken tråd som helst.
 
-- En platt stack per process ersätter den segmenterade rotstacken från 8F.
-  Den innehåller ramhuvuden och platser, växer genom att flyttas och
-  adresseras som bas plus offset.
-- Varje funktion som behöver en ram sänks till en **ingång** och en
-  **kropp**. Kroppen börjar med en `switch` på ramens fortsättningsindex, så
-  att en LLVM-funktion behåller alla funktionens block, sammanslagningar och
-  hanterare.
-- Argument och resultat färdas i processregistren `x[0..n)` (BEAM:s
-  X-register); varje kodpekare har den enda signaturen
-  `void code(Process *)`.
-- Undantag rullar upp ramar till den innersta ram vars huvud anger en
-  hanterarfortsättning.
+- En platt stack per process (`ProcessStack`, `process/stack`) innehåller
+  ramhuvuden och platser, växer genom att flyttas och adresseras som bas plus
+  offset.
+- Varje funktion är en LLVM-funktion, dess **kropp**, som börjar med en
+  `switch` på ramens återupptagningsindex, så att den behåller alla
+  funktionens block, sammanslagningar och hanterare.
+- Argument och resultat färdas i processregistren `x[]` (BEAM:s X-register).
+  Varje kodpekare har den enda signaturen `abi::v1::Code`,
+  `void(void *context, TermWord x0, ..., TermWord x5)`: de första
+  `abi::v1::register_arguments` (6) registren skickas också som parametrar, så
+  att ett anrops inledande argument och en returs resultat stannar i
+  maskinregister.
+- Ett fel returnerar genom varje anropare, som kontrollerar felkanalen efter
+  anropet ([felkanal](abi.md#failure-channel-revision-2)).
 
 ## Processtillstånd
 
+`abi::v1::FrameState` inleder varje kontext, så att genererad kod läser och
+uppdaterar det inline:
+
 | Fält | Betydelse |
 | --- | --- |
-| `stack`, `capacity` | En växande ordarray; flyttas när den växer |
-| `frame`, `top` | Ordoffset för det aktuella ramhuvudet och för det första lediga ordet |
-| `x[]`, `live` | Argument-/resultatregister; de första `live` orden är rötter vid en överföring |
-| `reductions` | Återstående anrop i tidsskivan |
-| `resume_at` | Ingången där en suspenderad process fortsätter |
-| felkanal | Dagens kanal av revision 2: orsak, nyttolast, stackspårning, `halted` |
+| `stack`, `top`, `limit` | Stackblocket (flyttas när det växer), dess första lediga ord och de ord som en push får nå utan att växa eller passera stackgränsen |
+| `frame` | Ordoffset för det aktuella ramhuvudet |
+| `registers`, `live` | De 256 argument-/resultatregistren; de första `live` orden är rötter vid en överföring |
+| `reductions` | Återstående funktionsingångar i tidsskivan |
+| `slow`, `failed` | Bitar som skickar överföringar till tjänsterna (`slow_collect`, `slow_profile`); skilt från noll medan felkanalen innehåller ett fel |
+
+`heap_top`/`heap_limit`, `runtime` och `self` betjänar inline-allokering,
+atomladdningar och `self/0` ([ramar och överföringar](abi.md#frames-and-transfers)).
+En suspenderad process registrerar ingången där den fortsätter i
+`ProcessStack::resume_`.
 
 ## Ramar
 
-En ram är ett fast huvud följt av funktionens platser (BEAM:s Y-register).
-Platserna nollställs vid push, som rotramar görs i dag.
+En ram är ett huvud på 4 ord följt av funktionens platser (BEAM:s
+Y-register): termplatser, som är rötter, och sedan råa platser för spillda
+native-värden.
 
 | Huvudord | Betydelse |
 | --- | --- |
 | `previous` | Offset för anroparens huvud (ramar länkas med offset, aldrig pekare) |
-| `function` | Funktionens deskriptor |
+| `function` | Funktionens `FrameDescriptor` |
 | `resume` | Fortsättningsindex som kroppen väljer på när kontrollen återvänder hit |
-| `handler` | Fortsättningsindex för den innersta aktiva hanteraren, 0 när ingen finns |
+| `handler` | Hanterarindex; alltid 0, eftersom fel returnerar genom anropare |
 
-Deskriptorn utökar dagens `abi::v1::FrameDescriptor` (moduldeskriptor,
-platser för modul- och funktionsatomer, aritet) med kodpekarna för ingång och
-kropp samt antalet platser. Huvudord är inte termer; en genomlöpare följer
-`previous` och läser antalet platser från deskriptorer. En **bottenram** som
-ägs av runtimen ligger under det första anropet i varje process:
-fortsättning 1 är ett normalt avslut (resultatet i `x[0]`), fortsättning 2
-hanteraren för ett ofångat undantag.
+Deskriptorn `<symbol>.frame` anger modul, funktion och aritet och innehåller
+kroppens kodpekare och antalet platser ([abi](abi.md#frames-and-transfers)).
+Huvudord är inte termer; en genomlöpare följer `previous` och läser antalet
+platser från deskriptorer. En **bottenram** som ägs av runtimen ligger under
+det första anropet i varje process och i varje värdanrop: att returnera in i
+den lagrar resultatet i det första registret och avslutar native-anropet.
 
 ## Operationer
 
-- **Anrop (ej svansanrop).** Levande värden ligger redan i platser (dagens
-  rotningsregel). Anroparen sätter sin egen `resume` till nästa
-  fortsättningsindex, skriver argumenten till `x[0..n)` och överför till den
-  anropades ingång. Ett fjärranrop överför till den exporterade
-  ingångssymbolen.
-- **Ingång.** Räknar en reduktion (se lämna ifrån sig), pushar en nollställd
-  ram (och flyttar stacken när den är full), kopierar `x[0..n)` till
-  platser, sätter `resume = 0` och överför till kroppen.
-- **Retur.** Den anropade skriver resultatet till `x[0]`, poppar sin ram
+- **Anrop (ej svansanrop).** Värden som lever efter anropet spills till
+  platser. Anroparen sätter sin egen `resume` till nästa fortsättningsindex,
+  lägger argumenten i registren och överför till den anropade. Lokala,
+  fjärr-, fun- och dynamiska anrop är samma överföring; ett fun-anrop eller
+  dynamiskt anrop frågar först en förberedelsetjänst efter den anropades
+  `FrameDescriptor` ([funs](funs.md#dynamic-calls)).
+- **Ingång.** Förbrukar en reduktion, pushar en nollställd ram (och låter
+  stacken växa när den är full), kopierar argumenten bortom parametrarna till
+  platser, sätter `resume = 0` och överför till den anropades kropp.
+- **Retur.** Den anropade skickar resultatet som `x0`, poppar sin ram
   (`top = frame`, `frame = previous`) och överför till anroparens kropp, som
   väljer på anroparens `resume`.
-- **Svansanrop.** Argumenten går till `x[0..n)`, anroparen poppar sin egen
-  ram utan att överföra och överför sedan till den anropades ingång.
-  Anroparens anropare förblir returmålet, så svansrekursion körs med konstant
-  Erlang- och native-stack. Lokala, ömsesidiga och fjärranslutna svansanrop
-  är samma hopp.
-- **Lämna ifrån sig (yield).** Varje ingång förbrukar en reduktion. Vid noll
-  registrerar den sig själv i `resume_at` och återvänder till schemaläggaren i
-  stället för att pusha en ram; argumenten stannar i `x[0..arity)`, som då är
-  processens enda register att rota. Återupptagning fyller på budgeten och
-  överför till `resume_at`, som upprepar ingången. Senare väntanden
-  (`receive`) lagrar ett fortsättningsindex i kroppen i stället för
-  en ingång.
-- **Avslut.** Att returnera in i bottenramen registrerar ett normalt avslut;
-  att rulla upp in i den registrerar ett ofångat undantag. I båda fallen
-  återvänder koden till schemaläggaren.
-- **Undantagsspridning.** Ett kastat undantag eller en misslyckad
-  tjänstekontroll registrerar felet i kanalen som i dag och anger de 8
-  innersta ramarna för spårningen utifrån ramkedjan. Upprullaren poppar sedan
-  ramar vars `handler` är 0, sätter `resume = handler` i den första ram som
-  har en och överför till dess kropp. Hanterare för `catch`, `try` och
-  `after` är fortsättningsindex; att gå in i en skyddad region sätter
-  `handler` och att lämna den återställer det omgivande indexet, båda kända
-  statiskt inom en funktion. Haltar och infrastrukturfel hoppar över varje
-  hanterare och rullar upp direkt till bottenramen, precis som de hoppar över
-  hanterare i dag. Hanteraren tar emot undantaget med dagens tjänster
-  (`CLAUSE_catch_v1`, `CLAUSE_exception_v2`) och kastar om genom upprullaren.
-- **Värdanrop.** Runtimen pushar en bottenram, laddar `x[]` och kör
-  schemaläggarloopen tills den ramen nås. Runtime-tjänster förblir vanliga
-  native-anrop och går aldrig in i genererad kod igen; endast denna värdloop
-  startar den.
+- **Svansanrop.** Anroparen poppar sin egen ram utan att överföra och går
+  sedan in i den anropade på dess plats. Anroparens anropare förblir
+  returmålet, så svansrekursion körs med konstant Erlang- och native-stack. Ett
+  självsvansanrop behåller sin ram där den är: det förbrukar en reduktion,
+  återställer ramens återupptagnings- och hanterarord och antalet levande
+  värden och kopierar argumenten bortom parametrarna, utan att skriva om
+  huvudet eller nollställa platserna; LLVM gör det till en loop. Ett svansanrop
+  till en annan medlem i anroparens svansanropscykel (funktioner i en modul som
+  når varandra genom svansanrop) behåller anroparlänken och de termplatser som
+  båda ramarna har: det skriver den anropades deskriptor, nollställer endast
+  den anropades termplatser bortom anroparens och hoppar över testet av
+  stackgränsen när den anropades ram inte är större. Liksom vid ett
+  självsvansanrop kan en behållen plats innehålla en term från en tidigare
+  medlem tills den anropade skriver den, så skräpsamlingar kan hålla en sådan
+  term vid liv något längre.
+- **Lämna ifrån sig (yield).** När ingen reduktion återstår pushar en ingång
+  inte: den registrerar sig själv i `ProcessStack::resume_`, behåller sina
+  argument som registerrötter (`ProcessStack::keep_registers`) och returnerar
+  kod som avslutar tidsskivan, så att native-stacken rullas upp till
+  exekutorn, som senare fyller på budgeten och upprepar ingången. Loophuvuden
+  i comprehensions förbrukar också en reduktion och lämnar ifrån sig genom en
+  ingång när ingen återstår. En `receive` väntar genom den inbyggda funktionen
+  `CLAUSE_wait_frame_v1`, som man går in i som ett anrop
+  ([receive](processes.md#receive)).
+- **Avslut.** Att returnera in i bottenramen avslutar processen med dess
+  resultat; ett fel som returnerar in i den avslutar processen med felet.
+- **Undantag.** Ett kastat undantag eller en misslyckad tjänstekontroll
+  registrerar felet i kanalen och kopierar de 8 innersta ramarna i kedjan för
+  stackspårningen ([stackspårningar](abi.md#stack-traces)). Varje anropare
+  kontrollerar kanalen efter anropet och returnerar genast, eller hoppar till
+  hanterarblocket för en omgivande `catch`, `try` eller `after` i samma kropp
+  ([felkanal](abi.md#failure-channel-revision-2)). Haltar och
+  infrastrukturfel hoppar över varje hanterare och returnerar till
+  bottenramen.
+- **Värdanrop.** En exporterad symbol behåller en native-signatur och kör sin
+  funktion ovanför en bottenram med `CLAUSE_invoke_v1`, och återupptar den
+  efter varje gång den lämnat ifrån sig; native-undantag som kastas av
+  tjänster fångas upp där. Runtime-tjänster förblir vanliga native-anrop och
+  går aldrig in i genererad kod igen.
 
-En funktion som inte gör något anrop som inte är ett svansanrop och inte
-behåller någon plats över en safepoint kan hoppa över sin ram
-och returnera direkt till anroparens kropp. Detta är en optimering som
-kompilatorn kan lägga till senare, inte en del av kontraktet.
+Varje anrop pushar en ram; lövfunktioner hoppar inte över den, så varje
+funktion behåller sin post i stackspårningen.
 
 ## Synlighet för rötter
 
-Vid varje överföring och varje safepoint är en process rötter: alla platser
-i alla ramar på dess stack, `x[0..live)` samt felkanalens nyttolast,
-argumentlista och stackterm (redan processrötter). Överlämningsorden för
-resultat i dagens rotstack försvinner; `x[0]` tar över deras roll.
+Vid varje överföring och varje safepoint är en process rötter: termplatserna i
+alla ramar på dess stack, `x[0..live)` samt felkanalens nyttolast,
+argumentlista och stackterm ([rötter](runtime-heap.md#roots-and-safe-points)).
 
-Värden överlever aldrig en överföring i native-register eller SSA-värden.
-Varje kropp laddar om sin ramadress från `stack + frame` efter att den har
-anropats och läser levande värden från platser. Inom en fortsättning gör en
-tjänst som kan pusha en ram eller flytta heapen varje platspekare och
-heappekare som hålls i SSA-värden ogiltig; omladdningsregeln för
-skräpsamlingar fastställs i
-[skräpsamling i genererad kod](runtime-heap.md#collection-in-generated-code).
+Värden överlever aldrig en överföring i native-register eller SSA-värden,
+utom parametrarna för själva överföringen. Varje kropp laddar om sin
+ramadress från `stack + frame` efter att man gått in i den och läser levande
+värden från platser. Inom en fortsättning gör en tjänst som kan pusha en ram
+eller flytta heapen varje platspekare och heappekare som hålls i SSA-värden
+ogiltig; omladdningsregeln för skräpsamlingar fastställs i
+[omladdningsregeln](runtime-heap.md#reload-rule).
 
-## Efterföljare till rotstacken från 8F
-
-Den segmenterade stacken finns bara för att genererad kod håller absoluta
-rampekare över anrop. Under denna modell överlever ingen rampekare en
-överföring, så stacken blir ett platt block per process:
-
-- ramhuvuden finns i stacken, platser adresseras som
-  `stack + frame + header + index`;
-- blocket växer genom fördubbling och flytt (`realloc`), krymper aldrig under
-  körning och är skilt från heapblocket;
-- gränsen på 4 096 ramar tas bort; stackord räknas mot processens
-  minnesbudget, och att överskrida den är det dokumenterade felet i step 20.
+Stackblocket växer genom fördubbling och flytt så länge gränsen för hela
+runtimen tillåter det, krymper aldrig under körning och är skilt från
+heapblocket. Det har ingen gräns för antalet ramar; stackord räknas mot
+[runtimens minnesgräns](runtime-heap.md#runtime-memory-limit).
 
 ## Mål
 
-`musttail` med den enhetliga signaturen `void (Process *)` accepteras av
-varje obligatoriskt mål vid O0 och O2 (prototyp nedan, clang 23.1.2):
+`musttail` med en enhetlig kodsignatur accepteras av varje obligatoriskt mål
+vid O0 och O2 (prototyp nedan, clang 23.1.2):
 
 | Mål | Ord | Resultat |
 | --- | --- | --- |
@@ -157,167 +163,81 @@ varje obligatoriskt mål vid O0 och O2 (prototyp nedan, clang 23.1.2):
 | `aarch64-unknown-linux-gnu`, `arm64-apple-macosx14.0` | 64 | svanshopp |
 | `armv7-unknown-linux-gnueabihf` | 32 | svanshopp |
 
-Backend rapporterar ett fel när den inte kan uppfylla ett `musttail`-anrop,
-så en lyckad kompilering är garantin. Reserv för ett framtida mål som
-avvisar det: en **studsmatta (trampoline)**. Varje kodstycke returnerar nästa
-kodpekare till schemaläggarloopen i stället för att hoppa (null
-suspenderar); ramar, rötter och fortsättningsindex är oförändrade. Inget
-obligatoriskt mål behöver den.
+Backend rapporterar ett fel när den inte kan uppfylla ett `musttail`-anrop, så
+en lyckad kompilering är garantin. Reserv för ett framtida mål som avvisar
+det: en **studsmatta (trampoline)**, där varje kodstycke returnerar nästa
+kodpekare till schemaläggarloopen i stället för att hoppa; ramar, rötter och
+fortsättningsindex är oförändrade. Inget obligatoriskt mål behöver den.
 
 ## Implementation
 
-Step 19 (2026-10-05) implementerar modellen med dessa val och luckor:
-
-- **Två steg.** Sänkningen genererar fortfarande *native-form*: en
+- **Två steg.** Sänkningen (lowering) genererar *native-form*: en
   `TermWord(context, arguments)`-funktion per Erlang-funktion, vanliga anrop
-  mellan dem, ett platshållaranrop `clause.frame` som anger termplatserna,
-  och `ret` av ett anrops resultat i svansposition. `lower_frames`
+  mellan dem, ett platshållaranrop `clause.frame` som anger termplatserna, och
+  `ret` av ett anrops resultat i svansposition. `lower_frames`
   (`compiler/src/codegen/frames.cpp`) flyttar sedan varje kropp till
   `<symbol>.body`, lägger till prologen (ramhuvud, register,
   återupptagnings-switch), delar block efter anrop som inte är svansanrop och
-  safepoints i loophuvuden, spiller värden som används efter dem (termer
-  till termplatser, andra ord till råa platser), lyfter konstanta
-  platsadresser till prologen och gör om anrop, svansanrop och returer till
+  safepoints i loophuvuden, spiller värden som används efter dem (termer till
+  termplatser, andra ord till råa platser), lyfter konstanta platsadresser till
+  prologen och gör om anrop, svansanrop och returer till
   `musttail`-överföringar. Typspecialisering och testsömmar arbetar på
   native-form; backend kör `lower_frames` före IR-inspektion och `optimize`
   kör det om det fortfarande behövs.
-- **Ingång och kropp.** Det finns ingen separat ingångsfunktion. Tabellen
-  över processtillstånd ovan är `abi::v1::FrameState`, i början av varje
-  kontext, så genererad kod överför inline (ABI-revision 9): en ingång
-  förbrukar en reduktion, pushar den nollställda ramen, kopierar argumenten
-  från registren och överför till den anropades kropp; en svansingång
-  återanvänder först anroparens plats; en retur poppar och överför till
-  anroparens kropp. Varje väg faller tillbaka på `CLAUSE_enter_v1`,
+- **Inline-överföringar.** Ingångar, svansingångar och returer körs inline på
+  `FrameState`. Var och en faller tillbaka på `CLAUSE_enter_v1`,
   `CLAUSE_tail_v1` eller `CLAUSE_return_v1` när heapen vill ha en
   skräpsamling, processen profileras, ingen reduktion återstår, stacken måste
   växa eller nå sin gräns, eller den anropade är en inbyggd funktion.
-  Felkontrollen efter ett anrop läser tillståndets ord `failed`. Ett
-  självsvansanrop behåller sin ram där den är: det förbrukar en reduktion,
-  återställer ramens återupptagnings- och hanterarord och antalet levande
-  platser och kopierar argumenten förbi registren, utan att skriva om huvudet
-  eller nollställa platserna (var och en innehåller noll eller ett termord som
-  skräpsamlingar skriver om, och kroppen skriver en plats innan den läser den).
-- **Registerparametrar** (ABI-revision 10). Koden är
-  `void(void *, TermWord x0, TermWord x1, TermWord x2)`: varje överföring
-  skickar de tre första X-registren som C-parametrar, så att ett anrops
-  inledande argument och en returs resultat stannar i maskinregister. En kropp
-  läser sina inledande argument från parametrarna när den startar och
-  anropsresultatet från `x0` när den återupptas; `lower_frames` spiller något
-  av dem till en plats endast när det är levande över ett anrop eller en
-  safepoint. Tjänstevägarna lagrar parametrarna i registerarrayen före tjänsten
-  och läser in dem igen efteråt. Eftersom varje kropp delar en prototyp gör
-  LLVM ett självsvansanrop vars inline-push leder tillbaka till samma kropp
-  till en loop.
+  Felkontrollen efter ett anrop läser tillståndets ord `failed`.
+  Tjänstevägarna lagrar parametrarna i registerarrayen före tjänsten och läser
+  in dem igen efteråt.
+- **Parametrar.** En kropp läser sina inledande argument från parametrarna när
+  den startar och anropsresultatet från `x0` när den återupptas;
+  `lower_frames` spiller något av dem till en plats endast när det är levande
+  över ett anrop eller en safepoint.
 - **Svanspositioner** är det sista uttrycket i en klausulkropp, följt genom
-  block, parenteser samt klausulkroppar i `case` och `if`. Anrop i operander
-  till `catch`, `try`, `maybe` och `andalso`/`orelse` är inte svansanrop.
-- **Undantag** returnerar genom varje anropare, som kontrollerar kanalen
-  efter anropet som tidigare; hanterarindex och direkt upprullning förblir en
-  optimering. Stackspårningar läser ramkedjan när undantaget kastas.
+  block, parenteser samt klausulkroppar i `case`, `if` och `receive`. Anrop i
+  operander till `catch`, `try`, `maybe` och `andalso`/`orelse` är inte
+  svansanrop.
 - **Loopar.** Generatorer i comprehensions är loopar inuti en kropp. Deras
   markörer och ackumulator finns i termplatser, så inget SSA-värde förs runt
   en loop och en återupptagningspunkt inuti den behöver inget utöver de
   vanliga spillningarna.
-- **Att lämna ifrån sig** ([processer](processes.md)). Varje ingång, inline
-  eller genom `CLAUSE_enter_v1` och `CLAUSE_tail_v1`, förbrukar en av
-  processens reduktioner; när inga återstår tar tjänsterna över:
-  de registrerar den anropade funktionen
-  (`ProcessStack::resume_`, modellens `resume_at`), behåller dess argument
-  som registerrötter och returnerar kod som avslutar tidsskivan, så att
-  native-stacken rullas upp till exekutorn, som senare upprepar ingången.
-  Loophuvuden lämnar inte ifrån sig körningen. Skräpsamlaren räknar upp
-  ramarnas termplatser, de register som en suspension håller levande
-  (`ProcessStack::keep_registers`) och felkanalen
-  ([rötter](runtime-heap.md#roots-and-safe-points)). Funktionsingångar och
-  loophuvuden i comprehensions är safepoints som samlar skräp när heapen
-  begär det
+- **Safepoints.** Funktionsingångar och loophuvuden i comprehensions samlar
+  skräp när heapen begär det
   ([skräpsamling i genererad kod](runtime-heap.md#collection-in-generated-code));
   råa spillplatser innehåller aldrig termer.
 - **Inget tak.** Stacken växer tills värden vägrar minne, vilket misslyckas
   med `out_of_memory` (exit 70, [körbara filer](executables.md)), på samma
   sätt som en OTP-process växer. En valfri gräns per process,
   `StackOptions::limit_words` (skild från den valfria heapbudgeten), gör att
-  en push utöver den misslyckas med `resource_limit`. Ramar tar i dag 4
-  huvudord plus 1–40 platser.
-- **Värdingång.** En exporterad symbol behåller native-signaturen och kör sin
-  funktion ovanför en bottenram i runtimen med `CLAUSE_invoke_v1`;
-  native-undantag som kastas av tjänster fångas upp där.
+  en push utöver den misslyckas med `resource_limit`.
 
 ## Jämförda alternativ
 
-Prototyp i [tests/prototypes/execution_model](../tests/prototypes/execution_model/):
-samma Erlang-funktioner (`sum/1` kroppsrekursion, `loop/2` svansrekursion,
-`fail/1` som kastar `boom` på djup N, `catcher/1` som fångar det) sänkta för
-hand på tre sätt. Värd: Windows x64, clang 23.1.2; tiderna är enstaka
-körningar vid O2. Kör
-`python tests/prototypes/execution_model/run.py`.
-
-| | Explicita ramar + `musttail` (valt) | Native-anrop + rotramar (i dag) | LLVM-korutiner (C++20) |
-| --- | --- | --- | --- |
-| Kroppsrekursion 1M djup | ok, 17 ms; 5 ord per ram; 17 stackflyttar | 80 B native-stack per nivå: omkring 13 000 nivåer i en tråd på 1 MiB | ok, 60 ms; en allokering på 64–80 B på heapen per anrop |
-| 10M svansanrop | ok, 5 ms; konstant stack | O0 växer 80 B per anrop; O2 endast genom tur med syskonanrop | inga svansanrop: 1M iterationer behåller 1M ramar |
-| Lämna ifrån sig / återuppta | varje ingång; två processer växlar | omöjligt utan en native-stack per process | symmetrisk överföring (själv `musttail`) |
-| Native-stack på djup 1M | 136–144 B | växer per nivå | 144–520 B |
-| Rötter synliga för GC | platser i kända ramar | platser i kända ramar | korutinens ramlayout väljs av LLVM; termer skulle behöva en andra rotad kopia |
-| Undantag | rullas upp till hanterarramen | kanalkontroll per retur | kanalkontroll per retur |
-
-Studsmattevarianten av den valda modellen klarar samma körningar (20 ms
-rekursion, 16 ms för 10M svansanrop vid O2). Avvisade:
+[tests/prototypes/execution_model](../tests/prototypes/execution_model/)
+sänker samma Erlang-funktioner för hand (`sum/1` kroppsrekursion, `loop/2`
+svansrekursion, `fail/1` som kastar på djup N, `catcher/1` som fångar det) på
+tre sätt och kompilerar dem för varje mål ovan vid O0 och O2
+(`python tests/prototypes/execution_model/run.py`). På Windows x64 vid O2
+körde den valda modellen kroppsrekursion med djup 1M på 17 ms med 5 ord per
+ram och 10M svansanrop med konstant stack; dess studsmattevariant klarade
+samma körningar. Avvisade:
 
 - **Native-anrop med explicita rotramar.** Djup rekursion kräver en
-  native-stack per process som är dimensionerad för det djupaste anropet;
-  suspension kräver stackbyte per mål; 32-bitarsmål kan inte reservera stora
-  stackar för många processer.
-- **LLVM-korutiner.** En allokering per anrop, inga svansanrop, ogenomskinliga
-  ramar för skräpsamlaren, korutinpass även vid O0, och symmetrisk överföring
-  är ändå beroende av `musttail`.
+  native-stack per process som är dimensionerad för det djupaste anropet
+  (omkring 13 000 nivåer i en tråd på 1 MiB); suspension kräver stackbyte per
+  mål; 32-bitarsmål kan inte reservera stora stackar för många processer.
+- **LLVM-korutiner.** En heapallokering per anrop, inga svansanrop, ramar vars
+  layout skräpsamlaren inte kan se, korutinpass även vid O0, och symmetrisk
+  överföring är ändå beroende av `musttail`.
 - **En LLVM-funktion per fortsättning** (klassisk CPS). Samma överföringar,
   men sammanslagningar och hanterare som nås från flera fortsättningar skulle
-  behöva delas upp i ytterligare funktioner; återupptagnings-switchen
-  behåller dagens genomlöpare med en enda funktion.
+  behöva delas upp i ytterligare funktioner; återupptagnings-switchen behåller
+  en genomlöpare med en enda funktion.
 
 Accepterade kostnader: ett indirekt hopp per retur plus en switch-dispatch;
-värden som lever över anrop laddas om från platser (de lagras redan där);
-bakåtspårningar i native-debuggern visar endast den aktuella funktionen,
-medan Erlang-stackspårningar kommer från ramkedjan.
-
-## Belägg från prototypen
-
-`run.py` bygger den valda modellen (`musttail` och studsmatta),
-native-baslinjen och korutinmodellen för värden vid O0 och O2, kör dem och
-kompilerar de handsänkta funktionerna (`generated.cpp`, fristående) för varje
-mål ovan vid O0 och O2, och räknar `musttail`-anrop i IR och svanshopp i
-assemblern. Resultat 2026-10-05: PASS. För den valda modellen på båda
-nivåerna: retur (42), kroppsrekursion med djup 1 000 000, 10 000 000
-svansanrop, ett fel som kastas på djup 100 000 och fångas av en hanterarram,
-samma fel ofångat (bottenram, spårning av 8 `fail`-ramar), och två processer
-som växlar i tidsskivor om 4 000 reduktioner (1 002 tidsskivor). Alla 15
-överföringsplatser är `musttail` vid O0 på varje mål (14 vid O2 efter
-inlining).
-
-Kroppen för `sum/1` för `i686-pc-windows-msvc` (O2 IR, förkortade namn).
-IR för `x86_64-pc-windows-msvc` är densamma med `i64`-ord och fördubblade
-offset.
-
-```llvm
-%2 = load ptr, ptr %0, align 4                      ; stack base
-%3 = getelementptr inbounds nuw i8, ptr %0, i32 8
-%4 = load i32, ptr %3, align 4                      ; current frame offset
-%5 = getelementptr inbounds nuw [4 x i8], ptr %2, i32 %4
-%6 = getelementptr inbounds nuw i8, ptr %5, i32 16  ; slot 0 (N)
-%7 = getelementptr inbounds nuw i8, ptr %5, i32 8   ; header: resume index
-%8 = load i32, ptr %7, align 4
-%9 = icmp eq i32 %8, 0                              ; switch on resume
-...
-16:                                                 ; N > 0: call sum(N - 1)
-  store i32 1, ptr %7, align 4                      ; resume = 1
-  ...                                               ; x0 = N - 1
-  %19 = tail call ptr @call(ptr %0, ptr @SUM)       ; push frame or park
-  musttail call void %19(ptr nonnull %0)
-  ret void
-20:                                                 ; resume 1: x0 += N
-  ...
-  %24 = tail call ptr @leave(ptr %0)                ; pop, caller body
-  musttail call void %24(ptr nonnull %0)
-  ret void
-```
+värden som lever över anrop laddas om från platser; bakåtspårningar i
+native-debuggern visar endast den aktuella funktionen, medan
+Erlang-stackspårningar kommer från ramkedjan ([felsökning](debugging.md)).

@@ -1,34 +1,46 @@
 ---
 source: docs/library.md
-sourceCommit: 6ed3851c
-sourceSha256: 827659aa3cf1548562f97b6e8d7a37e0f230599570a6c78628cd7a72896102f9
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: f657ad1632b57e9c9b11ad04f870350112a7cac942b10e5483e1aa26d1c79fc7
+translatedAt: 2026-10-17
 ---
 # Biblioteksmoduler
 
-En delmängd av OTP:s moduler `lists` och `maps` som ägs av projektet, skriven
-i Erlang utifrån OTP:s dokumenterade beteende (inte kopierad från OTP:s
-källkod) och kompilerad tillsammans med de program som använder den.
+Clause levererar egna versioner av de OTP-moduler som program anropar,
+skrivna i Erlang utifrån OTP:s dokumenterade beteende (inte kopierade från
+OTP:s källkod) ovanpå runtimens [inbyggda funktioner](builtins.md), och
+kompilerar dem tillsammans med de program som använder dem.
 
 ## Innehåll
 
-| Modul | Funktioner |
+Varje tillhandahållen modul exporterar OTP 29:s fullständiga lista för sitt
+namn; dess inventering `<module>.terms` ([filer](#files)) registrerar vilka
+funktioner som är implementerade och vilka som är stubbar.
+
+| Modul | Innehåll |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | `append/1,2`, `filter/2`, `foldl/3`, `foldr/3`, `keyfind/3`, `map/2`, `member/2`, `nth/2`, `reverse/1,2`, `seq/2,3`, `sort/1`, `foreach/2`, `mapfoldl/3`, `mapfoldr/3`, `partition/2`, `splitwith/2`; inbyggda funktioner i runtimen `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`, `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2`, `keymember/3`, `keysearch/3`, `keydelete/3` ([modulen lists](builtins.md#lists-module)) |
-| [`maps`](../library/stdlib/maps.erl) | `find/2`, `fold/3`, `from_list/1`, `get/2`, `keys/1`, `put/3`, `to_list/1`, `values/1`, `filter/2`, `map/2`, `foreach/2`, `update_with/3,4`; inbyggda funktioner i runtimen `get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`, `take/2`, `update/3`, `with/2`, `without/2`, `from_keys/2` ([modulen maps](builtins.md#maps-module)) |
-| [`file`](../library/kernel/file.erl) | `open/2`, `read/2`, `write/2`, `read_line/1`, `position/2`, `close/1`, `read_file/1`, `write_file/2,3`, `read_file_info/1,2`, `delete/1`, `rename/2`, `list_dir/1`, `make_dir/1`, `del_dir/1` ovanpå fildrivrutinen ([filer](ports.md#standard-io-and-files)) |
+| [`lists`](../library/stdlib/lists.erl) | De vanliga funktionerna; datafunktioner som `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3` är inbyggda funktioner i runtimen ([modulen lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | De vanliga funktionerna och iteratorer; `get/3`, `merge/2`, `update/3`, `with/2`, ... är inbyggda funktioner i runtimen ([modulen maps](builtins.md#maps-module)) |
 | [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (server för standard-indata eller en öppen fil), `request/1,2`, `requests/1,2` (OTP:s I/O-protokoll, [filer](ports.md#standard-io-and-files)); `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` och `nl/0,1` är inbyggda funktioner i runtimen ([io](io.md)) |
-| [`gen_tcp`](../library/kernel/gen_tcp.erl) | `listen/2`, `accept/1,2`, `connect/3,4`, `send/2`, `recv/2,3`, `shutdown/2`, `controlling_process/2`, `close/1` ovanpå socketportar ([socketar](ports.md#sockets-57f)) |
-| [`gen_udp`](../library/kernel/gen_udp.erl) | `open/1,2`, `send/4`, `recv/2,3`, `controlling_process/2`, `close/1` |
-| [`inet`](../library/kernel/inet.erl) | `port/1`, `sockname/1`, `peername/1`, `setopts/2`, `close/1` |
-| [`clause_socket`](../library/kernel/clause_socket.erl) | Clauses egen: protokollet för socketdrivrutinen som de tre modulerna ovan delar |
-| [`erlang`](../library/erts/erlang.erl) | Genererade stubbar för varje export i OTP 29:s `erlang`; inbyggda funktioner ersätter sina, `nif_error/1,2` har kroppar, andra kastar `{not_implemented, F, A}` när de anropas ([modulen erlang](builtins.md#erlang-module)) |
-| [`binary`](../library/stdlib/binary.erl) | Varje funktion i OTP 29: `replace/3,4` och `list_to_bin/1` i Erlang, de övriga inbyggda funktioner i runtimen ([modulen binary](builtins.md#binary-module)) |
+| [`binary`](../library/stdlib/binary.erl) | Varje funktion; `replace/3,4` och `list_to_bin/1` i Erlang, de övriga inbyggda funktioner i runtimen ([modulen binary](builtins.md#binary-module)) |
+| [`math`](../library/stdlib/math.erl) | Varje funktion som inbyggd funktion i runtimen ([modulen math](builtins.md#math-module)) |
 | [`unicode`](../library/stdlib/unicode.erl) | Konverteringar, `bin_is_7bit/1` och byteordningsmarkeringar som inbyggda funktioner i runtimen ([modulen unicode](builtins.md#unicode-module)); normalisering och egenskaper är stubbar |
-| [`math`](../library/stdlib/math.erl) | Varje funktion i OTP 29 som inbyggd funktion i runtimen ([modulen math](builtins.md#math-module)) |
-| [`persistent_term`](../library/erts/persistent_term.erl) | Varje funktion i OTP 29 som inbyggd funktion i runtimen ([persistenta termer](builtins.md#persistent-terms)) |
-| [`code`](../library/kernel/code.erl) | Frågor om laddade moduler som inbyggda funktioner i runtimen utan kodserver ([modulen code](builtins.md#code-module)); sökvägar och laddning är stubbar |
-| [`os`](../library/kernel/os.erl) | `cmd/1` ovanpå en port ([delprocesser](ports.md#subprocesses)), `timestamp/0`, `system_time/0,1`, `perf_counter/0,1`, `getenv/2`; `type/0`, `getenv/0,1`, `env/0`, `putenv/2`, `unsetenv/1`, `getpid/0` och `version/0` är inbyggda funktioner i runtimen |
+| [`unicode_util`](../library/stdlib/unicode_util.erl) | Varje funktion ovanpå genererade tabeller ([unicode_util](builtins.md#unicode-util)) |
+| [`re`](../library/stdlib/re.erl) | Varje funktion utom `import/1`, ovanpå PCRE2 ([modulen re](builtins.md#re-module)) |
+| [`file`](../library/kernel/file.erl) | Öppna, läsa, skriva, positionera och stänga filer, läsning och skrivning av hela filer, filinformation och katalogoperationer ovanpå fildrivrutinen ([filer](ports.md#standard-io-and-files)) |
+| [`gen_tcp`](../library/kernel/gen_tcp.erl), [`gen_udp`](../library/kernel/gen_udp.erl), [`inet`](../library/kernel/inet.erl) | Socketar ovanpå socketportar ([socketar](ports.md#sockets)) |
+| [`clause_socket`](../library/kernel/clause_socket.erl) | Clauses egen: protokollet för socketdrivrutinen som de tre modulerna ovan delar |
+| [`os`](../library/kernel/os.erl) | `cmd/1` ovanpå en port, frågor om miljö, tid och version ([modulen maps](builtins.md#maps-module)) |
+| [`code`](../library/kernel/code.erl) | Frågor om laddade moduler utan kodserver ([modulen code](builtins.md#code-module)); sökvägar och laddning är stubbar |
+| [`application_controller`](../library/kernel/application_controller.erl) | Endast stubbar; skuggar OTP:s, som anropar `prim_file` (luerl når den genom OTP:s `application`) |
+| [`erlang`](../library/erts/erlang.erl) | Genererade stubbar för varje export i OTP 29:s `erlang`; inbyggda funktioner ersätter sina, `nif_error/1,2` har kroppar, andra kastar `{not_implemented, F, A}` när de anropas ([modulen erlang](builtins.md#erlang-module)) |
+| [`init`](../library/erts/init.erl) | Ett startat systems svar; `boot/1`, `restart/0,1` och `make_permanent/2` avvisas ([modulen init](builtins.md#init-module)) |
+| [`persistent_term`](../library/erts/persistent_term.erl) | Varje funktion som inbyggd funktion i runtimen ([persistenta termer](builtins.md#persistent-terms)) |
+| [`atomics`](../library/erts/atomics.erl), [`counters`](../library/erts/counters.erl) | Varje funktion ([atomics och counters](builtins.md#atomics-and-counters)) |
+| [`erts_internal`](../library/erts/erts_internal.erl), [`erts_code_purger`](../library/erts/erts_code_purger.erl) | Det som `stdlib` och `kernel` anropar; grupperna för distribution, `.beam`, emulator och rensningsprocess avböjda ([erts_internal](builtins.md#erts-internal)) |
+| [`erl_prim_loader`](../library/erts/erl_prim_loader.erl) | Filfrågor ovanpå `file`; laddning och arkiv avböjda ([filer](ports.md#standard-io-and-files)) |
+| [`zlib`](../library/erts/zlib.erl) | Varje funktion ovanpå den fastlåsta zlib ([modulen zlib](builtins.md#zlib-module)) |
+| [`prim_eval`](../library/erts/prim_eval.erl) | `'receive'/2` ovanpå stegen i en kompilerad receive ([prim eval](builtins.md#prim-eval)) |
 
 Resultat och felorsaker stämmer med OTP 29, inklusive felens form i OTP:s
 Erlang-implementationer (`lists:map(F, x)` är `{case_clause, x}`,
@@ -36,8 +48,9 @@ Erlang-implementationer (`lists:map(F, x)` är `{case_clause, x}`,
 dess BIF:ar (`lists:member/2`, `lists:keyfind/3`, `lists:reverse/2`,
 `maps`-funktionerna: `badarg`, `{badmap, M}`, `{badkey, K}`).
 `lists:member/2` matchar med `=:=`, `lists:keyfind/3` med `==`.
-`lists:sort/1` är en stabil merge sort. Stackspårningar anger
-biblioteksfunktionerna, inte OTP:s.
+`lists:sort/1` är en stabil merge sort vars pass växlar mellan stigande och
+fallande delsekvenser, så att ingen sammanslagning vänder en delsekvens.
+Stackspårningar anger biblioteksfunktionerna, inte OTP:s.
 
 ## Hur program får dem
 
@@ -51,27 +64,27 @@ biblioteksfunktionerna, inte OTP:s.
   moduler som de tillagda filerna anger
   ([vilken modul ett namn löses till](#which-module-a-name-resolves-to)). Ett
   anrop `M:F(...)` av en inbyggd funktion i katalogen (`io:format/2`,
-  `os:type/0`) anger ingen modul.
+  `os:type/0`) anger ingen modul. `--print-inputs` listar de indata som detta
+  lägger till.
 - Biblioteket är `library/` i byggträdet, som hittas relativt till `clau` på
   samma sätt som runtime-arkivet, med en katalog per OTP-applikation (`erts`,
   `kernel`, `stdlib`).
 - En modul i batchen med samma namn ersätter biblioteksmodulen, med en
-  varning.
+  varning; inbyggda funktioner i katalogen med det namnet vinner ändå
+  ([registrering](builtins.md#registration)).
 - Biblioteksmoduler är vanliga batchmoduler: de länkas in i körbara filer och
-  producerar, för objekt- eller IR-utdata, egna artefakter.
+  producerar, för objekt- eller IR-utdata, egna artefakter. De är Erlang-kod,
+  så de lämnar ifrån sig körningen som annan kod.
 - En modul som endast nås genom namn under körning (`M:F(...)` där `M` är en
   variabel) läggs inte till: ett sådant anrop kastar `undef` om inte något
   annat anger modulen.
-- Biblioteksfunktioner är Erlang-kod, så de kommer att lämna ifrån sig
-  körningen som annan kod när schemaläggaren finns.
 
 ## Ersättningar för runtime-moduler
 
-Plan 11 step 41I (2026-10-12) bestämmer hur Clause ersätter de OTP-moduler som
-ERTS implementerar i C (NIF:ar, BIF:ar, portdrivrutiner, de förladdade
-modulerna i `erts/preloaded/src`) och moduler som OTP genererar när det byggs
-(`unicode_util`). OTP:s `kernel` och `stdlib` är vanlig Erlang men anropar
-dessa moduler; steps 41J och framåt implementerar detta kontrakt.
+Clause ersätter de OTP-moduler som ERTS implementerar i C (NIF:ar, BIF:ar,
+portdrivrutiner, de förladdade modulerna i `erts/preloaded/src`) och moduler
+som OTP genererar när det byggs (`unicode_util`). OTP:s `kernel` och `stdlib`
+är vanlig Erlang men anropar dessa moduler.
 
 ### Tillhandahållen eller saknad
 
@@ -84,20 +97,23 @@ modul, och per grupp av funktioner där en modul blandar ansvarsområden:
   runtime-tjänster), `refused` (returnerar eller kastar det som OTP:s
   anropare redan hanterar när en funktion saknas, till exempel
   `{error, enotsup}`), `stub` (kastar `error({not_implemented, F, A})` med
-  `M:F/A` överst på stacken, som [`erlang`-stubbarna](builtins.md#erlang-module)
-  gör; ännu inte klar; användarens anvisning 2026-10-12) eller `declined` (en
-  stubbe som blir kvar, med ett skäl som distribution eller kodladdning som
-  väntar på plan step 71). En modul börjar med varje funktion som stubbe, så
-  att den kan hittas och dess anropare kompileras; grupper flyttas sedan till
-  sin beslutade status.
+  `M:F/A` överst på stacken, som
+  [`erlang`-stubbarna](builtins.md#erlang-module) gör; ännu inte klar) eller
+  `declined` (en stubbe som blir kvar, med ett skäl som distribution eller
+  kodladdning). En ny modul börjar med varje funktion som stubbe, så att den
+  kan hittas och dess anropare kompileras; grupper flyttas sedan till sin
+  beslutade status.
 - **Saknad:** Clause levererar ingen modul alls, möjligen för alltid, och
   registrerar varför och vilka Clause-moduler på högre nivå som tar dess
-  anropares plats. De lågnivålager för filer och socketar som heter `prim_*`
-  är det typiska fallet: program använder i stället Clauses `file`,
-  `gen_tcp`, `gen_udp` och `inet`, och eftersom Clause-moduler vinner över
-  OTP:s (nedan) kommer OTP:s anropare av en saknad modul aldrig in i en batch.
-  En saknad modul får aldrig en stubbe, så en referens till den är ett fel vid
-  kompilering, aldrig en överraskning vid körning.
+  anropares plats (`library/modules.terms`). Lågnivålagren för filer och
+  socketar som heter `prim_*` (`prim_file`, `prim_buffer`, `prim_socket`,
+  `prim_net`, `prim_inet`, `socket_registry`) samt `socket` och `net` är de
+  saknade modulerna: program använder i stället Clauses `file`, `gen_tcp`,
+  `gen_udp` och `inet`, och eftersom Clause-moduler vinner över OTP:s (nedan)
+  kommer OTP:s anropare av en saknad modul (OTP:s `gen_tcp_socket`,
+  `inet_tcp`, ...) aldrig in i en batch. En saknad modul får aldrig en stubbe,
+  så en referens till den är ett fel vid kompilering, aldrig en överraskning
+  vid körning.
 
 Funktioner som är triviala för runtimen implementeras utan ett separat beslut.
 
@@ -127,10 +143,11 @@ eftersom inget ersätts.
 
 - Biblioteksmoduler finns i `library/<application>/`, uppkallade efter den
   OTP-applikation som äger modulen i OTP: `erts` (förladdade motsvarigheter
-  och `erlang`), `kernel` (`file`, `gen_tcp`, `gen_udp`, `inet`, `os` och
-  Clauses egen `clause_socket`), `stdlib` (`binary`, `lists`, `maps`, `math`,
-  `io`, `unicode`, `unicode_util`). Biblioteksuppslagningen söker i varje
-  applikationskatalog; ett modulnamn finns i högst en av dem.
+  och `erlang`), `kernel`, `stdlib`. Clauses privata hjälpmoduler
+  (`clause_socket`, `clause_re`, `clause_unicode`, `clause_zlib`,
+  `clause_receive`, `clause_maps`) ligger bredvid de moduler de betjänar.
+  Biblioteksuppslagningen söker i varje applikationskatalog; ett modulnamn
+  finns i högst en av dem.
 - `library/modules.terms` listar varje modul som Clause fattar beslut om:
   `{Module, Application, provided}.` eller
   `{Module, Application, missing, "reason"}.` Kompilatorn läser den för att
@@ -144,11 +161,6 @@ eftersom inget ersätts.
   (`M:module_info(exports)`); ingen OTP-källkod kopieras. Resultat och
   feltermer för implementerade funktioner stämmer med OTP 29; avsiktliga
   skillnader förs till [skillnader](differences.md).
-- Varje biblioteksmodul i Clause exporterar OTP 29:s fullständiga lista för
-  sitt namn, så att OTP-kod som kompileras mot den hittar varje funktion;
-  Clauses egna `lists`, `maps`, `file`, `io`, `os`, `gen_tcp`, `gen_udp` och
-  `inet` får också inventeringar och stubbar för det som de ännu inte
-  implementerar.
 
 ### Typer
 
@@ -161,41 +173,34 @@ som de använder, så som OTP definierar dem (dokumentationen visar samma
 definitioner; den installerade dokumentationen innehåller inga
 typdefinitioner, så de kommer från implementationen: beam-filens
 felsökningsinformation, eller den levererade källkoden för en förladdad modul
-som `erlang`). `escript
-tests/compiler/library/observe_types.escript LIBRARY APP MODULE` skriver
-headern från värdens OTP, och `--check` jämför dess former med en ny
-observation (CTest `library_freshness`); `library_modules.py check` kräver att
-varje header inkluderas av sin modul. Typer som headrarna anger från moduler
-utanför programmet (`unicode:chardata()`, `calendar:datetime()`) och OTP:s
-breda unioner (`file:posix()` har fler medlemmar än typgrafen behåller) löses
-till `term()` utan varning: diagnostiken hör till Clauses bibliotek, inte till
-användarens program.
+som `erlang`). `escript tests/compiler/library/observe_types.escript LIBRARY APP
+MODULE` skriver headern från värdens OTP, och `--check` jämför dess former med
+en ny observation (CTest `library_freshness`); `library_modules.py check`
+kräver att varje header inkluderas av sin modul. Typer som headrarna anger från
+moduler utanför programmet (`unicode:chardata()`, `calendar:datetime()`) och
+OTP:s breda unioner (`file:posix()` har fler medlemmar än typgrafen behåller)
+löses till `term()` utan varning: diagnostiken hör till Clauses bibliotek,
+inte till användarens program.
 
 ### Kärntjänster vid uppstart
 
 OTP:s `file`, `io`, `code` och `logger` anropar registrerade servrar
 (`file_server_2`, `code_server`, en gruppledares io-server, `logger`) som
 applikationen `kernel` startar vid uppstart. En körbar fil från Clause startar
-ingen av dem, och enligt beslut 2026-10-12 fortsätter den tills vidare att
-inte starta någon: Clauses egna `file` och `io` behöver ingen server, och en
+ingen av dem: Clauses egna `file` och `io` behöver ingen server, och en
 OTP-modul som behöver en misslyckas på samma sätt som den misslyckas i OTP
-utan den servern (`noproc`). Kostnad: OTP-kod som loggar genom `logger` eller
-anropar `code` under körning fungerar inte förrän en senare post i liggaren
-väljer en minimal uppsättning tjänster för startobjektet. Att starta hela
-applikationen `kernel` är inte planerat.
+utan den servern (`noproc`). OTP-kod som loggar genom `logger` eller anropar
+`code` under körning fungerar därför inte. Att starta hela applikationen
+`kernel` är inte planerat.
 
 ### Liggare
 
-Projektet luerl driver detta arbete. Efter varje steg, kör
-
-```text
-clau.bat --project test-luerl --entry luerl:init
-```
-
-klassificera varje fel (`unknown module`, `undefined function M:F/A`,
-syntax eller funktion som inte stöds, annat) och tilldela vart och ett ett
-step i plan 11 fas H3, en annan post i eftersläpningen eller ett registrerat
-avböjande. Med körningens stderr sparad i en fil skriver
+Verkliga program driver detta arbete; projektet luerl är den nuvarande
+drivkraften ([21-lib](../.agents/21-lib.md)). Kompilera och kör det,
+klassificera varje fel (`unknown module`, `undefined function M:F/A`, syntax
+eller funktion som inte stöds, annat) och tilldela vart och ett ett plan step,
+en annan post i eftersläpningen eller ett registrerat avböjande. Med
+körningens stderr sparad i en fil skriver
 `python tests/compiler/library/library_modules.py report FILE` ut
 klassificeringen som tabeller: varje okänd modul med sitt antal fel,
 anropande moduler och anropade funktioner med ariteter; odefinierade
@@ -215,43 +220,12 @@ Alla finns i `tests/compiler/library/`:
   OTP) rapporterar varje oöverensstämmelse: en tillhandahållen modul utan sina
   filer, en saknad modul med en fil, en inventering som inte listas som
   tillhandahållen, en export som inte finns i inventeringen eller omvänt, en
-  `stub`/`declined`-post som inte är en stubbe som kastar `undef`, en
+  `stub`/`declined`-post som inte är en `not_implemented`-stubbe, en
   `implemented`/`refused`-post utan kropp eller inbyggd funktion i katalogen.
   `library_rejects` bevisar det på ett avsiktligt inkonsekvent
   fixturbibliotek.
-- CTest `library_freshness` (etikett `host_otp`) observerar varje inventering
-  på nytt och kräver att den är oförändrad, och observerar, genererar,
-  kontrollerar och kompilerar sedan en ny modul från början till slut.
-  `library_report` kör `clau` på ett fixturprogram och kontrollerar
+- CTest `library_freshness` (etiketterna `host_otp`, `full_only`) observerar
+  varje inventering på nytt och kräver att den är oförändrad, och observerar,
+  genererar, kontrollerar och kompilerar sedan en ny modul från början till
+  slut. `library_report` kör `clau` på ett fixturprogram och kontrollerar
   rapportens rader.
-
-| Modul | Beslut (2026-10-12) | Skäl eller plan step |
-| --- | --- | --- |
-| `init` | tillhandahållen; implementerad utom `boot/1`, `restart/0,1` och `make_permanent/2`, avvisade | svar om argument och status för ett startat system (41L, [modulen init](builtins.md#init-module)) |
-| `persistent_term` | tillhandahållen, endast stubbar | termtabell för hela runtimen (41M) |
-| `erts_internal` | tillhandahållen; grupperna `stdlib` och `counters` implementerade, `get_creation/0` och `map_hashmap_children/1` avvisade, grupperna `distribution`, `beam` och `emulator` avböjda | 41N ([erts_internal](builtins.md#erts-internal)); ingen distribution, inga `.beam`-filer |
-| `atomics`, `counters`, `erts_code_purger` | tillhandahållna; `atomics`, `counters` implementerade; `purge/1`, `soft_purge/1` implementerade, rensningsprocessen avböjd | 41N ([atomics och counters](builtins.md#atomics-and-counters)); kodladdning väntar på step 71 |
-| `unicode_util` | tillhandahållen, implementerad (41O1, 41O2) | tabeller genererade från OTP:s svar och Unicode-data ([unicode_util](builtins.md#unicode-util)) |
-| `erl_prim_loader` | tillhandahållen; filfrågor implementerade ovanpå `file`, laddning och arkiv avböjda | 41P ([filer](ports.md#standard-io-and-files)); kodladdning väntar på step 71 |
-| `zlib` | tillhandahållen, implementerad ovanpå den fastlåsta zlib (41Q) | strömmar är handtagsreferenser ([modulen zlib](builtins.md#zlib-module)) |
-| `prim_eval` | tillhandahållen, implementerad (41S) | `'receive'/2` ovanpå stegen i en kompilerad receive ([prim eval](builtins.md#prim-eval)) |
-| `application_controller` | tillhandahållen, endast stubbar | skuggar OTP:s, som anropar `prim_file` (luerl namnger den genom OTP:s `application`) |
-| `lists`, `maps`, `io`, `file`, `os`, `gen_tcp`, `gen_udp`, `inet` | tillhandahållna, OTP 29:s fullständiga exportlistor; det som Clause hade förblir implementerat, resten stubbar | växer efter liggarens behov |
-| `re` | tillhandahållen; implementerad (41ZA, 41ZB) utom `import/1`, avböjd | ovanpå den fastlåsta PCRE2 ([modulen re](builtins.md#re-module)); Clause exporterar inga mönster |
-| `prim_file`, `prim_buffer` | saknade, beslutat i 41P | Clauses `file` är fillagret; OTP:s `filelib`/`filename` körs ovanpå det |
-| `prim_socket`, `prim_net`, `prim_inet`, `socket_registry`, `socket`, `net` | saknade, beslutat i 41R | Clauses `gen_tcp`, `gen_udp`, `inet` är nätverkslagret; OTP:s `gen_tcp_socket`, `gen_udp_socket`, `inet_tcp`, `inet_udp` nås endast från OTP:s skuggade moduler ([socketar](ports.md#sockets-57f)) |
-
-Senaste luerl-lagret (2026-10-12, efter steps 41K1 och 41K2, med
-`NEW_STACKTRACE` definierat som luerls `rebar.config.script` gör på OTP 21 och
-senare, och `inet` inte längre i `ignore_modules`): målet kompileras och
-länkas utan fel. 83 varningar återstår: 74 typer från de ignorerade
-`erl_parse` och `compile`, 8 typer från OTP-moduler utanför programmet som
-anges av OTP-kod som målet kompilerar, en breddning av typgrafens budget i den
-koden. Den körbara filen startar `luerl:init/0` och avslutas med 0. Nästa lager
-är beteendet under körning: vilka stubbar luerl når när den kör Lua-kod.
-
-Körningslagret (2026-10-14, efter faserna H3–H5): en drivrutin som kör 35
-Lua-snuttar genom `luerl:do` byggs med 17 varningar och skriver ut OTP 29:s
-utdata för 34 av dem, inklusive `os.date`. Den återstående, ett `goto`,
-misslyckas med OTP:s `function_clause`; endast dess stackramar skiljer sig,
-utan argument eller platser ([skillnader](differences.md)).

@@ -41,7 +41,8 @@ Erlang implementations (`lists:map(F, x)` is `{case_clause, x}`,
 `lists:nth(0, L)` `function_clause`, `lists:seq(1, 10, 0)` `badarg`) and of its
 BIFs (`lists:member/2`, `lists:keyfind/3`, `lists:reverse/2`, the `maps`
 functions: `badarg`, `{badmap, M}`, `{badkey, K}`). `lists:member/2` matches
-with `=:=`, `lists:keyfind/3` with `==`. `lists:sort/1` is a stable merge sort.
+with `=:=`, `lists:keyfind/3` with `==`. `lists:sort/1` is a stable merge sort
+whose passes alternate ascending and descending runs, so no merge reverses a run.
 Stack traces name the library functions, not OTP's.
 
 ## How programs get them
@@ -132,7 +133,7 @@ warning, since nothing is replaced.
   application that owns the module in OTP: `erts` (preloaded counterparts and
   `erlang`), `kernel`, `stdlib`. Clause's private helper modules
   (`clause_socket`, `clause_re`, `clause_unicode`, `clause_zlib`,
-  `clause_receive`) sit beside the modules they serve. The library lookup
+  `clause_receive`, `clause_maps`) sit beside the modules they serve. The library lookup
   searches every application directory; a module name exists in at most one
   of them.
 - `library/modules.terms` lists every module Clause decides about:

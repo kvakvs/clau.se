@@ -1,17 +1,17 @@
 ---
 source: docs/specialization.md
-sourceCommit: 6ed3851c
-sourceSha256: 896b741de11f8f1f7f9098670798d1de273c0e4be02cb7ebfadca90e184b0e36
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 30fb2421aad552fe8985671c5251c1200101aa35c3ee76024120620bcf97ef7a
+translatedAt: 2026-10-17
 ---
 # Typspezialisierung
 
-Der Geschwindigkeitsmodus (`-O2`) verwendet [inferierte Fakten](semantic.md#inference),
-um Prüfungen zur Laufzeit zu entfernen (Beweise), und darf eine Funktion in
-Repräsentationsvarianten klonen, die durch Tag-Prüfungen zur Laufzeit geschützt
-sind. `-O0` und `--no-type-specialization` erzeugen nur generischen Code: Jede
-Prüfung bleibt, jeder Zugriff auf zusammengesetzte Werte geht über seinen
-Runtime-Dienst.
+Der Geschwindigkeitsmodus (`-O2`) verwendet
+[inferierte Fakten](semantic.md#inference), um Prüfungen zur Laufzeit zu
+entfernen (Beweise), und darf eine Funktion in Repräsentationsvarianten klonen,
+die durch Tag-Prüfungen zur Laufzeit geschützt sind. `-O0` und
+`--no-type-specialization` erzeugen nur generischen Code: Jede Prüfung bleibt,
+jeder Zugriff auf zusammengesetzte Werte geht über seinen Runtime-Dienst.
 
 ## Beweise
 
@@ -37,7 +37,7 @@ erhalten keine Beweise.
 | Tupelelement | ein Formtest oder Fakt, der das Tupel beweist | Inline-Laden des Elements |
 | Listenmuster | Fakt: sicher eine Cons-Zelle | Formtest entfernt (sonst ein Test des primären Tags auf jeder Ebene) |
 | Kopf, Rest | ein Cons-Test oder Fakt, der die Zelle beweist | Inline-Laden |
-| exaktes Literal `[]`, `{}`, kleine Ganzzahl, Atom | immer (auf jeder Ebene seit OPT0.2A) | Wortvergleich: gleiche Immediates sind ein Wort |
+| exaktes Literal `[]`, `{}`, kleine Ganzzahl, Atom | immer (auf jeder Ebene) | Wortvergleich: gleiche Immediates sind ein Wort |
 | Listengenerator | Fakt der Generatoreingabe: eine echte Liste | Cons-Test und Zellenlesen inline in jeder Iteration |
 
 Fakten erreichen Muster von Funktionsköpfen (über Aufrufer vereinigte
@@ -97,8 +97,4 @@ aus.
 `codegen_measurements` schreibt `measurements/<config>/measurements.json` in
 das Build-Verzeichnis der Codegen-Tests (Kompilierzeit, IR-/Objektbytes,
 Varianten, bewiesene Lesevorgänge, native Laufzeit). Zeiten sind beschreibend,
-nie Schwellenwerte. Beispiel Windows x64 / LLVM 23.1.2 (2026-09-29, vor den
-Beweisen): Quelltext-Arbeitslast 232.876 IR- / 40.498 Objektbytes bei O0 und
-204.408 / 35.886 bei beiden O2-Richtlinien, keine Varianten; das synthetische
-Fixture fügte einer Funktion mit 55 Befehlen für eine akzeptierte Variante
-30 Befehle hinzu.
+nie Schwellenwerte.

@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: 6ed3851c
-sourceSha256: 18f77f8a73bc29cdd8fea5bf2b01deb01e6615ac50ff7d9dea4758a54fa985be
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 57dcb1da3315eb173341c8100e17e37df776b01f85f4c06585c1b7e5d3503daf
+translatedAt: 2026-10-17
 ---
 # Préprocesseur
 
@@ -31,8 +31,8 @@ l'analyseur. C'est une interface interne, pas un format d'étape public.
   `?FUNCTION_NAME`/`?FUNCTION_ARITY`, `?FEATURE_AVAILABLE`/`?FEATURE_ENABLED`,
   `?OTP_RELEASE` (29) et `?MACHINE` (`'BEAM'`, uniquement pour la compatibilité
   des sources).
-- Évaluation des gardes de `-if`/`-elif` avec des entiers arbitraires et le
-  catalogue des BIF de garde d'OTP ; aucun appel arbitraire n'est exécuté.
+- Évaluation des guards de `-if`/`-elif` avec des entiers arbitraires et le
+  catalogue des BIF de guard d'OTP ; aucun appel arbitraire n'est exécuté.
 - Fonctionnalités d'OTP 29.1 : `maybe_expr` (activée par défaut, contrôle
   `maybe`/`else`) et `compr_assign` (expérimentale, désactivée). La valeur
   initiale `all` sélectionne les deux ; `-feature(all, ...)` dans le source est
@@ -65,9 +65,9 @@ l'analyseur. C'est une interface interne, pas un format d'étape public.
 - La construction de record dans une condition reçoit un diagnostic contrôlé
   (`record construction requires record expansion`) ; epp d'OTP 29.1 plante
   dans ce cas.
-- Les valeurs initiales de `-D` sont des termes littéraux normalisés en jetons, y
-  compris les binaries et les funs externes que `erl_parse:tokens/1` ne peut pas
-  représenter.
+- Les valeurs initiales de `-D` sont des termes littéraux normalisés en jetons,
+  y compris les binaries et les funs externes que `erl_parse:tokens/1` ne peut
+  pas représenter.
 - `self()` est un pid synthétique stable et `node()` vaut `nonode@nohost`.
 - Un LF juste après le point final d'une inclusion fait avancer la ligne `-file`
   renvoyée ; l'espace, le commentaire et CRLF suivent le `scan_dot` à un
@@ -84,16 +84,16 @@ condition fausse silencieuse.
 
 Les diagnostics portent une catégorie stable, une sévérité, des étendues
 physiques, des coordonnées logiques optionnelles et les étendues de
-macros/inclusions associées. Les avertissements ne font pas échouer ; les erreurs
-mémorisent l'échec tandis que la récupération continue à la frontière de forme
-suivante.
+macros/inclusions associées. Les avertissements ne font pas échouer ; les
+erreurs mémorisent l'échec tandis que la récupération continue à la frontière
+de forme suivante.
 
 ## Tests
 
-Les références de jetons (`semantic/*.erl.tokens`) consignent les types de jetons
-d'epp, les valeurs décodées (flottants sous forme de bits binary64) et l'ordre des
-diagnostics ; la formulation n'a pas à être identique à celle d'OTP. Des
-fragments locaux `semantic/headers/*.hrl` remplacent les en-têtes d'OTP
-autrefois copiés. `preprocessor_workflow` couvre de vrais arbres d'inclusion,
-l'ordre des options, l'environnement, Latin-1 et des cas de conditions via la
-CLI.
+Les références de jetons (`tests/fixtures/preprocessor/semantic/*.erl.tokens`)
+consignent les types de jetons d'epp, les valeurs décodées (flottants sous forme
+de bits binary64) et l'ordre des diagnostics ; la formulation n'a pas à être
+identique à celle d'OTP. Les en-têtes inclus (`semantic/headers/*.hrl`) sont
+écrits localement, non copiés d'OTP.
+`preprocessor_workflow` couvre de vrais arbres d'inclusion, l'ordre des options,
+l'environnement, Latin-1 et des cas de conditions via la CLI.

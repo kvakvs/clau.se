@@ -1,8 +1,8 @@
 ---
 source: docs/parser.md
-sourceCommit: 6ed3851c
-sourceSha256: 620d520afbba7b5b1d96dcbf60cf55b23bfb6a23153437fd25ee82c424a2afc1
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 86719d7cbbba9250f7167908fc08ac6735ed50c9adf31c9d0655d626a595c815
+translatedAt: 2026-10-17
 ---
 # Парсер
 

@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: 6ed3851c
-sourceSha256: 6429059c33d43fbad7fcb826ceba6b33db7ae53de6eb578f6247f3aa56e69ee7
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
+translatedAt: 2026-10-17
 ---
 # Referenz auf den Erlang/OTP-Quelltext
 
@@ -28,7 +28,8 @@ Goldens sind Beobachtungen dieser Eingaben. Siehe
 
 Zu Beginn von Arbeiten ausführen, die von OTP abhängen.
 
-1. `git -C references/otp status --short` prüfen und lokale Arbeit sichern. Holen:
+1. `git -C references/otp status --short` prüfen und lokale Arbeit sichern.
+   Holen:
    `git -C references/otp fetch https://github.com/erlang/otp.git refs/heads/maint-29:refs/remotes/origin/maint-29`.
    `git -C references/otp log -1 origin/maint-29` und die Änderungen seit dem
    Pin prüfen, besonders Grammatik, Scanner, Präprozessor und Korpus-Eingaben.
@@ -60,6 +61,6 @@ Historische Einträge behalten die Revision, gegen die sie entstanden sind.
 | --- | --- | --- |
 | 2026-09-19 | Parser-Validierung gegen das Tag OTP 29.1 | `751f87b703fe5948607d08e82599ce644b772e76` |
 | 2026-09-28 | Wechsel zu `maint-29`; Grammatik und zehn Korpusdateien identisch | `21776803ecd11f5fa948732c0ec66b8f325dedfc` |
-| 2026-10-01 – 10-03 | Vor jedem Pattern-/Guard-Step neu geholt; unverändert | dieselbe |
+| 2026-10-01 – 10-03 | Vor jedem Muster-/Guard-Schritt neu geholt; unverändert | dieselbe |
 | 2026-10-03 | Plan 11, step 1: 14 Audit-Tests bestehen, 19 Korpora reproduzieren | dieselbe |
-| 2026-10-14 | Auf OTP 29.1.2 aktualisiert: Hashes von Grammatik, Scanner, Präprozessor und `phase6/otp.tsv` unverändert (`genop.tab` nur Kommentar); 17 Audit-Tests bestehen und 19 Korpora reproduzieren unter Oracle 29.1.1; die von Executable-, Lint-, Programm- und Ausgabe-Goldens erfasste Revision aktualisiert (Ausgaben unverändert, `external_terms` behält seine von der Atomreihenfolge abhängige Map-Ausgabe) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |
+| 2026-10-14 | Auf OTP 29.1.2 aktualisiert: Hashes von Grammatik, Scanner, Präprozessor und `phase6/otp.tsv` unverändert (`genop.tab` nur Kommentar); 17 Audit-Tests bestehen und 19 Korpora reproduzieren unter Orakel 29.1.1; die von Executable-, Lint-, Programm- und Ausgabe-Goldens erfasste Revision aktualisiert (Ausgaben unverändert, `external_terms` behält seine von der Atomreihenfolge abhängige Map-Ausgabe) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |

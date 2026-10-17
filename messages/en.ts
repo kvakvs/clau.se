@@ -121,7 +121,7 @@ export const en = {
           "Type inference with per-clause function types; a specification that contradicts the inferred argument types is a compile error, other contradictions are warnings",
           "Inference covers only code the entry function reaches; results for OTP and configured library directories are cached per module",
           "LLVM O0, O2 and Os; per-module objects, IR and bitcode; IR snapshots and assembly listings annotated with Erlang source",
-          "Generated code allocates, tests types, reads tuples, lists and maps, builds and matches binaries, creates closures and does float arithmetic inline, calling the runtime only on slow paths",
+          "Generated code allocates, tests types, reads tuples, lists and maps, appends short lists, builds and matches binaries, creates closures and does float arithmetic inline, calling the runtime only on slow paths",
           "O2 removes type and shape checks proven by inference, with bounded type-specialized variants",
           "Link-time optimization across modules with --lto",
           "Executables leave out the exports their entry function cannot reach; --keep-exports keeps them all",
@@ -137,7 +137,7 @@ export const en = {
           "LLVM-free C++23 runtime library linked into every program",
           "Arbitrary-precision integers, floats, atoms, tuples, lists, maps, bitstrings, records, funs, pids, ports and references",
           "Processes, messages, selective receive, links, monitors, registered names and timers on several scheduler workers, each with its own run queue",
-          "Per-process heaps with a generational copying garbage collector, min_heap_size, off-heap binaries and large maps, module literal areas and optional memory limits",
+          "Per-process heaps with a generational copying garbage collector, min_heap_size, shared off-heap binaries, module literal areas and optional memory limits",
           "Ports for files, standard I/O, subprocesses and TCP/UDP sockets on one event-driven I/O thread",
           "The erlang module: process dictionary, external term format with compression, time and timers, process introspection, spawn options, aliases and hashing",
           "Every OTP 29 export of a Clause library module compiles; functions not implemented yet raise not_implemented when called",
@@ -182,7 +182,7 @@ export const en = {
     featured: {
       gettingStarted: {
         title: "Getting started",
-        text: "Prerequisites: CMake, a C++23 compiler, Clang, the LLVM SDK, Boost and toml++.",
+        text: "Prerequisites: CMake, a C++23 compiler, Clang, the LLVM 23 SDK, Boost and toml++; CMake downloads the other libraries. Erlang/OTP is optional.",
       },
       building: {
         title: "Building the compiler",

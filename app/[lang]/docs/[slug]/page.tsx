@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Markdown } from "@/components/markdown";
 import { getDoc, getDocSlugs } from "@/lib/docs";
@@ -34,21 +33,21 @@ export default async function DocPage({ params }: Props) {
 
   return (
     <>
-      <Link
+      <a
         href={`/${lang}/docs/`}
         className="text-sm text-muted hover:text-accent"
       >
         ← {t.allDocs}
-      </Link>
+      </a>
       {doc.status === "fallback" && (
         <p className="mt-4 text-sm text-muted">{t.englishOnly}</p>
       )}
       {doc.status === "outdated" && (
         <p className="mt-4 max-w-3xl rounded-lg border border-accent/40 bg-accent-soft px-4 py-3 text-sm">
           {t.outdated}{" "}
-          <Link href={englishHref} className="text-accent underline">
+          <a href={englishHref} className="text-accent underline">
             {t.readEnglish}
-          </Link>
+          </a>
         </p>
       )}
       {(doc.status === "current" || doc.status === "outdated") && (
@@ -70,9 +69,9 @@ export default async function DocPage({ params }: Props) {
           {doc.status === "current" && (
             <>
               {" · "}
-              <Link href={englishHref} className="hover:underline">
+              <a href={englishHref} className="hover:underline">
                 {t.readEnglish}
-              </Link>
+              </a>
             </>
           )}
         </p>

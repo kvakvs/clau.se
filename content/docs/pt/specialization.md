@@ -1,8 +1,8 @@
 ---
 source: docs/specialization.md
-sourceCommit: 6ed3851c
-sourceSha256: 896b741de11f8f1f7f9098670798d1de273c0e4be02cb7ebfadca90e184b0e36
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 30fb2421aad552fe8985671c5251c1200101aa35c3ee76024120620bcf97ef7a
+translatedAt: 2026-10-17
 ---
 # Especialização de tipos
 
@@ -22,13 +22,13 @@ Uma prova só provém de factos que se verificam sempre que o código corre:
   nomeadas por `fun F/A` não têm nenhum);
 - o facto registado de uma expressão (o facto de um operando é registado antes
   de a operação que o usa o estreitar);
-- um teste de forma anterior no mesmo plano de correspondência: os nós do
-  plano correm em linha, pelo que um teste de tuplo ou de cons bem-sucedido
-  domina todos os nós posteriores.
+- um teste de forma anterior no mesmo plano de correspondência: os nós do plano
+  correm em linha, pelo que um teste de tuplo ou de cons bem-sucedido domina
+  todos os nós posteriores.
 
 As especificações nunca provam nada. `term()` e `none()` (código que a
-inferência considerou inalcançável) não provam nada; os corpos de funs
-anónimas não recebem provas.
+inferência considerou inalcançável) não provam nada; os corpos de funs anónimas
+não recebem provas.
 
 | Operação | Provada por | Código gerado |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ anónimas não recebem provas.
 | elemento de tuplo | um teste de forma ou um facto que prova o tuplo | carregamento inline do elemento |
 | padrão de lista | facto: certamente uma célula cons | teste de forma removido (caso contrário, um teste de etiqueta primária em cada nível) |
 | cabeça, cauda | um teste de cons ou um facto que prova a célula | carregamentos inline |
-| literal exato `[]`, `{}`, inteiro pequeno, átomo | sempre (todos os níveis desde OPT0.2A) | comparação de palavras: imediatos iguais são uma só palavra |
+| literal exato `[]`, `{}`, inteiro pequeno, átomo | sempre (em todos os níveis) | comparação de palavras: imediatos iguais são uma só palavra |
 | gerador de lista | facto da entrada do gerador: uma lista própria | teste de cons e leituras de células inline em cada iteração |
 
 Os factos chegam aos padrões das cabeças de funções (argumentos reunidos dos
@@ -46,12 +46,12 @@ chamadores), às correspondências no corpo (o lado direito) e às cláusulas
 case/try (o escrutinado ou o valor do corpo do try); os factos de elemento,
 cabeça e cauda acompanham as extrações. Uma leitura inline é guardada num slot
 de raiz como uma saída de serviço, pelo que o rebaixamento dos frames a mantém
-como termo através dos safepoints ([regra de recarga](runtime-heap.md#reload-rule)).
-As únicas conversões de ponteiros no código gerado são estas leituras provadas
-e os carregamentos de cabeçalho dos testes de forma de tuplo inline
-(`proven.cell`).
-As constantes de disposição provêm de [`abi/term.hpp`](abi.md#terms); o
-runtime verifica-as em relação às suas disposições privadas de células.
+como termo através dos safepoints
+([regra de recarga](runtime-heap.md#reload-rule)). As únicas conversões de
+ponteiros no código gerado são estas leituras provadas e os carregamentos de
+cabeçalho dos testes de forma de tuplo inline (`proven.cell`). As constantes de
+disposição provêm de [`abi/term.hpp`](abi.md#terms); o runtime verifica-as em
+relação às suas disposições privadas de células.
 
 ## Variantes
 
@@ -74,8 +74,8 @@ runtime verifica-as em relação às suas disposições privadas de células.
 A clonagem/simplificação do LLVM substitui as verificações provadas dentro do
 clone. Um despachante limitado testa cada etiqueta restringida e encaminha o
 contexto e os argumentos para uma variante ou para o corpo genérico; o símbolo
-público e a ABI não mudam. Não são introduzidos pressupostos de specs nem
-flags de fast-math.
+público e a ABI não mudam. Não são introduzidos pressupostos de specs nem flags
+de fast-math.
 
 ## Efeito atual
 
@@ -85,8 +85,8 @@ etiqueta, de forma e de serviço
 ([`proofs`](../tests/fixtures/executables/proofs/proofs.erl), verificado pelo
 CTest `codegen_proofs` e executado como o golden de executáveis
 `executables_proofs`). Uma variante tem de poupar mais instruções do que custa
-o seu despacho; um único teste de etiqueta removido de um argumento raramente
-o consegue, pelo que as variantes de código-fonte são normalmente planeadas e
+o seu despacho; um único teste de etiqueta removido de um argumento raramente o
+consegue, pelo que as variantes de código-fonte são normalmente planeadas e
 depois rejeitadas pelo limite de crescimento. Fixtures LLVM dedicadas injetam
 verificações de etiqueta repetidas para exercitar acertos, recursos e a
 reversão de crescimento com execução nativa.
@@ -97,8 +97,4 @@ modo rápido corre `-O0` (genérico) e `-O2` com especialização (provas).
 `codegen_measurements` escreve `measurements/<config>/measurements.json` no
 diretório de compilação dos testes de codegen (tempo de compilação, bytes de
 IR/objeto, variantes, leituras provadas, tempo nativo). Os tempos são
-descritivos, nunca limiares. Amostra Windows x64 / LLVM 23.1.2 (2026-09-29,
-antes das provas): carga de trabalho de código-fonte com 232 876 bytes de IR /
-40 498 bytes de objeto em O0 e 204 408 / 35 886 em ambas as políticas O2, zero
-variantes; a fixture sintética acrescentou 30 instruções a uma função de 55
-instruções para uma variante aceite.
+descritivos, nunca limiares.

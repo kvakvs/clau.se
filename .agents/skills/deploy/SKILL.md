@@ -17,6 +17,8 @@ Arguments (`$ARGUMENTS`, any order):
 
 ## Steps
 
+SUBAGENTS: When using subagents, switch to a faster model such as Sonnet.
+
 1. If `sync` was given and `../clau` exists, run `pnpm sync-docs` and report
    which docs changed (`git status --short content/`). Then run
    `pnpm docs-status` and report outdated translations; they deploy with an

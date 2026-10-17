@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: 6ed3851c
-sourceSha256: 8a996bd18e6d699944fde901a3d45fece06aa55859935b3fe26c1518edc03e7d
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b1c98a208a0a72f7ad5b20a2915eb2b39a4142cc65314491f83b019398b3b85a
+translatedAt: 2026-10-17
 ---
 # Projets TOML
 
@@ -68,20 +68,19 @@ my_dependency = "vendor/my_dependency"
   `defines` utilise `NAME` (= `true`) ou `NAME=ERLANG_LITERAL_TERM` ; les
   doublons sont des erreurs. Une fonctionnalité ne peut pas figurer dans les deux
   listes de fonctionnalités.
-- `entry` (optionnel) choisit l'entrée de l'exécutable `MODULE[:FUNCTION]` ;
-  voir [exécutables](executables.md#entry-selection). L'option `--entry` de la
-  CLI la remplace pour une seule cible sélectionnée.
+- `entry` (optionnel) choisit l'entrée de l'exécutable
+  `MODULE[:FUNCTION[/ARITY]]` ; voir
+  [exécutables](executables.md#entry-selection). L'option `--entry` de la CLI la
+  remplace pour une seule cible sélectionnée.
 - `build_dir` (optionnel) est le [répertoire de build](#build-directory) de la
   cible, par défaut `<manifest-dir>/build`.
 - `output` est la destination de l'exécutable, par défaut
   `<manifest-dir>/build/<target>` (`.exe` sous Windows). Une cible avec `output`
   ou `entry` est une cible exécutable ([exécutables](#executables)) ; `--emit` et
   les modes de vérification/affichage ignorent les sorties de ces deux clés.
-- Pas encore pris en charge : valeurs par défaut à la racine, héritage,
-  dépendances entre cibles, imports, profils, paquets, surveillance,
-  compilations parallèles. Les champs ne sont ajoutés qu'avec le comportement
-  correspondant. Les caches de compilation sont décrits dans
-  [caches de compilation](#build-caches).
+- Non pris en charge : valeurs par défaut à la racine, héritage, dépendances
+  entre cibles, imports, profils, paquets, surveillance, compilations
+  parallèles. Les champs ne sont ajoutés qu'avec le comportement correspondant.
 
 ## CLI et sélection des cibles
 
@@ -197,17 +196,15 @@ vérification/affichage) lie chaque cible sélectionnée qui a une clé `output`
 ## Répertoire de build
 
 Chaque cible de projet a un répertoire de build où Clause garde ses propres
-fichiers temporaires (et, depuis le plan 11 step 62D2, ses caches) : le
-`build_dir` de la cible, relatif au manifeste, par défaut
-`<manifest-dir>/build`. `--build-dir DIR` (relatif à l'invocation) le remplace
-pour chaque cible sélectionnée. Les entrées positionnelles n'en ont pas, sauf
-si `--build-dir` est donné.
+fichiers temporaires et ses caches : le `build_dir` de la cible, relatif au
+manifeste, par défaut `<manifest-dir>/build`. `--build-dir DIR` (relatif à
+l'invocation) le remplace pour chaque cible sélectionnée. Les entrées
+positionnelles n'en ont pas, sauf si `--build-dir` est donné.
 
-- Les fichiers temporaires vont sous `<build_dir>/tmp` : aujourd'hui les
-  espaces de travail du chargeur de parse transforms
-  ([transformations](transforms.md#loader)). Chaque exécution supprime les
-  siens ; un `tmp` vide peut rester. Sans répertoire de build, ils vont dans le
-  répertoire temporaire du système.
+- Les fichiers temporaires vont sous `<build_dir>/tmp` : les espaces de travail
+  du chargeur de parse transforms ([transformations](transforms.md#loader)).
+  Chaque exécution supprime les siens ; un `tmp` vide peut rester. Sans
+  répertoire de build, ils vont dans le répertoire temporaire du système.
 - La préparation de l'édition de liens (`.clause-link-*`) reste à côté de la
   sortie exécutable, car le renommage final doit rester sur le volume de la
   sortie ([édition de liens](executables.md#linking)).
@@ -220,12 +217,13 @@ si `--build-dir` est donné.
 ### Caches de compilation
 
 Les résultats qui valent la peine d'être gardés entre deux exécutions vivent
-sous `<build_dir>/cache` (62D4 et 62D5) ; `--no-cache` ne les lit ni ne les
-écrit. Ce sont les réponses du chargeur de parse transforms et la liste des
-modules collants (sticky) de l'OTP hôte, si bien qu'une compilation à chaud ne
-démarre aucun `erl` hôte pour les modules dont les entrées de transformation
-n'ont pas changé, ainsi que le [résultat de compilation](compile.md#compile-cache)
-de chaque lot.
+sous `<build_dir>/cache` ; `--no-cache` ne les lit ni ne les écrit. Ce sont les
+réponses du chargeur de parse transforms et la liste des modules collants
+(sticky) de l'OTP hôte, si bien qu'une compilation à chaud ne démarre aucun
+`erl` hôte pour les modules dont les entrées de transformation n'ont pas
+changé, le [résultat de compilation](compile.md#compile-cache) de chaque lot,
+et les [résultats d'inférence](#inference-cache) des modules des répertoires
+configurés.
 
 - **Interface.** Les appelants utilisent un seul magasin interne au projet
   (`compiler/src/cache/
@@ -238,17 +236,19 @@ de chaque lot.
   appelant n'a besoin de son propre codec. Un `get` avec une autre version de
   format est un échec (miss). Chaque opération est sûre depuis plusieurs
   threads à la fois.
-- **Disposition (backend SQLite).** `cache/v2/cache.db` est une base SQLite
-  3.54 : table `entries` (répertoire d'entrée, fichier, genre, clé, format,
-  dernière utilisation ; unique sur l'adresse) et table `parts` (entrée, ordre,
-  nom, taille, somme de contrôle xxh3-64, et soit les octets, soit le nom d'un
+- **Disposition.** `cache/v2/cache.db` est une base SQLite 3.54 : table
+  `entries` (répertoire d'entrée, fichier, genre, clé, format, dernière
+  utilisation ; unique sur l'adresse) et table `parts` (entrée, ordre, nom,
+  taille, somme de contrôle xxh3-64, et soit les octets, soit le nom d'un
   fichier blob). Les parties de plus de 256 Ko vivent dans
   `cache/v2/blobs/<xxh3-128 of the bytes>`, si bien que des parties égales (les
   objets identiques d'un lot compilé sous deux jeux d'options) ne sont stockées
-  qu'une fois. Un fichier blob est écrit comme fichier temporaire et renommé
-  avant la validation de la ligne qui le nomme, si bien qu'une ligne ne nomme
-  jamais un fichier incomplet ; un plantage entre les deux ne laisse qu'un
-  fichier orphelin.
+  qu'une fois ; 256 Ko est le seuil où, selon les mesures, les lectures cessent
+  de favoriser la base et les écritures commencent à favoriser les fichiers
+  (`cache_store bench` dans `tests/compiler/cache`). Un fichier blob est écrit
+  comme fichier temporaire et renommé avant la validation de la ligne qui le
+  nomme, si bien qu'une ligne ne nomme jamais un fichier incomplet ; un
+  plantage entre les deux ne laisse qu'un fichier orphelin.
 - **Clés.** Une clé est le hachage de contenu de 128 bits de tout ce dont le
   résultat dépend, jamais un horodatage : la version et l'exécutable de `clau`
   (chemin, taille, date de modification, si bien qu'un `clau` recompilé donne
@@ -293,57 +293,18 @@ de chaque lot.
   qu'aucune entrée ne nomme (une fois âgés de plus de 10 minutes, afin que le
   nouveau fichier d'un écrivain concurrent survive), et les pages libérées sont
   rendues au système de fichiers (vacuum incrémental). Chaque exécution
-  supprime une arborescence `cache/v1` résiduelle du backend fichier du
-  step 62D2.
+  supprime une arborescence `cache/v1` résiduelle de l'ancien backend fichier.
 - **Observabilité.** `--print-stage-times` marque les étapes réutilisées
   (`[time] transform src/a.erl: 7.254 ms (cached)`) ; `--verbose` affiche
   `[cache] hit|miss <kind> <file>` avec la raison d'un échec (`no entry`,
   `inputs changed`, `damaged entry`). Les diagnostics et la sortie des
   transformations sont identiques avec et sans succès de cache : ils sont
   stockés avec l'entrée.
-- **Mesures des backends** (2026-10-12, Release, Windows 11, NTFS ;
-  `cache_store bench` dans `tests/compiler/cache`). Le backend fichier
-  62D2 (un index réécrit à chaque put, paquets en ajout seul) face à
-  SQLite :
-
-  | Cas | Backend fichier | SQLite |
-  | --- | --- | --- |
-  | 200 puts × 8 Ko, puis ouverture et 200 gets | 788–902 ms, 9–16 ms | 37–41 ms, 8–9 ms |
-  | 2 000 puts × 8 Ko, puis ouverture et gets | 11,1–12,5 s (1 à 3 entrées perdues), 118–128 ms | 249–258 ms, 32–33 ms |
-  | 3 puts × 24 Mo, puis ouverture et gets | 106–127 ms, 144–157 ms | 85–90 ms, 73 ms (fichiers blob) |
-
-  Gardées dans la base, les valeurs de 24 Mo prenaient 379–392 ms à écrire (le
-  journal les écrit deux fois). Vingt valeurs différentes par taille, écrites
-  puis relues : 64 Ko dans la base 21 ms / 7 ms contre 30 ms / 12–17 ms en
-  fichiers blob ; 256 Ko 41–43 ms / 9 ms contre 30–31 ms / 10–19 ms ; 1 Mo
-  105–110 ms / 18 ms contre 37 ms / 18–22 ms ; 4 Mo 458–466 ms / 82 ms contre
-  92 ms / 71 ms. Les lectures favorisent la base jusqu'à environ 256 Ko et les
-  écritures favorisent les fichiers au-delà, ce qui fixe la limite en ligne à
-  256 Ko. Les compilations de luerl (Release, trois exécutions) n'ont pas
-  changé : à froid 3,75–3,78 s avant et 3,78–3,80 s après, à chaud
-  1,65–1,68 s avant et 1,69–1,70 s après ; elles gardent peu d'entrées.
-- **Pas de cache de parcours des répertoires** (2026-10-11, `clau` Release,
-  Windows, cache de fichiers du système chaud). luerl planifie en 78 ms sur une
-  compilation à chaud de 2,77 s (2,8 %). Un manifeste couvrant tout
-  `references/otp/lib` (1 319 répertoires, 9 711 fichiers) planifie en environ
-  150 ms : `sources = ["…/lib/**/src/*.erl"]` 74 ms,
-  `source_dirs = ["…/lib"]` 140 ms, `source_search_paths` et `include_dirs`
-  avec `**` 35 ms chacun, `ignore_dirs` 0,4 ms. Lister chaque répertoire de
-  l'arborescence coûte environ 28 ms, alors que vérifier la date de
-  modification de chaque répertoire (ce que ferait un cache de parcours à la
-  place) coûte environ 13 ms ; le reste est la validation par source
-  (ouverture et identification de chacune des 2 000 à 3 600 sources), qu'un tel
-  cache ne peut pas éviter. La première exécution après la sortie de
-  l'arborescence du cache du système a pris 10 à 20 s, elle aussi dominée par
-  l'ouverture des fichiers. La recherche des inclusions ne coûte rien de
-  mesurable depuis l'[index des répertoires](#directory-index).
-- **Résultats d'inférence** des modules des répertoires configurés
-  ([cache d'inférence](#inference-cache)).
-- **Non mis en cache :** le prétraitement et l'analyse syntaxique. Un résultat
-  en cache se chargerait via les formes abstraites (`transforms/import`), et
-  sur luerl (169 modules, Release, 2026-10-11) leur seule importation prenait
-  1 063 ms contre 819 ms pour prétraiter (409 ms) et analyser (410 ms) les
-  sources ; exporter les formes pour une clé prenait encore 727 ms.
+- **Non mis en cache :** le prétraitement et l'analyse syntaxique (charger un
+  résultat en cache via les formes abstraites, `transforms/import`, s'est
+  mesuré plus lent que d'analyser de nouveau), et les parcours de répertoires :
+  la planification est dominée par l'ouverture et l'identification de chaque
+  source, qu'un cache de parcours ne peut pas éviter.
 
 ### Cache d'inférence
 
@@ -400,8 +361,8 @@ réutilisent au lieu de les inférer à nouveau.
   (raisons d'échec : `no entry`, `inputs changed`, `damaged entry`,
   `results do not fit` pour des résultats gardés auxquels manque une fonction
   vivante désormais) ; `--print-stage-times` affiche les phases
-  `inference-cache` (avec `N of M covered modules reused`) et
-  `inference-store`.
+  `inference-cache` (avec `N of M
+  covered modules reused`) et `inference-store`.
 
 ## Chemins et découverte
 
@@ -418,12 +379,13 @@ réutilisent au lieu de les inférer à nouveau.
   définit (un appel distant, `fun M:F/A`, `apply` avec un module littéral,
   `-behaviour` ou `-import`), la
   [bibliothèque](library.md#how-programs-get-them) de Clause est cherchée
-  d'abord, puis les chemins de recherche dans l'ordre, pour `Module.erl` (plan
-  step 41K : un OTP installé ne remplace jamais un module de Clause, et un
-  module que Clause enregistre comme manquant n'est jamais pris dans un chemin
-  de recherche) ; un fichier trouvé rejoint la cible comme une source listée,
-  et ses propres références sont résolues de la même façon. Une source listée
-  portant le nom d'un module de Clause le remplace, avec un avertissement.
+  d'abord, puis les chemins de recherche dans l'ordre, pour `Module.erl` (un
+  OTP installé ne remplace jamais un module de Clause, et un module que Clause
+  enregistre comme manquant n'est jamais pris dans un chemin de recherche :
+  [résolution](library.md#which-module-a-name-resolves-to)) ; un fichier trouvé
+  rejoint la cible comme une source listée, et ses propres références sont
+  résolues de la même façon. Une source listée portant le nom d'un module de
+  Clause le remplace, avec un avertissement.
 - Motifs génériques : `*` et `?` à l'intérieur d'un composant, `**` comme
   composant entier. Les crochets, accolades, négations et échappements sont
   rejetés. La correspondance est sensible à la casse ; `?` est un scalaire
@@ -474,8 +436,6 @@ listages qui échouent sont sondés comme avant.
   `[index] listed=N walked=N lookups=N misses=N probes=N` (répertoires listés à
   la demande, listages enregistrés par les parcours, recherches auxquelles
   l'index a répondu et échecs parmi elles, recherches laissées à un sondage).
-  Sur luerl (2026-10-11), il répond aux 15 215 recherches (14 909 échecs) à
-  partir de 66 listages et de 1 380 répertoires parcourus.
 
 ## Sources ignorées
 
@@ -495,12 +455,13 @@ même contenir des erreurs de syntaxe.
   confrontés au nom entier (`*_SUITE`, `legacy_*`, `prim_???`). Une source
   nommée `<Module>.erl` (ou `.abstr`) est ignorée lorsqu'une entrée correspond
   à `<Module>`, et un module référencé qui correspond n'est jamais recherché.
-  Cela inclut les [modules de bibliothèque](library.md#which-module-a-name-resolves-to)
-  de Clause.
+  Cela inclut les
+  [modules de bibliothèque](library.md#which-module-a-name-resolves-to) de
+  Clause.
 - Une source que `sources` liste littéralement (sans motif générique) n'est
   jamais ignorée : les règles n'ont aucun effet sur elle, et la compilation
-  avertit `listed in sources but matched by ignore_modules or ignore_dirs;
-  ignoring it has no effect` (directive de l'utilisateur du 2026-10-12). Les
+  avertit `listed in sources but matched
+  by ignore_modules or ignore_dirs; ignoring it has no effect`. Les
   correspondances de motifs génériques et `source_dirs` sont ignorées comme
   décrit.
 - Les deux s'appliquent à `sources`, à `source_dirs`, aux sources littérales

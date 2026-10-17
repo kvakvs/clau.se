@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 6ed3851c
-sourceSha256: 487cb38fceea0b489183ca4c47c3c3b8494d2df44fd821e82de92e1c896f5864
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 191e95cc2bea15e016f69e98aca4ce93be2fa8f47a09d9d1977607eceaf69fc2
+translatedAt: 2026-10-17
 ---
 # Runtime
 
@@ -40,12 +40,11 @@ vollständigen Lebenszyklus.
   optionale [runtimeweite Grenze](runtime-heap.md#runtime-memory-limit),
   gemeldet durch `memory_bytes()`. Alle sind standardmäßig unbegrenzt.
 - `create_context()` oder `create_context(heap_options, stack_options)` →
-  geliehener `ProcessContext*`,
-  stabil bis zur Zerstörung. Heap-Standardwerte: minimaler Heap von 233 Wörtern
-  (`min_heap_words`) und keine Speichergrenze (`limit_bytes` =
-  `UNLIMITED_HEAP_BYTES`; ein gesetztes Budget ist ein Vielfaches eines Worts
-  und mindestens der minimale Heap). Auch der Stack ist unbegrenzt, sofern
-  `StackOptions::limit_words` nicht gesetzt ist.
+  geliehener `ProcessContext*`, stabil bis zur Zerstörung. Heap-Standardwerte:
+  minimaler Heap von 233 Wörtern (`min_heap_words`) und keine Speichergrenze
+  (`limit_bytes` = `UNLIMITED_HEAP_BYTES`; ein gesetztes Budget ist ein
+  Vielfaches eines Worts und mindestens der minimale Heap). Auch der Stack ist
+  unbegrenzt, sofern `StackOptions::limit_words` nicht gesetzt ist.
 - `destroy_context(ctx)`, `shutdown()`: Shutdown gibt `busy` zurück, solange
   Kontexte übrig sind; danach gelingt es idempotent, und spätere Aufrufe geben
   `stopped` zurück. Der Destruktor räumt verbleibende Kontexte auf.
@@ -64,70 +63,43 @@ den Abbau der Runtime hinaus am Leben, aber nie einen Prozess.
 
 ## Prozessspeicher
 
-Jeder Kontext besitzt einen `ProcessHeap`: einen einzigen Heap-Block, der durch
-seine erste Allokation erzeugt wird und die Größe
-`max(min_heap_words, request)` hat, plus eine Kette von Heap-Fragmenten im
-Besitz desselben Prozesses. Wörter bewegen sich nur, wenn der Host an einem
-sicheren Punkt `collect()` aufruft.
-
-Der Heap folgt dem klassischen ERTS-Design; [runtime-heap.md](runtime-heap.md)
-ist sein Vertrag (Layout, Bereiche, Größenbemessung, Zulassung, Wurzeln,
-Speicherbereinigung).
+Jeder Kontext besitzt einen `ProcessHeap`
+([process_heap.hpp](../runtime/include/process_heap.hpp)); sein Layout, seine
+Bereiche, Größenbemessung, Zulassung, Wurzeln und Speicherbereinigung sind in
+[runtime-heap.md](runtime-heap.md) festgelegt. Die Host-API:
 
 - `allocate(words)` gibt genullten Wortspeicher zurück. `reserve` liefert eine
   nur verschiebbare Reservierung mit explizitem Commit und automatischem
   Rollback. Eine Reservierung pro Heap zur gleichen Zeit: zuerst die Kinder
-  aufbauen, das Elternobjekt zuletzt reservieren.
-- Bump-Allokation füllt den Heap-Block; eine Anfrage, die nicht passt, geht an
-  das neueste Fragment, sonst an ein neues Fragment der Größe
-  `max(min_heap_words, request)` (begrenzt durch das verbleibende Budget).
-  Wörter sind nur auf Wortgrenzen ausgerichtet. Ein Rollback setzt das obere
-  Ende des Bereichs zurück, verwirft ein durch die Reservierung erzeugtes
-  Fragment (oder den Heap-Block) und stellt die Buchführung exakt wieder her.
-- Lehnt null, Überlauf und erschöpftes Budget vor dem
-  Veröffentlichen ab. Fehler: `out_of_memory` (Allokation) oder
-  `limit_exceeded` (Budget); erzeugter Code erhält den genauen Status.
-- Binaries über 64 Bytes liegen in gemeinsamen Puffern außerhalb des Heaps.
-  Jede Heap-Zelle, die auf einen verweist, hält einen `std::shared_ptr` und
-  tritt bei der Veröffentlichung der Off-Heap-Liste des Prozesses bei; der
-  Abbau durchläuft die Liste und gibt diese Referenzen frei
-  ([Off-Heap-binaries](runtime-heap.md#off-heap-binaries)).
-- `add(value)`/`copy_to` kopieren einen Graphen eines anderen Prozesses
-  derselben Runtime, unter Erhalt seiner gemeinsamen Teile und mit gemeinsamer
-  Nutzung von Off-Heap-Puffern; eine gescheiterte Kopie ändert nichts
-  ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)).
-- `used_words` zählt allokierte Wörter; `capacity_words` zählt Heap-Block und
-  Fragmente; `off_heap_words` zählt die Puffer, auf die dieser Prozess
-  verweist, jeden einmal. Hintergrund- plus Off-Heap-Wörter teilen sich das
-  optionale Budget `limit_bytes`; eine Speicherbereinigung lässt die Hälfte
-  des Budgets übrig, nachdem die Überlebenden freigeben, sodass seine
-  Erschöpfung bedeutet, dass die lebenden Daten nicht mehr hineinpassen
+  aufbauen, das Elternobjekt zuletzt reservieren. Rohe `allocate()`-Wörter
+  müssen null bleiben oder vollständige Objekte enthalten
+  ([Wort-Layout](runtime-heap.md#word-layout)).
+- Null, Überlauf und ein erschöpftes Budget werden vor dem Veröffentlichen
+  abgewiesen: `out_of_memory` (Allokation) oder `limit_exceeded` (Budget);
+  erzeugter Code erhält den genauen Status
   ([Fehlerverhalten](runtime-heap.md#failure-behavior)).
-- Jedes benutzte Wort lässt sich als Objekt mit führendem Header, als
-  Cons-Zelle oder als Füllwort lesen
-  ([Wort-Layout](runtime-heap.md#word-layout)); reservierte Wörter beginnen
-  genullt. Rohe `allocate()`-Wörter müssen null bleiben oder vollständige
-  Objekte enthalten.
-  `verify()` durchläuft den Heap-Block und jedes Fragment und prüft, ob jeder
+- `add(value)`/`copy_to` kopieren einen Graphen eines anderen Prozesses
+  derselben Runtime
+  ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)).
+- `used_words` zählt allokierte Wörter, `capacity_words` den Heap-Block und die
+  Fragmente, `off_heap_words` die Puffer außerhalb des Heaps, auf die dieser
+  Prozess verweist, jeden einmal
+  ([Größenbemessung und Budget](runtime-heap.md#sizing-and-budget)).
+- `verify()` durchläuft den Heap-Block und jedes Fragment und prüft, ob jeder
   Term-Slot auf einen Objektanfang desselben Prozesses zeigt (Tests und
   Debugging; sonst `corrupt_heap`).
 - `collect(roots)` kopiert alles, was von den Prozesswurzeln und den
-  Wurzelwörtern des Hosts erreichbar ist, in einen neuen Heap-Block, gibt den
-  alten Block und die Fragmente frei, gibt tote Off-Heap-binaries frei und
-  schreibt die Wurzeln um ([Speicherbereinigung](runtime-heap.md#collection)).
-  Erzeugter Code bereinigt an Funktionseintritten und Schleifenköpfen von
-  comprehensions, wenn `wants_collection()`
+  Wurzelwörtern des Hosts erreichbar ist, in einen neuen Heap-Block
+  ([Speicherbereinigung](runtime-heap.md#collection)). Sie läuft nur an einem
+  sicheren Punkt, sonst `unsafe_point`
+  ([Wurzeln und sichere Punkte](runtime-heap.md#roots-and-safe-points));
+  erzeugter Code bereinigt an seinen eigenen sicheren Punkten
   ([Speicherbereinigung in erzeugtem Code](runtime-heap.md#collection-in-generated-code)).
-  Sie läuft nur an einem sicheren Punkt (kein
-  erzeugter Code läuft außerhalb eines `SafePoint`-Bereichs, keine offene
-  Reservierung), sonst `unsafe_point`; das
-  [Wurzelinventar](runtime-heap.md#roots-and-safe-points) listet, was sie
-  umschreibt; scheitert die Allokation des neuen Blocks, ergibt das
-  `out_of_memory`, ohne dass sich etwas ändert.
 
 ## Code-Server und Builtins
 
-Jede Runtime besitzt einen `CodeServer` ([code_server.hpp](../runtime/include/clause/runtime/code_server.hpp),
+Jede Runtime besitzt einen `CodeServer`
+([code_server.hpp](../runtime/include/clause/runtime/code_server.hpp),
 [callable.hpp](../runtime/include/clause/runtime/callable.hpp)):
 
 ```cpp
@@ -146,10 +118,9 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
   Definitionen sowie Atomwörter von `Module:Function/Arity` auf Export-Frames.
   Dynamische Aufrufe, `apply/3`, `fun M:F/A` zur Laufzeit und
   Deskriptor-Abfragen brauchen daher erwartet konstante Zeit in der Anzahl der
-  Module und Exporte (etwa 80 ns pro Export-Abfrage in Debug mit 10 oder 400
-  Modulen). Die Indizes werden innerhalb der Registrierung gebaut: Ein
-  abgewiesenes Modul fügt keinen Eintrag hinzu, und sie ändern sich nur unter
-  der exklusiven Sperre des Servers.
+  Module und Exporte. Die Indizes werden innerhalb der Registrierung gebaut:
+  Ein abgewiesenes Modul fügt keinen Eintrag hinzu, und sie ändern sich nur
+  unter der exklusiven Sperre des Servers.
 - `resolve` unterscheidet fehlendes Modul und fehlenden Export.
   `ResolvedFunction` hält das Modul-Image fest; `call` prüft Stelligkeit,
   Argumente und Ergebnisse und verwandelt Host-Ausnahmen in Fehler.
@@ -159,25 +130,25 @@ auto fn = context.code_server().resolve({.module = "native_demo", .function = "i
   `length/1`, `spawn/3`, `spawn_link/3`, `send/2`, `make_ref/0`,
   `garbage_collect/0`, `apply/3` (erzeugter Code ruft `apply/2,3`
   stattdessen über die Dienste für dynamische Aufrufe auf,
-  [funs](funs.md#dynamic-calls)), `tuple_size/1`, `+/2`) meldet
+  [Funs](funs.md#dynamic-calls)), `tuple_size/1`, `+/2`) meldet
   `not_implemented`; andere nicht registrierte Namen geben stumm
   `unknown_builtin` zurück. Dieser Host-Pfad erreicht die Produktions-Builtins
   nicht.
 - Produktions-Builtins liegen in der `BuiltinRegistry` des Servers, beim Start
-  der Runtime registriert; erzeugter Code, dynamische Aufrufe und funs
+  der Runtime registriert; erzeugter Code, dynamische Aufrufe und Funs
   erreichen sie über die [Builtin-Brücke](builtins.md).
 - `CodeServer::export_frame` findet den `FrameDescriptor` eines Exports nach
   Modul, Funktionsatom und Stelligkeit; `function_frame` ergänzt die Builtins
   für dynamische Aufrufe; `external_fun` interniert die Definitionen externer
-  funs, die zur Laufzeit gebaut werden.
-- `CodeServer::unload` ist zurückgestellt; dynamisches Laden wird nicht
-  unterstützt.
+  Funs, die zur Laufzeit gebaut werden.
+- Module werden nie entladen; `CodeServer::unload` ist zurückgestellt, und
+  dynamisches Laden wird nicht unterstützt.
 
 ## Persistente Terme
 
-Quelle: `memory/persistent_terms`. Eine Tabelle pro Runtime, im Besitz von
+Eine Tabelle pro Runtime (`memory/persistent_terms`), im Besitz von
 `Runtime::Impl` und erreichbar über `ProcessContext::persistent_terms()`, hält
-die Terme von `persistent_term` (Builtins: step 41M2).
+die Terme von `persistent_term` ([Builtins](builtins.md#persistent-terms)).
 
 - Ein Schlüssel und sein Wert werden jeweils in einen `MessageBuffer`
   ([Nachrichtenpuffer](runtime-heap.md#message-buffers)) außerhalb jedes
@@ -186,16 +157,12 @@ die Terme von `persistent_term` (Builtins: step 41M2).
 - Einträge werden über einen Hash des Schlüssels (die Builtins verwenden den
   Term-Hash von `phash2`) und exakte Gleichheit gefunden, direkt im Puffer
   verglichen (`MessageBuffer::value`).
-- Ein Lesen kopiert den Wert in den Heap des Lesers (entschieden 2026-10-14).
-  OTP gibt stattdessen eine Referenz in einen Literalbereich heraus und kopiert
-  nur beim Ersetzen oder Löschen über eine globale Speicherbereinigung; die
-  Zulassung von Clause akzeptiert nur Wörter aus den eigenen Bereichen des
-  Prozesses, daher bräuchten Literale an Ort und Stelle eine neue gemeinsame
-  Term-Region. Das Kopieren hält jeden Prozess-Heap in sich abgeschlossen: Ein
-  ersetzter oder gelöschter Wert wird freigegeben, wenn der letzte Leser, der
-  ihn noch kopiert, seine Pufferreferenz aufgibt, und keine globale
-  Speicherbereinigung ist nötig. Lesevorgänge kosten die Größe des Werts
-  ([Unterschiede](differences.md)).
+- Ein Lesen kopiert den Wert in den Heap des Lesers, wo OTP eine Referenz in
+  einen Literalbereich herausgibt und dafür beim Ersetzen oder Löschen mit einer
+  globalen Speicherbereinigung bezahlt ([Unterschiede](differences.md)). Jeder
+  Prozess-Heap bleibt in sich abgeschlossen: Ein ersetzter oder gelöschter Wert
+  wird freigegeben, wenn der letzte Leser, der ihn noch kopiert, seine
+  Pufferreferenz aufgibt, und keine globale Speicherbereinigung ist nötig.
 - Eine geteilte Sperre bedient Leser auf beliebig vielen Workern; Schreiben und
   Löschen nehmen sie exklusiv und kopieren nie, während sie sie halten. CTest
   `runtime_persistent_terms` deckt Werte ab, die ihren Schreiber überleben,
@@ -204,8 +171,11 @@ die Terme von `persistent_term` (Builtins: step 41M2).
 
 ## Scheduler-Buchführung
 
-`SchedulerService` ([scheduler.hpp](../runtime/include/clause/runtime/scheduler.hpp))
-verzeichnet nur den Lebenszyklus von Prozessen; er führt keinen Code aus.
+`SchedulerService`
+([scheduler.hpp](../runtime/include/clause/runtime/scheduler.hpp)) ist ein dem
+Host zugewandtes Verzeichnis des Lebenszyklus von Prozessen; er führt keinen
+Code aus. Programme laufen auf dem Executor
+([Prozesse](processes.md#executor)), der ihn nicht verwendet.
 
 - `register_process(context)` einmal pro Kontext (dieselbe Runtime);
   Duplikate geben `already_registered` zurück. `remove_process(id)` nimmt
@@ -218,56 +188,56 @@ verzeichnet nur den Lebenszyklus von Prozessen; er führt keinen Code aus.
   verfügbar.
 - `run` und `execute` melden `not_implemented`.
 
-Entwurfsskizzen für Worker und Prozesse liegen in
-[runtime/design/](../runtime/design/) und `runtime/include/{scheduler,process}.hpp`.
-Nachrichten sind umgesetzt ([Prozesse](processes.md#messages)): Eine Sendung
-kopiert die Nachricht in den Heap des Empfängers und hängt sie an seinen
-Signal-Eingang an (`runtime/include/mailbox.hpp`).
-
 ## Threads
 
-Scheduler-Worker ([Worker](processes.md#workers)) führen
-Prozesse auf mehreren Threads einer Runtime aus. Dienste, die sie gemeinsam
-nutzen, sind synchronisiert; alles andere bleibt auf den Thread beschränkt, der
-seinen Prozess ausführt, oder wird durch den Mutex des Executors geschützt.
+Scheduler-Worker ([Worker](processes.md#workers)) führen Prozesse auf mehreren
+Threads einer Runtime aus. Dienste, die sie gemeinsam nutzen, sind
+synchronisiert; alles andere bleibt auf den Thread beschränkt, der seinen
+Prozess ausführt, oder wird durch den Mutex des Executors geschützt.
 
 - Atome: `AtomStorage` schützt beide Indizes mit einem Shared Mutex.
   Abfragen (`lookup`, `boolean`, `size`) teilen ihn; `intern` sucht unter der
   geteilten Sperre, und nur eine neue Schreibweise nimmt die exklusive Sperre,
   prüft erneut und veröffentlicht den Eintrag, sodass konkurrierende
   Internierungen einer Schreibweise ein einziges Wort erhalten. Wörter bleiben
-  stabil: Ein Eintrag wird vor dem Abbau nie geändert oder entfernt.
-- Code: `CodeServer` schützt seine Module und die Definitionen
-  externer funs mit einem Shared Mutex. Abfragen (`find_module`, `resolve`,
-  `atom_word`, `record_definition`, `fun_definition`, `export_frame`,
-  `function_frame`, `owns`) teilen ihn; `load` und der Aufbau einer neuen
-  Definition eines externen fun nehmen ihn exklusiv, sodass nebenläufige
-  Registrierungen eines Namens ein einziges Modul veröffentlichen (die anderen
-  erhalten `duplicate_module`) und konkurrierende `external_fun`-Aufrufe eine
-  einzige Definition erhalten. Die Builtin-Registry wird beim Start der Runtime
+  stabil: Ein Eintrag wird vor dem Abbau nie geändert oder entfernt. Die
+  Zulassung von Atomwörtern liest einen sperrfreien Index
+  ([Atome](terms.md#atoms)).
+- Code: `CodeServer` schützt seine Module und die Definitionen externer Funs
+  mit einem Shared Mutex. Abfragen (`find_module`, `resolve`, `atom_word`,
+  `record_definition`, `fun_definition`, `export_frame`, `function_frame`,
+  `owns`) teilen ihn; `load` und der Aufbau einer neuen Definition einer
+  externen Fun nehmen ihn exklusiv, sodass nebenläufige Registrierungen eines
+  Namens ein einziges Modul veröffentlichen (die anderen erhalten
+  `duplicate_module`) und konkurrierende `external_fun`-Aufrufe eine einzige
+  Definition erhalten. Die Builtin-Registry wird beim Start der Runtime
   gefüllt, bevor irgendein Worker läuft, und danach nur gelesen.
-- Festhalten: Module werden nie entfernt, solange die Runtime lebt (Entladen
-  ist zurückgestellt), und der Server wird nach jedem Kontext zerstört, sodass
-  Definitionen, Frames und Atom-Slots, die er zurückgegeben hat, für jeden
-  Aufruf und jede fun-Zelle gültig bleiben. Handles von `ResolvedFunction` und
-  `find_module` behalten ihr Modul auch, nachdem die Runtime weg ist.
-- Pid-Nummern: `ProcessNumbers` vergibt Nummern unter einer
-  exklusiven Sperre und akzeptiert Pid-Wörter unter einer geteilten.
-- Speicher: Das runtimeweite Konto (`RuntimeMemory`) belastet und
-  entlastet mit atomaren Operationen; eine Belastung bringt das Konto nie über
-  eine optionale Grenze.
-- Port-I/O: Die Lese-, Schreib- und Überwachungs-Threads des
-  I/O-Dienstes und der Socket-Thread ([Ports](ports.md#io-thread)) berühren
-  Prozesszustand nur über den Mutex des Executors.
+- Festhalten: Module werden nie entfernt, solange die Runtime lebt, und der
+  Server wird nach jedem Kontext zerstört, sodass Definitionen, Frames und
+  Atom-Slots, die er zurückgegeben hat, für jeden Aufruf und jede Fun-Zelle
+  gültig bleiben. Handles von `ResolvedFunction` und `find_module` behalten ihr
+  Modul auch, nachdem die Runtime weg ist.
+- Pid- und Port-Nummern: `IdentityNumbers` vergibt Nummern unter einer
+  exklusiven Sperre und lässt Pid- und Port-Wörter unter einer geteilten zu.
+- Speicher: Das runtimeweite Konto (`RuntimeMemory`) belastet und entlastet mit
+  atomaren Operationen; eine Belastung bringt das Konto nie über eine optionale
+  Grenze.
+- Andere Threads: Der Timer-Thread
+  ([Empfangs-Timeouts](processes.md#receive-timeouts)), der I/O-Thread und
+  unter Windows der Lese-Thread einer `fd`-Eingabe
+  ([I/O-Thread](ports.md#io-thread)) berühren Prozesszustand nur über den
+  Mutex des Executors.
 - Linken: Unter Linux fügt die Runtime für ihre Threads `-pthread` hinzu; unter
   Windows linkt sie Winsock (`ws2_32`, `mswsock`) für Sockets.
 
 ## Standardausgabe
 
-`RuntimeOptions::standard_output` ([output.hpp](../runtime/include/clause/runtime/output.hpp))
-empfängt `erlang:display/1` und später Bytes von `standard_io`. Der Standard
-schreibt über C-stdio (gepuffert) auf `stdout` des Prozesses; eine Host-Senke
-gibt `false` zurück, um einen gescheiterten Schreibvorgang zu melden.
+`RuntimeOptions::standard_output`
+([output.hpp](../runtime/include/clause/runtime/output.hpp)) empfängt
+`erlang:display/1` und `io`-Ausgaben auf die Standardausgabe ([io](io.md)). Der
+Standard schreibt über C-stdio (gepuffert) auf `stdout` des Prozesses; eine
+Host-Senke gibt `false` zurück, um einen gescheiterten Schreibvorgang zu
+melden.
 
 `erlang:display/1` stellt sein Argument im [Anzeigestil](terms.md#printing)
 dar, schreibt den Text und einen Zeilenumbruch in einem Schreibvorgang und gibt
@@ -278,14 +248,14 @@ Kanal, nie zu Erlang-Ausnahmen.
 ## Programmstart
 
 `CLAUSE_main_v1` ([startup.hpp](../abi/include/clause/abi/startup.hpp),
-`runtime/src/startup/`) führt ein ganzes Programm für das erzeugte `main` aus:
-Es prüft die ABI jedes Deskriptors, startet eine Standard-Runtime, registriert
-alle Module vor jeglichem Einstiegscode, baut argv im Einstiegskontext auf,
-ruft den Einstiegspunkt auf und bildet das Ergebnis auf den Exit-Status aus
-[ausführbare Dateien](executables.md#exit-status) ab. Berichte gehen nach dem
-Leeren von stdout an stderr; Kontext und Runtime werden auf jedem Pfad in
-Reihenfolge abgebaut. `CLAUSE_halt_v1` implementiert `erlang:halt/0,1`
-(`abort` ruft `std::abort` auf).
+`runtime/src/startup/`) führt ein ganzes Programm für das erzeugte `main` aus
+([ausführbare Dateien](executables.md)): Es prüft die ABI jedes Deskriptors,
+startet eine Runtime, registriert alle Module vor jeglichem Einstiegscode, baut
+argv im Einstiegskontext auf, führt den Einstiegspunkt auf dem Executor aus und
+bildet das Ergebnis auf den [Exit-Status](executables.md#exit-status) ab.
+Berichte gehen nach dem Leeren von stdout an stderr; Kontext und Runtime werden
+auf jedem Pfad in Reihenfolge abgebaut. `CLAUSE_halt_v1` implementiert
+`erlang:halt/0,1` (`abort` ruft `std::abort` auf).
 
 ## Zurückgestellte Dienste
 
@@ -294,7 +264,7 @@ Diese melden eine Zeile `[feature] notimpl` ([Features](features.md)) und
 
 | Grenze | Fehler |
 | --- | --- |
-| `TermFactory::port` (noch keine Ports), `reference(ReferenceIdentity)` und `function(FunctionIdentity)` | `TermError::not_implemented` |
+| `TermFactory::function(FunctionIdentity)` | `TermError::not_implemented` |
 | `SchedulerService::run` / `execute` | `SchedulerError::not_implemented` |
 | `CodeServer::unload` | `CodeError::not_implemented` |
 | `dispatch_builtin` auf einem katalogisierten BIF | `Status::not_implemented` |

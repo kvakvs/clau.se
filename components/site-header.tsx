@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { LanguageSelect } from "@/components/language-select";
 import { Logo } from "@/components/logo";
 import { NavLinks } from "@/components/nav-links";
@@ -12,13 +11,13 @@ export function SiteHeader({ locale, t }: Props) {
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
-        <Link
+        <a
           href={`/${locale}/`}
           className="flex items-center gap-2 text-lg font-semibold"
         >
           <Logo className="size-7" />
           Clause
-        </Link>
+        </a>
         <div className="order-last w-full sm:order-none sm:w-auto">
           <NavLinks
             label={t.nav.label}

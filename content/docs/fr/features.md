@@ -1,8 +1,8 @@
 ---
 source: docs/features.md
-sourceCommit: 6ed3851c
-sourceSha256: bdb726e4ca520adf0644572e0d808482745802ff3316d535cdb5ea6178e5a0a8
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: c542e68489672ac575517c6517e5952bc91a1aa3d15f5b5da6474cffc0302f6e
+translatedAt: 2026-10-17
 ---
 # Signalement des fonctionnalités différées
 
@@ -25,9 +25,18 @@ fonctionnalité arrive ; garder son identifiant réservé.
 | Responsable | Où il signale |
 | --- | --- |
 | Analyse sémantique du compilateur | Vérifications de capacité sur toutes les fonctions, y compris le code inutilisé |
-| Abaissement du compilateur | Rejet défensif aux opérations atteintes ; supprime les artefacts préparés |
-| Pilote | `-o/--output` [lie](executables.md#linking) les entrées positionnelles ou une cible de projet ; les compilations de projet lient chaque cible exécutable vers l'[`output`](projects.md#executables) de son manifeste |
+| Abaissement (lowering) du compilateur | Rejet défensif aux opérations atteintes ; supprime les artefacts préparés |
+| Pilote | Rien de différé : `executable linking` est implémenté ([édition de liens](executables.md#linking)) |
 | Services du runtime | Voir [services différés du runtime](runtime.md#deferred-services) |
+
+Fonctionnalités différées du compilateur aujourd'hui, chacune couverte par
+`codegen_placeholders` :
+
+| Fonctionnalité | Exemple qui la signale |
+| --- | --- |
+| `heap expressions` | Affectations dans les comprehensions `compr_assign` (`[Y \|\| X <- L, Y = X]`) |
+| `dynamic calls` | Une fun builtin de `apply` (`fun erlang:apply/2`) |
+| `behavior-changing attributes` | `-on_load`, `-nifs`, options `-compile` non inertes, modules paramétrés ([sous-ensemble accepté](compile.md#accepted-source-subset)) |
 
 ## Règles des messages
 
@@ -38,18 +47,16 @@ fonctionnalité arrive ; garder son identifiant réservé.
 - Exactement un message par opération en échec, indépendamment de `--verbose`.
 - Une fonctionnalité différée que le compilateur pourrait ignorer sans changer
   ce qu'il accepte serait signalée par un avertissement et la compilation
-  continuerait ; aucune ne l'est aujourd'hui (`parse transforms` l'était
-  jusqu'à ce que le plan step 73F les applique, voir
-  [transforms](transforms.md)). `codegen_placeholders` vérifie un message par
-  fonctionnalité différée du compilateur.
+  continuerait ; aucune ne l'est aujourd'hui. `codegen_placeholders` vérifie un
+  message par fonctionnalité différée du compilateur.
 - Compilateur : [reject_feature](../compiler/src/codegen/features.hpp) signale le
-  premier échec d'un lot, mémorise l'échec, abandonne la sortie préparée et marque
-  le diagnostic comme `reported` afin que les pilotes ne l'affichent pas de
-  nouveau.
+  premier échec d'un lot, mémorise l'échec, abandonne la sortie préparée et
+  marque le diagnostic comme `reported` afin que les pilotes ne l'affichent pas
+  de nouveau.
 - Runtime : [FeatureFailure](../runtime/include/clause/runtime/features.hpp)
   signale une seule fois par opération via un récepteur emprunté (null →
-  stderr). Les appels suivants renvoient l'état mémorisé. Les échecs du récepteur
-  ou du formatage deviennent `diagnostic_failure` ; les exceptions sont
-  contenues.
+  stderr). Les appels suivants renvoient l'état mémorisé. Les échecs du
+  récepteur ou du formatage deviennent `diagnostic_failure` ; les exceptions
+  sont contenues.
 - Les appelants propagent l'échec sans le signaler de nouveau ; un hôte doit se
   terminer avec un code non nul et se démonter normalement.

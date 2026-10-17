@@ -1,8 +1,8 @@
 ---
 source: docs/patterns.md
-sourceCommit: 6ed3851c
-sourceSha256: ef7903895b7901a6980a3cd181783486ae8672876229d35fae120e802392e989
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 0a7a8a1553a85de9fdbf7f86b763794ac36eb0f02510d51897f2a17be4209cac
+translatedAt: 2026-10-17
 ---
 # Mönster, klausuler och matchningar i kroppar
 
@@ -23,13 +23,13 @@ körning är aldrig ett kompilatorfel.
 | List-, binary- och map-comprehensions | Implementerat ([nedan](#comprehensions)) |
 | `catch Expr` | Implementerat; inga mönster ([ABI](abi.md#failure-channel-revision-2)) |
 | `try` `of` och catch-klausuler | Implementerat; när `of` är uttömd ges `error:{try_clause, Value}`, omatchade undantag kastas vidare och `after` körs på varje väg ([ABI](abi.md#failure-channel-revision-2)); `Class:Reason:Stack` binder [stackspårningen](abi.md#stack-traces) |
-| Fun-klausuler | Förmåga (F18) |
-| `receive` | Förmåga (F22/F25) |
+| Fun-klausuler | Implementerat; när alla klausuler är uttömda ges `error:function_clause` ([funs](funs.md#closures)) |
+| `receive`-klausuler + guards | Implementerat; omatchade meddelanden stannar i brevlådan, `after` körs vid timeout ([processer](processes.md#receive)) |
 
 ## Comprehensions
 
-`[T1, ..., Tn || Q1, ..., Qm]`, `<< T || Q1, ... >>` och `#{K => V, ... || Q1, ... }`
-följer OTP 29:
+`[T1, ..., Tn || Q1, ..., Qm]`, `<< T || Q1, ... >>` och
+`#{K => V, ... || Q1, ... }` följer OTP 29:
 
 - Kvalificerare körs från vänster till höger; varje generator loopar över
   resten. Mallar utvärderas i den ordningen för varje kvarvarande kombination;
@@ -44,11 +44,10 @@ följer OTP 29:
   avslappnad generator avvisar ett element hoppar den över så många bitar som
   mönstrets storlekar beskriver (värden ignoreras, flyttal läses som heltal,
   som OTP gör); när även det misslyckas, eller färre bitar återstår, avslutas
-  generatorn. En map-generator går igenom mapen i nyckelordning (OTP itererar
-  också upp till 32 nycklar i nyckelordning, utom atomnycklar, som ordnas efter
-  atomindex; större maps följer OTP:s hashordning, som Clause inte återskapar).
-- Ett generatormönster binder nya namn: det skuggar yttre namn, och inget som en
-  comprehension binder syns efter den. En avslappnad generator hoppar över
+  generatorn. En map-generator går igenom mapen i nyckelordning
+  ([skillnader](differences.md#maps)).
+- Ett generatormönster binder nya namn: det skuggar yttre namn, och inget som
+  en comprehension binder syns efter den. En avslappnad generator hoppar över
   element som dess mönster avvisar; en strikt ger `error:{badmatch, E}` med
   listelementet, den återstående bitstringen eller `{Key, Value}`.
 - En zip-grupp (`P1 <- L1 && P2 <- L2`) tar ett element från varje indata per
@@ -65,20 +64,20 @@ följer OTP 29:
 - Listindata som inte är en lista, eller en oäkta svans, och bitstring-indata
   som inte är en bitstring ger `error:{bad_generator, Tail}` när elementen före
   den är klara.
-- Ett filter som är ett guard-test (OTP `erl_lint:is_guard_test/3`: guardsyntax
-  som endast anropar oskuggade guard-BIF:ar, äldre typtester på toppnivå)
-  avvisar elementet vid varje fel, som en guard. Alla andra filter måste
-  returnera `true` eller `false`; andra värden ger `error:{bad_filter, Value}`
-  och dess undantag sprids vidare.
-- En matchningskvalificerare på toppnivå (`P = E`) är ett semantiskt fel om inte
-  den experimentella funktionen `compr_assign` är aktiverad; att köra den är då
-  inte implementerat (förmåga).
+- Ett filter som är ett guard-test (OTP `erl_lint:is_guard_test/3`:
+  guardsyntax som endast anropar oskuggade guard-BIF:ar, äldre typtester på
+  toppnivå) avvisar elementet vid varje fel, som en guard. Alla andra filter
+  måste returnera `true` eller `false`; andra värden ger
+  `error:{bad_filter, Value}` och dess undantag sprids vidare.
+- En matchningskvalificerare på toppnivå (`P = E`) är ett semantiskt fel om
+  inte den experimentella funktionen `compr_assign` är aktiverad; att köra den
+  är då inte implementerat (förmåga).
 
 Varje generator är en loop i funktionskroppen vars indatamarkör (en rest av en
 lista eller bitstring, eller en map och en position) lever i termplatser i
-ramen; de producerade elementen ackumuleras omvänt i en annan termplats och blir
-listan, den sammanfogade bitstringen eller mapen en gång i slutet, så långa
-indata kräver konstant inbyggd stack och processtack.
+ramen; de producerade elementen ackumuleras omvänt i en annan termplats och
+blir listan, den sammanfogade bitstringen eller mapen en gång i slutet, så
+långa indata kräver konstant native-stack och processtack.
 
 ## Mönsterformer
 
@@ -102,8 +101,8 @@ indata kräver konstant inbyggd stack och processtack.
 ## Räckvidder
 
 Map-nycklar och binary-storlekar läser den inkommande miljön, aldrig syskon:
-`#{K := V} = #{key := K}` och `<<X:N>> = <<N:8>>` kan inte binda sin egen nyckel
-eller storlek. Inuti en binary kan en storlek läsa tidigare segment:
+`#{K := V} = #{key := K}` och `<<X:N>> = <<N:8>>` kan inte binda sin egen
+nyckel eller storlek. Inuti en binary kan en storlek läsa tidigare segment:
 `<<N:8, X:N>>` är giltigt; `{N, <<X:N>>}` kräver att `N` är bundet i förväg.
 Konstant felaktig aritmetik i en nyckel eller storlek är giltig och misslyckas
 vid matchning.
@@ -118,10 +117,11 @@ strängar och binary-segment utan storlek som inte står sist.
 - En platt matchningsplan per huvud/vänsterled över de ursprungliga
   argumentplatserna; alias delar indata, första definitioner binder SSA-värden,
   upprepningar genererar tester för exakt likhet. Formkontroller dominerar
-  extrahering; extrahering använder kontrollerade runtime-tjänster.
-- Klausuler körs i källkodsordning, var och en med en ny miljö som laddar om de
-  ursprungliga argumenten. Avvikelse i huvudet eller avvisning av guard går till
-  nästa klausul; fel i kroppen och infrastrukturfel provar aldrig senare
+  extrahering, som läser celler inline där den kan och annars anropar
+  kontrollerade runtime-tjänster.
+- Klausuler körs i källkodsordning, var och en med en ny miljö som laddar om
+  de ursprungliga argumenten. Avvikelse i huvudet eller avvisning av guard går
+  till nästa klausul; fel i kroppen och infrastrukturfel provar aldrig senare
   klausuler.
 - En `case` utvärderar sitt granskade uttryck en gång och provar sedan varje
   klausul i ordning med det granskade uttrycket som planens enda indata:
@@ -129,9 +129,9 @@ strängar och binary-segment utan storlek som inte står sist.
   nästa klausul, och när alla är uttömda ges `{case_clause, Value}`. Varje
   klausul börjar från bindningarna före case; case-värdet och varje exporterad
   bindning sammanförs i en PHI per värde.
-- En `if` är en `case` utan granskat uttryck eller mönster: varje klausuls guard
-  provas i ordning (ett guard-fel avvisar klausulen), när alla är uttömda ges
-  `if_clause`, och värden och exporter sammanförs på samma sätt.
+- En `if` är en `case` utan granskat uttryck eller mönster: varje klausuls
+  guard provas i ordning (ett guard-fel avvisar klausulen), när alla är uttömda
+  ges `if_clause`, och värden och exporter sammanförs på samma sätt.
 - `begin`/`end` kör sin sekvens i den omslutande räckvidden och ger sitt sista
   värde.
 - Sekvenser i kroppar körs i ordning och returnerar det sista värdet. En
@@ -143,10 +143,9 @@ strängar och binary-segment utan storlek som inte står sist.
 
 ## Gränser
 
-Mönsternormalisering delar modulens semantiska budget (1 000 000 enheter,
-eller 32 per uttryck för större moduler)
-(ett heltal kostar ungefär sitt antal decimala siffror); en konstant bortom
-heltalsgränsen på 4 194 240 bitar är ett `illegal pattern`, som i OTP
-([termer](terms.md#integers)).
-Varje matchningsplan har ett tak på 100 000 arbetsenheter. Parsern begränsar
-separat nästling till 256 (hårt tak 512).
+Mönsternormalisering delar modulens semantiska budget (1 000 000 enheter, eller
+32 per uttryck för större moduler) (ett heltal kostar ungefär sitt antal
+decimala siffror); en konstant bortom heltalsgränsen på 4 194 240 bitar är ett
+`illegal pattern`, som i OTP ([termer](terms.md#integers)). Varje
+matchningsplan har ett tak på 100 000 arbetsenheter. Parsern begränsar separat
+nästling till 256 (hårt tak 512).

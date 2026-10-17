@@ -123,7 +123,7 @@ export const sv = {
           "Typhärledning med funktionstyper per klausul; en specifikation som motsäger de härledda argumenttyperna ger kompileringsfel, andra motsägelser ger varningar",
           "Härledningen omfattar bara kod som startfunktionen når; resultaten för OTP och konfigurerade bibliotekskataloger cachas per modul",
           "LLVM O0, O2 och Os; objektfiler, IR och bitkod per modul; IR-ögonblicksbilder och assemblerlistningar med Erlang-källkod",
-          "Genererad kod allokerar, testar typer, läser tupler, listor och maps, bygger och matchar binaries, skapar closures och räknar med flyttal direkt i koden, och anropar runtime bara på långsamma vägar",
+          "Genererad kod allokerar, testar typer, läser tupler, listor och maps, lägger ihop korta listor, bygger och matchar binaries, skapar closures och räknar med flyttal direkt i koden, och anropar runtime bara på långsamma vägar",
           "O2 tar bort typ- och formkontroller som härledningen bevisat, med ett begränsat antal typspecialiserade varianter",
           "Länktidsoptimering över moduler med --lto",
           "Körbara program utelämnar de exporter som startfunktionen inte kan nå; --keep-exports behåller alla",
@@ -139,7 +139,7 @@ export const sv = {
           "Runtime-bibliotek i C++23 utan LLVM, länkat i varje program",
           "Heltal med godtycklig precision, flyttal, atomer, tupler, listor, maps, bitsträngar, records, funs, pids, portar och referenser",
           "Processer, meddelanden, selektiv receive, länkar, monitorer, registrerade namn och timrar på flera schemaläggartrådar, var och en med egen körkö",
-          "Heap per process med generationsbaserad kopierande skräpsamlare, min_heap_size, binärer och stora maps utanför heapen, literalområden per modul och valfria minnesgränser",
+          "Heap per process med generationsbaserad kopierande skräpsamlare, min_heap_size, delade binärer utanför heapen, literalområden per modul och valfria minnesgränser",
           "Portar för filer, standard-I/O, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd",
           "Modulen erlang: processordbok, externt termformat med komprimering, tid och timrar, processinspektion, spawn-alternativ, alias och hashning",
           "Varje OTP 29-export i en Clause-biblioteksmodul kompileras; funktioner som ännu inte är implementerade ger not_implemented när de anropas",
@@ -185,7 +185,7 @@ export const sv = {
     featured: {
       gettingStarted: {
         title: "Kom igång",
-        text: "Förutsättningar: CMake, en C++23-kompilator, Clang, LLVM SDK, Boost och toml++.",
+        text: "Förutsättningar: CMake, en C++23-kompilator, Clang, LLVM 23 SDK, Boost och toml++; CMake laddar ner övriga bibliotek. Erlang/OTP är valfritt.",
       },
       building: {
         title: "Bygga kompilatorn",

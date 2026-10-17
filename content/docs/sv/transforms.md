@@ -1,28 +1,23 @@
 ---
 source: docs/transforms.md
-sourceCommit: 6ed3851c
-sourceSha256: 2c6d8c271fd5fd640bb4c93eaff0872914f396898bfe9df527ca51055d033c11
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
+translatedAt: 2026-10-17
 ---
 # Parse transforms
 
 ## Använda parse transforms
 
 - **Krav:** Erlang/OTP 29 installerat på värden, endast för att kompilera
-  moduler som använder en transform. `clau` tar `--erl PATH`, annars `erl` i
-  `PATH`, annars på Windows `%ProgramFiles%\Erlang OTP\bin\erl.exe`.
-  `--erl none` kör aldrig kod på värden: moduler som behöver en transform
-  misslyckas.
+  moduler som använder en transform ([värdens OTP](#host-otp)). `--erl none`
+  kör aldrig kod på värden: moduler som behöver en transform misslyckas.
 - **Anropa en transform** i källkoden med
   `-compile({parse_transform, Module}).` (eller inuti en `-compile([...])`-lista),
   eller för varje modul i kommandot med `--parse-transform Module`
   (kan upprepas; dessa körs först, som `erlc +'{parse_transform,M}'`).
-- **Transformmoduler** hittas som `.beam`-filer i `--transform-path`-kataloger
-  (kan upprepas) och projektets `transform_paths`, sedan som `Module.erl`
-  bland batchens källfiler och `source_search_paths` (kompileras av värdens
-  OTP vid varje bygge, tillsammans med de moduler som de anropar därifrån;
-  `ignore_dirs` och `ignore_modules` gäller),
-  sedan bland OTP:s moduler (`ms_transform`, `qlc`).
+- **Transformmoduler** hittas som `.beam`-filer på transformsökvägarna, sedan
+  som projektkällfiler som kompileras av värdens OTP vid varje bygge, sedan
+  bland OTP:s moduler ([transformmoduler](#transform-modules)).
 - **Förkompilera** en transform som kommer från ett annat bibliotek (alltid),
   eller en projekttransform som värdens kompilator inte kan bygga med målets
   include-kataloger och definitioner: `erlc -o deps/lib/ebin deps/lib/src/*.erl`
@@ -41,10 +36,9 @@ Clause tillämpar `{parse_transform, Module}` på samma sätt som `erlc`. Den
 exporterar den tolkade modulen som former i OTP:s
 [abstrakta format](https://www.erlang.org/doc/apps/erts/absform.html), kör
 transformmodulen på ett Erlang/OTP 29 som är installerat på värden, importerar
-de returnerade formerna som modulens nya syntax och kompilerar den. OTP behövs
-endast medan en modul som använder en transform kompileras; genererade program
-behöver det aldrig. Beslutat i plan step 73A; implementerat av steps 73B–73G
-(`compiler/src/transforms/`).
+de returnerade formerna som modulens nya syntax och kompilerar den
+(`compiler/src/transforms/`). OTP behövs endast medan en modul som använder en
+transform kompileras; genererade program behöver det aldrig.
 
 ## OTP:s beteende
 
@@ -114,9 +108,8 @@ Från den fastlåsta `lib/compiler/src/compile.erl` (`transform_module`,
 6. Lägg till de fördefinierade funktionerna, och kör sedan lint, analys och
    kompilering som vanligt.
 
-Transformer körs när en modul kompileras och för `--print-ast`,
-`--print-source` och `--print-abstr`, som skriver ut den transformerade
-modulen. `--preprocess-check`, `--parse-check` och `--print-pp` kör dem inte.
+De åtgärder som kör transformer listas under
+[använda parse transforms](#using-parse-transforms).
 
 ## Utbyte
 
@@ -125,11 +118,11 @@ modulen. `--preprocess-check`, `--parse-check` och `--print-pp` kör dem inte.
   UTF-8-atomer, stora heltal och ingen texttolkning i Erlang. Själva formatet
   (taggar, layouter, gränskontroller) finns på ett ställe i
   `abi/include/clause/abi/external_term.hpp`, oberoende av någon
-  termrepresentation, så att runtimens framtida `term_to_binary/1`,
-  `binary_to_term/1` och distribution återanvänder det.
-  Clauses termmodell i kompilatorn innehåller atomer, heltal, flyttal, äkta
-  och oäkta listor, tupler, maps och bitstrings; pids, portar, referenser och
-  funs avvisas med en diagnostik.
+  termrepresentation; runtimens `term_to_binary` och `binary_to_term` delar
+  det ([external term format](builtins.md#external-term-format)). Clauses
+  termmodell i kompilatorn innehåller atomer, heltal, flyttal, äkta och oäkta
+  listor, tupler, maps och bitstrings; pids, portar, referenser och funs
+  avvisas med en diagnostik.
 - `.abstr`-text är syntaxen för
   [`file:consult/1`](https://www.erlang.org/doc/apps/kernel/file.html#consult/1):
   en term per form, var och en avslutad med `.`. `--print-abstr` skriver ut
@@ -169,9 +162,8 @@ igen ger samma former.
 - [Laddaren](#loader) körs som `erl -noshell -noinput -pa Dir ... -eval ...`
   (kodsökvägens kataloger görs absoluta) med en tidsgräns på 600 s. Dess
   stdout och stderr (inklusive transformens utdata från `io:format`) kopieras
-  till `clau`:s stderr när den avslutats.
-  En laddare som avslutas utan att skriva ett svar, överskrider tidsgränsen
-  eller inte kan starta är ett fel.
+  till `clau`:s stderr när den avslutats. En laddare som avslutas utan att
+  skriva ett svar, överskrider tidsgränsen eller inte kan starta är ett fel.
 - En transform kör godtycklig kod med användarens rättigheter, precis som den
   skulle göra under `erlc`.
 
@@ -218,13 +210,13 @@ En transformmodul slås upp i denna ordning:
    som [modulsökningen](projects.md#ignored-sources) gör. Clause letar efter
    dessa källfiler en gång per batch och behåller dem i minnet; laddaren
    kompilerar dem ändå för varje modul som transformen körs på, så
-   förkompilera en stor transform för att spara den tiden.
-   Moduler som värden laddar från sina klibbiga kataloger (`kernel`,
-   `stdlib`, `compiler`, till exempel `ms_transform` eller `qlc_pt` när OTP:s
-   källkod finns på en söksökväg) kan inte laddas om, så värdens egna moduler
-   används: deras källfiler, och de moduler som endast de anropar, söks inte
-   efter och kompileras inte. Clause frågar värdens `erl` efter dessa moduler
-   en gång per anrop.
+   förkompilera en stor transform för att spara den tiden. Moduler som värden
+   laddar från sina klibbiga kataloger (`kernel`, `stdlib`, `compiler`, till
+   exempel `ms_transform` eller `qlc_pt` när OTP:s källkod finns på en
+   söksökväg) kan inte laddas om, så värdens egna moduler används: deras
+   källfiler, och de moduler som endast de anropar, söks inte efter och
+   kompileras inte. Clause frågar värdens `erl` efter dessa moduler en gång per
+   anrop.
 3. **OTP:s egna moduler** (`ms_transform`, `qlc`) från värdens kodsökväg.
    OTP levererar `erl_id_trans` endast som en exempelkällfil, inte som en
    modul. Deras headers löses som varje `include_lib`
@@ -282,8 +274,3 @@ source_search_paths = ["transforms"]  # transforms/pt_rewrite.erl, compiled for 
 parse_transforms = ["pt_dep"]         # applied to every module of the target
 transform_paths = ["deps/*/ebin"]     # deps/ptdep/ebin/pt_dep.beam, built with erlc first
 ```
-
-Håll transformmoduler utanför ett måls `sources` när programmet inte anropar
-dem: som vanliga moduler skulle de också kompileras av Clause, och deras
-anrop till `erl_parse` eller `erl_syntax` behöver moduler som Clause inte
-levererar.

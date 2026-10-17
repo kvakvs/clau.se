@@ -1,18 +1,18 @@
 ---
 source: docs/profiling.md
-sourceCommit: 6ed3851c
-sourceSha256: 0690ee91aab12c03c222bc79f4e862db1a91f1a621e36137ecfe1a97145f988a
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: ae0b17c50da6bb2c36a31edf31aaa901aa6c57f3e662ef6fe663d066c1d7159a
+translatedAt: 2026-10-17
 ---
 # Perfilagem
 
 `--profile FILE` (uma [opção do runtime](executables.md#runtime-options),
 também através de `CLAUSE_FLAGS`) faz com que um programa escreva um relatório
-de custos em `FILE` quando termina (backlog F31). Nada é recompilado: todos os
-executáveis podem ser perfilados e, sem a opção, executam, imprimem e
-escrevem ficheiros exatamente como antes. Um relatório que não pode ser
-escrito é comunicado em stderr (`clau: cannot write profile FILE`); o código
-de saída continua a ser o do programa.
+de custos em `FILE` quando termina. Nada é recompilado: todos os executáveis
+podem ser perfilados e, sem a opção, executam, imprimem e escrevem ficheiros
+exatamente da mesma forma. Um relatório que não pode ser escrito é comunicado
+em stderr (`clau: cannot write profile FILE`); o código de saída continua a ser
+o do programa.
 
 ## Atribuição
 

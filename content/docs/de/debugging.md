@@ -1,19 +1,19 @@
 ---
 source: docs/debugging.md
-sourceCommit: 6ed3851c
-sourceSha256: 18d5fe2775a7c01edb18031b8f1ba632b356d04159c88b31692d1cc3d9ccf9da
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: b93973504afffd4df57d0a39ac405818a080f79a56515e27f312fdcaec3e3e8b
+translatedAt: 2026-10-17
 ---
 # Debugging ausführbarer Dateien
 
-`-g` erzeugt Zeilentabellen für den Erlang-Quelltext (Backlog F30). Sie
-funktionieren auf jeder Optimierungsstufe sowie mit `--emit`, positionalem
-Linken mit `-o` und Projektzielen.
+`-g` erzeugt Zeilentabellen für den Erlang-Quelltext. Sie funktionieren auf
+jeder Optimierungsstufe sowie mit `--emit`, positionalem Linken mit `-o` und
+Projektzielen.
 
 ## Zeilentabellen
 
-- Jede erzeugte Funktion und jede anonyme Fun erhält einen Debug-Scope, benannt
-  nach ihrem Erlang-Namen (`leaf`, `-main/1-fun-0-`), in der Datei, die sie
+- Jede erzeugte Funktion und jeder anonyme Fun erhält einen Debug-Scope, benannt
+  nach seinem Erlang-Namen (`leaf`, `-main/1-fun-0-`), in der Datei, die ihn
   deklariert, sodass eine Funktion aus einer eingebundenen `.hrl` zu dieser
   Datei gehört. Er hat keinen Linkage-Namen: GDB würde sonst das native Symbol
   (`clausev1_...`) anzeigen.
@@ -35,10 +35,9 @@ PDB, die die ausführbare Datei nur über den Dateinamen nennt
 (`/PDBALTPATH:%_PDB%`); sie wird als `<name>.pdb` neben der ausführbaren Datei
 veröffentlicht, nach ihr, in derselben verzögerten Veröffentlichung.
 ELF-Dateien behalten DWARF in sich. Mach-O-Dateien bräuchten `dsymutil` über
-die bereitgestellten Objekte, bevor die Bereitstellung entfernt wird; das
-geschieht noch nicht, daher verlieren ausführbare Dateien unter macOS beim
-Linken ihre Zeilentabellen (eine Lücke bis
-[step 66](../.agents/11-plan.md#step-66)).
+die bereitgestellten Objekte, bevor die Bereitstellung entfernt wird; das wird
+nicht ausgeführt, daher verlieren ausführbare Dateien unter macOS beim Linken
+ihre Zeilentabellen.
 
 ## Erlang-Aufrufstapel
 

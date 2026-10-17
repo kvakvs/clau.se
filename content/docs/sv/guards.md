@@ -1,15 +1,15 @@
 ---
 source: docs/guards.md
-sourceCommit: 6ed3851c
-sourceSha256: d5589018751662ec240dc70ab6c6d0637d16fa10698c1c4fa7510a033dd888f1
-translatedAt: 2026-10-15
+sourceCommit: a8c3f8f6
+sourceSha256: 06fccff40aa16d2969fa711e61435acef58adf23acf5478fdea02da2654c8fa8
+translatedAt: 2026-10-17
 ---
 # Guards
 
 Vad som är tillåtet i guards följer de fastlåsta OTP 29-reglerna i
 `erl_internal`/`erl_lint`; det härleds aldrig från registreringen i runtime.
-Varje operand kontrolleras, även onåbara. En guard lyckas endast när det slutliga
-värdet är atomen `true`.
+Varje operand kontrolleras, även onåbara. En guard lyckas endast när det
+slutliga värdet är atomen `true`.
 
 ## Kontrollflöde
 
@@ -39,23 +39,20 @@ operand ger `{badarg, Value}`, som i OTP.
 [guards.tsv](../tests/fixtures/patternmatch/guards.tsv) listar alla 81
 guard-signaturer från de fastlåsta tabellerna `guard_bif`, `new_type_test`,
 `old_type_test`, `arith_op`, `bool_op` och `comp_op`, och ett test kräver exakt
-mängdlikhet med uppströms. [Granskningsmanifestet](../tests/fixtures/patternmatch/generated/guard_catalog/manifest.json)
-mappar var och en till resolver, sänkning (lowering) och ägare i runtime. Alla 81 är
-implementerade (de identitetsberoende `self/0`, `node/0,1` och native
-`is_record/1` sedan plan step 52): `self()` är den anropande processens pid,
-`node()` och `node/1` för en pid, referens eller port är `nonode@nohost` (det
-finns en nod; alla andra argument till `node/1` får guarden att misslyckas,
-`badarg` i en kropp), och `is_record/1` testar om värdet är ett native record.
-`is_record/2` med ett lokalt
-namn på ett native record testar modul och namn; `is_record/3` med en atom som
-tredje argument testar ett native records modul och namn; native fältåtkomst
-får guarden att misslyckas vid varje avvikelse.
+mängdlikhet med uppströms.
+[Granskningsmanifestet](../tests/fixtures/patternmatch/generated/guard_catalog/manifest.json)
+mappar var och en till resolver, sänkning (lowering) och ägare i runtime. Alla
+81 är implementerade: `self()` är den anropande processens pid, `node()` och
+`node/1` för en pid, referens eller port är `nonode@nohost` (det finns en nod;
+alla andra argument till `node/1` får guarden att misslyckas, `badarg` i en
+kropp). Native records i guards: `is_record/1,2,3` och fältåtkomst som i
+[native records](native-records.md#operations).
 
 - Typtester: `is_atom`, `is_integer`, `is_float`, `is_number`, `is_boolean`,
   `is_tuple`, `is_list`, `is_map`, `is_binary`, `is_bitstring`,
   `is_function/1,2` ([funs](funs.md)), `is_pid`, `is_reference`
-  ([pids och referenser](terms.md#pids-and-references)); `is_port` är
-  alltid falskt (inga portar finns).
+  ([pids och referenser](terms.md#pids-and-references)), `is_port`
+  ([portar](ports.md#identity)).
 - `is_integer(V, Lo, Hi)` validerar först båda gränserna som heltal (annars
   `badarg`) och testar sedan det slutna intervallet; omvända gränser ger falskt.
 - Jämförelser `==`, `/=`, `=:=`, `=/=`, `<`, `=<`, `>`, `>=`; aritmetiska och
