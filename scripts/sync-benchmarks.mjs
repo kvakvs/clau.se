@@ -6,7 +6,8 @@
 // Reports are text files written by benchmarks/run.py into the gitignored
 // benchmarks/history/reports/<host>/<day>-<hash>.txt; the newest one (by day,
 // over every host) is used. benchmarks/history/<host>.json adds the Clause/OTP
-// geometric mean of each earlier run day of the same host. The host name is
+// geometric mean of each earlier run day of the same host, and the executable
+// sizes of the latest run days that recorded them. The host name is
 // not published.
 
 import fs from "node:fs";
@@ -69,6 +70,7 @@ const data = {
   kernels,
   programs,
   history: history(latest.host),
+  sizes: sizes(latest.host),
 };
 
 fs.writeFileSync(target, JSON.stringify(data, null, 2) + "\n");
@@ -108,12 +110,65 @@ function table(title) {
   return rows;
 }
 
+function readHistory(host) {
+  const file = path.join(historyDir, `${host}.json`);
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [];
+}
+
+// Executable sizes in bytes: the newest run's bench_* programs at O0, O2 and
+// O2 with LTO, and clau itself; plus the O2 sizes of the last SIZE_DAYS
+// commits, each run day's baseline (the previous commit) included.
+function sizes(host) {
+  const SIZE_DAYS = 6;
+  const records = readHistory(host).filter((r) => r.sizes_bytes);
+  const newest = records.at(-1)?.sizes_bytes;
+  if (!newest) return null;
+  const points = new Map();
+  for (const record of records) {
+    const s = record.sizes_bytes;
+    const point = (commit, date, key, clau) => ({
+      date: String(date).slice(0, 10),
+      commit: String(commit).slice(0, 8),
+      clau: clau ?? null,
+      programs: Object.fromEntries(
+        Object.entries(s.programs ?? {})
+          .filter(([, p]) => p[key] > 0)
+          .map(([name, p]) => [name, p[key]]),
+      ),
+    });
+    if (record.baseline?.commit && !points.has(record.baseline.commit)) {
+      points.set(
+        record.baseline.commit,
+        point(
+          record.baseline.commit,
+          record.baseline.commit_date,
+          "baseline",
+          s.clau?.baseline,
+        ),
+      );
+    }
+    points.set(
+      record.commit,
+      point(record.commit, record.run_date, "o2", s.clau?.head),
+    );
+  }
+  return {
+    clau: newest.clau?.head ?? null,
+    programs: Object.entries(newest.programs ?? {}).map(([name, p]) => ({
+      name,
+      o0: p.o0 ?? null,
+      o2: p.o2 ?? null,
+      lto: p.lto ?? null,
+    })),
+    history: [...points.values()]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-SIZE_DAYS),
+  };
+}
+
 // Geometric mean of Clause time / OTP time per recorded run day.
 function history(host) {
-  const file = path.join(historyDir, `${host}.json`);
-  if (!fs.existsSync(file)) return [];
-  const records = JSON.parse(fs.readFileSync(file, "utf8"));
-  return records
+  return readHistory(host)
     .map((record) => {
       const logs = Object.entries(record.clause_us ?? {})
         .filter(([name, clause]) => clause > 0 && record.otp_us?.[name] > 0)

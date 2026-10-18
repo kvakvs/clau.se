@@ -30,6 +30,9 @@ Keep these when editing the page or its strings:
   than the BEAM JIT (`slowerOnAverage` / `fasterOnAverage`).
 - Unstable runs (spread above `NOISY_SPREAD` percent of the median) are marked
   with the 🔺 emoji, not an asterisk.
+- Explain in the headnotes, the 'baseline' is the previous Clause commit (newest
+  commit at least one day older than HEAD, or --baseline REV), built at -O2 to 
+  catch regressions.
 - Both the kernel table and the "whole programs" table show the Clause/OTP ratio
   with the `Bar` component on a shared log scale (`Axis`):
   - blue bars (Clause faster) run left of the 1× line, with "faster" in small
@@ -41,6 +44,10 @@ Keep these when editing the page or its strings:
   group titles in `benchmarks.groups`. A program without a title there shows
   its raw name.
 - The host name is never published (`sync-benchmarks` leaves it out).
+- The size comparisons for `clau.exe` in different build modes, and for `bench_*` executables
+  should have their own table showing the historical change of the sizes (hopefully towards
+  being smaller with every new benchmark). A vertical bar SVG chart will suit here, adding
+  a group of 6 bars per each `bench_*` per last 6 benchmarks .
 
 ## Steps
 

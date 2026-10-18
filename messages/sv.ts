@@ -245,6 +245,13 @@ export const sv = {
       "Geometriskt medelvärde av Clauses tid delad med OTP:s för varje dag med registrerade körningar.",
     date: "Datum",
     commit: "Commit",
+    sizesTitle: "Storlek på körbara filer",
+    sizesNote:
+      "Storlek i megabyte på testprogrammen som Clause bygger dem på varje optimeringsnivå.",
+    sizesHistoryNote:
+      "Storlekar med -O2 för de senaste {count} uppmätta commits, äldst först. Varje körning bygger också en baslinje, den föregående Clause-commiten (den nyaste commiten som är minst en dag äldre än HEAD, eller den som anges med --baseline), med -O2 för att fånga regressioner; baslinjerna visas här som egna commits. Tabellen nedan lägger till summan för alla bench_*-program och storleken på kompilatorn clau.",
+    sizesTotal: "Alla bench_*-program",
+    megabytes: "{value} MB",
     setupTitle: "Testmiljö",
     machine: "Maskin",
     cpus: "{count} logiska processorer",

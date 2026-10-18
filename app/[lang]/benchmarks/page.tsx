@@ -17,6 +17,12 @@ const MAX_LOG = 4;
 const AXIS_TICKS = [0.25, 0.5, 1, 2, 4, 8, 16];
 // A spread above this percentage of the median marks a noisy kernel.
 const NOISY_SPREAD = 50;
+// Build modes of the executable size table, as the compiler flags read.
+const SIZE_MODES = [
+  { key: "o0", label: "-O0" },
+  { key: "o2", label: "-O2" },
+  { key: "lto", label: "-O2 --lto" },
+] as const;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { lang } = await params;
@@ -34,6 +40,8 @@ export default async function BenchmarksPage({ params }: Props) {
       maximumFractionDigits: digits,
     });
   const times = (ratio: number) => `${number(ratio, ratio < 10 ? 2 : 1)}×`;
+  const megabytes = (bytes: number) =>
+    t.megabytes.replace("{value}", number(bytes / 1e6, 2));
 
   const kernels = data.kernels.filter(
     (k): k is Kernel & { otp: number; clause: number } =>
@@ -268,6 +276,106 @@ export default async function BenchmarksPage({ params }: Props) {
         </table>
       </section>
 
+      {data.sizes && (
+        <section aria-labelledby="sizes" className="mt-12">
+          <h2 id="sizes" className="text-2xl font-semibold">
+            {t.sizesTitle}
+          </h2>
+          <p className="mt-2 text-sm text-muted">{t.sizesNote}</p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full max-w-2xl min-w-[28rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted">
+                  <th scope="col" className="py-2 pr-3 font-medium">
+                    {t.program}
+                  </th>
+                  {SIZE_MODES.map((mode) => (
+                    <th
+                      key={mode.key}
+                      scope="col"
+                      className="py-2 pr-3 text-right font-medium"
+                    >
+                      {mode.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.sizes.programs.map((p) => (
+                  <tr
+                    key={p.name}
+                    className="border-b border-border hover:bg-card"
+                  >
+                    <td className="py-1.5 pr-3 font-mono text-xs">{p.name}</td>
+                    {SIZE_MODES.map((mode) => (
+                      <td
+                        key={mode.key}
+                        className="py-1.5 pr-3 text-right tabular-nums"
+                      >
+                        {p[mode.key] === null ? "–" : megabytes(p[mode.key])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-8 text-sm text-muted">
+            {t.sizesHistoryNote.replace(
+              "{count}",
+              String(data.sizes.history.length),
+            )}
+          </p>
+          <SizeChart
+            history={data.sizes.history}
+            programs={data.sizes.programs.map((p) => p.name)}
+            megabytes={megabytes}
+            unit={t.megabytes.replace("{value}", "").trim()}
+          />
+          <table className="mt-4 w-full max-w-xl border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-muted">
+                <th scope="col" className="py-2 pr-3 font-medium">
+                  {t.date}
+                </th>
+                <th scope="col" className="py-2 pr-3 font-medium">
+                  {t.commit}
+                </th>
+                <th scope="col" className="py-2 pr-3 text-right font-medium">
+                  {t.sizesTotal}
+                </th>
+                <th scope="col" className="py-2 text-right font-medium">
+                  clau
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.sizes.history.map((day) => {
+                const total = Object.values(day.programs).reduce(
+                  (sum, size) => sum + size,
+                  0,
+                );
+                return (
+                  <tr key={day.commit} className="border-b border-border">
+                    <td className="py-1.5 pr-3 tabular-nums">{day.date}</td>
+                    <td className="py-1.5 pr-3 font-mono text-xs">
+                      {day.commit}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">
+                      {megabytes(total)}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {day.clau === null ? "–" : megabytes(day.clau)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <section aria-labelledby="setup" className="mt-12">
         <h2 id="setup" className="text-2xl font-semibold">
           {t.setupTitle}
@@ -312,6 +420,166 @@ function Tile({ value, label }: { value: ReactNode; label: string }) {
       <dd className="font-mono text-3xl font-semibold">{value}</dd>
     </div>
   );
+}
+
+type SizeDay = {
+  date: string;
+  commit: string;
+  programs: Partial<Record<string, number>>;
+};
+
+/**
+ * Vertical bars of -O2 executable sizes: one group per program, one bar per
+ * measured commit, oldest first and lightest; the newest bar carries its value.
+ */
+function SizeChart({
+  history,
+  programs,
+  megabytes,
+  unit,
+}: {
+  history: SizeDay[];
+  programs: string[];
+  megabytes: (bytes: number) => string;
+  unit: string;
+}) {
+  const width = 720;
+  const height = 240;
+  const [top, right, bottom, left] = [20, 8, 28, 40];
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const max = Math.max(
+    1e6,
+    ...history.flatMap((day) => Object.values(day.programs).map(Number)),
+  );
+  const step = max > 8e6 ? 2e6 : 1e6;
+  const yMax = Math.ceil(max / step) * step;
+  const ticks = Array.from({ length: yMax / step + 1 }, (_, i) => i * step);
+  const y = (bytes: number) => top + plotHeight * (1 - bytes / yMax);
+  const groupWidth = plotWidth / programs.length;
+  const gap = 2;
+  const barWidth = Math.min(
+    16,
+    (groupWidth * 0.8 - gap * (history.length - 1)) / history.length,
+  );
+  const opacity = (i: number) =>
+    history.length > 1 ? 0.3 + (0.7 * i) / (history.length - 1) : 1;
+
+  return (
+    <div className="mt-3">
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full min-w-[36rem] text-fg"
+          role="img"
+          aria-label={programs.join(", ")}
+        >
+          {ticks.map((tick) => (
+            <g key={tick}>
+              <line
+                x1={left}
+                x2={width - right}
+                y1={y(tick)}
+                y2={y(tick)}
+                className={tick === 0 ? "stroke-muted" : "stroke-border"}
+              />
+              <text
+                x={left - 6}
+                y={y(tick)}
+                dy="0.32em"
+                textAnchor="end"
+                className="fill-muted text-[11px] tabular-nums"
+              >
+                {tick / 1e6}
+                {tick === yMax ? ` ${unit}` : ""}
+              </text>
+            </g>
+          ))}
+          {programs.map((name, g) => {
+            const groupX =
+              left +
+              g * groupWidth +
+              (groupWidth -
+                history.length * barWidth -
+                gap * (history.length - 1)) /
+                2;
+            return (
+              <g key={name}>
+                {history.map((day, i) => {
+                  const size = day.programs[name];
+                  if (size === undefined) return null;
+                  const x = groupX + i * (barWidth + gap);
+                  const newest = i === history.length - 1;
+                  return (
+                    <g key={day.commit}>
+                      <title>{`${name}, ${day.date} ${day.commit}: ${megabytes(size)}`}</title>
+                      <rect
+                        x={x - gap / 2}
+                        y={top}
+                        width={barWidth + gap}
+                        height={plotHeight}
+                        fill="transparent"
+                      />
+                      <path
+                        d={barPath(x, y(size), barWidth, y(0) - y(size))}
+                        fill="currentColor"
+                        fillOpacity={opacity(i)}
+                      />
+                      {newest && (
+                        <text
+                          x={x + barWidth / 2}
+                          y={y(size) - 5}
+                          textAnchor="middle"
+                          className="fill-fg text-[10px] tabular-nums"
+                        >
+                          {(size / 1e6).toFixed(2)}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                <text
+                  x={left + (g + 0.5) * groupWidth}
+                  y={height - 8}
+                  textAnchor="middle"
+                  className="fill-muted font-mono text-[11px]"
+                >
+                  {name}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted">
+        {history.map((day, i) => (
+          <li key={day.commit} className="flex items-center gap-2">
+            <span
+              className="size-3 rounded-sm bg-fg"
+              style={{ opacity: opacity(i) }}
+              aria-hidden="true"
+            />
+            <span className="tabular-nums">{day.date}</span>
+            <span className="font-mono text-xs">{day.commit}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A bar standing on the baseline with 4px rounded top corners. */
+function barPath(x: number, y: number, width: number, height: number) {
+  const r = Math.min(4, width / 2, height);
+  return [
+    `M${x},${y + height}`,
+    `V${y + r}`,
+    `Q${x},${y} ${x + r},${y}`,
+    `H${x + width - r}`,
+    `Q${x + width},${y} ${x + width},${y + r}`,
+    `V${y + height}`,
+    "Z",
+  ].join(" ");
 }
 
 /** Position of a ratio across the bar track, in percent. */

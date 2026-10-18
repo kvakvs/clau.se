@@ -244,6 +244,13 @@ export const pt = {
       "Média geométrica do tempo do Clause dividido pelo do OTP em cada dia com execuções registadas.",
     date: "Data",
     commit: "Commit",
+    sizesTitle: "Tamanho dos executáveis",
+    sizesNote:
+      "Tamanho em megabytes dos programas de teste tal como o Clause os constrói em cada nível de otimização.",
+    sizesHistoryNote:
+      "Tamanhos com -O2 dos últimos {count} commits medidos, do mais antigo para o mais recente. Cada execução constrói também uma referência (baseline), o commit anterior do Clause (o commit mais recente com pelo menos um dia de antiguidade em relação a HEAD, ou o indicado com --baseline), com -O2 para detetar regressões; as referências aparecem aqui como commits próprios. A tabela abaixo acrescenta o total de todos os programas bench_* e o tamanho do compilador clau.",
+    sizesTotal: "Todos os programas bench_*",
+    megabytes: "{value} MB",
     setupTitle: "Configuração",
     machine: "Máquina",
     cpus: "{count} CPUs lógicos",
