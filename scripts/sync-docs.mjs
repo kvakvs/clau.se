@@ -29,7 +29,8 @@ const BUILD_MARKER = /^(?:Configure and build f|F)rom the repository root:/m;
 // Visitors cannot follow those, so paragraph lead-ins and parenthetical
 // references are removed; source paths of a lead-in are kept as "Source:".
 // Headings and code blocks are left alone, so anchors and structure stay.
-const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|OPT\d+\.\d+[A-Z]?)`;
+// Step ids: "41T", "OPT0.2A", "LIB5E", "OPTM.2E".
+const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|[A-Z]{2,5}(?:\d+[A-Z0-9]*(?:\.\d+[A-Z]?)?|\.\d+[A-Z]?))`;
 // References wrap across lines, so words are separated by any whitespace.
 const STEP_IDS = String.raw`${STEP_ID}(?:(?:\s+(?:and|or)\s+|–)${STEP_ID})*`;
 const STEP_REF = String.raw`(?:[Pp]lan(?:\s+\d+)?\s+)?(?:[Ss]teps?\s+)?${STEP_IDS}(?:\s+\(part\)|\s+follow-up)?`;
@@ -65,7 +66,15 @@ const INLINE_RULES = [
     "",
   ],
   // "(plan step 41T, [lists module](#lists-module))", "(step 57G3; ..."
-  [new RegExp(String.raw`\(${PLAIN_REF}[,;]\s`, "g"), "("],
+  [new RegExp(String.raw`\(${PLAIN_REF}[,;]\s+`, "g"), "("],
+  // "Stub until plan 21 LIB4E: ...", "... stubs until plan 21 LIB4E"
+  [
+    new RegExp(
+      String.raw`\s+until\s+[Pp]lan\s+\d+\s+(?:[Ss]teps?\s+)?${STEP_IDS}`,
+      "g",
+    ),
+    "",
+  ],
   // "(revision 10, OPT0.1A)", "(..., step 41V)", "(... of step 41T)"
   [new RegExp(String.raw`(?:,|\s+of)\s+${PLAIN_REF}\)`, "g"), ")"],
   // "(plan step 37)", "(OPT0.2A)", "(step 41N)"
@@ -78,6 +87,12 @@ const INLINE_RULES = [
     ),
     "",
   ],
+  // "[Plan 21](../.agents/21-lib.md) schedules ..."
+  [
+    /(^|[.!?]\s+)\[[Pp]lan \d+\]\(\.\.\/\.agents\/[^)]*\)/gm,
+    "$1The project plan",
+  ],
+  [/\[[Pp]lan \d+\]\(\.\.\/\.agents\/[^)]*\)/g, "the project plan"],
   // "...; step 44: exit reasons; step 45: ..."
   [new RegExp(String.raw`(;\s)${PLAIN_REF}:\s`, "g"), "$1"],
 ];

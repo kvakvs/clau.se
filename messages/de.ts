@@ -30,7 +30,7 @@ export const de = {
     intro:
       "Clause ist ein AOT-Compiler für Erlang. Er verarbeitet, parst und analysiert Erlang-Quellcode, kompiliert ihn über LLVM und linkt native Programme mit einer eigenen Laufzeitumgebung: leichtgewichtige Prozesse auf mehreren Scheduler-Threads, Nachrichtenaustausch, Ports und Garbage Collection pro Prozess.",
     status:
-      "In Entwicklung: Eine wachsende Teilmenge von Erlang lässt sich bereits heute zu nativen Programmen kompilieren und unter Windows und Linux ausführen, mit Clause-Versionen der meisten Runtime-Module, die kernel und stdlib von OTP aufrufen. Noch ausstehend: Validierung auf macOS mit Apple Silicon und auf nativer ARM-Hardware, umfassendere Vergleiche mit den Testsuites von OTP und weitere Optimierungen; die Benchmark-Seite zeigt, wo Clause im Vergleich zu OTP steht. Die Dokumentation beschreibt, was funktioniert und wo Clause von Erlang/OTP abweicht.",
+      "In Entwicklung: Eine wachsende Teilmenge von Erlang lässt sich bereits heute zu nativen Programmen kompilieren und unter Windows und Linux ausführen, mit Clause-Versionen der meisten Runtime-Module, die kernel und stdlib von OTP aufrufen und einer wachsenden Zahl vollständiger stdlib-Module. Noch ausstehend: Validierung auf macOS mit Apple Silicon und auf nativer ARM-Hardware, umfassendere Vergleiche mit den Testsuites von OTP und weitere Optimierungen; die Benchmark-Seite zeigt, wo Clause im Vergleich zu OTP steht. Die Dokumentation beschreibt, was funktioniert und wo Clause von Erlang/OTP abweicht.",
     ctaDocs: "Dokumentation lesen",
     ctaSource: "Quellcode auf GitHub",
     cardsTitle: "Funktionen",
@@ -61,9 +61,9 @@ export const de = {
       },
       {
         id: "library",
-        property: "re · zlib · binary",
+        property: "string · json · rand",
         title: "OTP-Bibliotheksmodule",
-        text: "Runtime-Builtins für binary, math, unicode, persistent_term, atomics und counters, re über PCRE2 und zlib, mit den Ergebnissen und Fehlern von OTP 29.",
+        text: "Alle dokumentierten Funktionen von lists, maps, string, unicode, json, rand, calendar und den Collection-Modulen, meist als Runtime-Builtins, dazu re über PCRE2 und zlib, mit den Ergebnissen und Fehlern von OTP 29.",
       },
       {
         id: "ports",
@@ -141,10 +141,12 @@ export const de = {
           "Prozesse, Nachrichten, selektives receive, Links, Monitore, registrierte Namen und Timer auf mehreren Scheduler-Threads, jeder mit eigener Run-Queue",
           "Heap pro Prozess mit generationellem kopierendem Garbage Collector, min_heap_size, gemeinsam genutzten Binärdaten außerhalb des Heaps, Literalbereichen pro Modul und optionalen Speicherlimits",
           "Ports für Dateien, Standard-I/O, Unterprozesse und TCP/UDP-Sockets auf einem ereignisgesteuerten I/O-Thread",
-          "Das Modul erlang: Prozess-Dictionary, externes Termformat mit Kompression, Zeit und Timer, Prozess-Introspektion, spawn-Optionen, Aliase und Hashing",
+          "Das Modul erlang: Prozess-Dictionary, externes Termformat mit Kompression, Zeit und Timer, Prozess-Introspektion, spawn-Optionen, Aliase sowie phash und phash2 mit den Werten von OTP für alles außer Pids, Ports, Referenzen, Funs und native records",
           "Jeder Export von OTP 29 eines Clause-Bibliotheksmoduls lässt sich kompilieren; noch nicht implementierte Funktionen lösen beim Aufruf not_implemented aus",
-          "io:format, io:fwrite und io:put_chars auf jedes I/O-Gerät, mit der ~p-Formatierung von OTP; Teilmengen von lists, maps, file, gen_tcp, gen_udp, inet, os und code",
-          "Vollständige Module binary, math, persistent_term, atomics und counters; Unicode-Konvertierungen",
+          "io:format, io:fwrite und io:put_chars auf jedes I/O-Gerät, mit der ~p-Formatierung von OTP; Teilmengen von file, gen_tcp, gen_udp, inet, os und code",
+          "Vollständige Module lists, maps, binary, math, unicode, string, persistent_term, atomics und counters",
+          "Alle dokumentierten Funktionen von ordsets, orddict, proplists, dict, sets, gb_trees, gb_sets, queue und array über den Datenstrukturen von OTP",
+          "Vollständige Module calendar, filename, uri_string, json, base64, rand und random; io_lib mit formatierter Ausgabe, alles außer fread",
           "re über PCRE2 und zlib, gebaut aus den Bibliotheksversionen, die OTP 29 mitliefert",
           "Clause-Versionen der ERTS-Module, die kernel und stdlib von OTP aufrufen, etwa init, erts_internal, erl_prim_loader, prim_eval und unicode_util",
         ],

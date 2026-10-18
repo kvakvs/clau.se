@@ -30,7 +30,7 @@ export const es = {
     intro:
       "Clause es un compilador anticipado (AOT) para Erlang. Preprocesa, analiza sintáctica y semánticamente el código Erlang, lo compila mediante LLVM y enlaza ejecutables nativos con su propio runtime: procesos ligeros en varios hilos planificadores, paso de mensajes, puertos y recolección de basura por proceso.",
     status:
-      "En desarrollo: un subconjunto creciente de Erlang ya se compila a ejecutables nativos y se ejecuta en Windows y Linux, con versiones de Clause de la mayoría de los módulos de runtime que llaman kernel y stdlib de OTP. Pendiente: validación en macOS con Apple Silicon y en hardware ARM nativo, comparaciones más amplias con los propios conjuntos de pruebas de OTP y más optimización; la página de benchmarks muestra la posición de Clause frente a OTP. La documentación indica qué funciona y en qué difiere Clause de Erlang/OTP.",
+      "En desarrollo: un subconjunto creciente de Erlang ya se compila a ejecutables nativos y se ejecuta en Windows y Linux, con versiones de Clause de la mayoría de los módulos de runtime que llaman kernel y stdlib de OTP y un conjunto creciente de módulos de stdlib completos. Pendiente: validación en macOS con Apple Silicon y en hardware ARM nativo, comparaciones más amplias con los propios conjuntos de pruebas de OTP y más optimización; la página de benchmarks muestra la posición de Clause frente a OTP. La documentación indica qué funciona y en qué difiere Clause de Erlang/OTP.",
     ctaDocs: "Leer la documentación",
     ctaSource: "Código en GitHub",
     cardsTitle: "Características",
@@ -61,9 +61,9 @@ export const es = {
       },
       {
         id: "library",
-        property: "re · zlib · binary",
+        property: "string · json · rand",
         title: "Módulos de biblioteca de OTP",
-        text: "Builtins de runtime para binary, math, unicode, persistent_term, atomics y counters, re sobre PCRE2 y zlib, con los resultados y errores de OTP 29.",
+        text: "Todas las funciones documentadas de lists, maps, string, unicode, json, rand, calendar y los módulos de colecciones, en su mayoría como builtins de runtime, además de re sobre PCRE2 y zlib, con los resultados y errores de OTP 29.",
       },
       {
         id: "ports",
@@ -141,10 +141,12 @@ export const es = {
           "Procesos, mensajes, receive selectivo, enlaces, monitores, nombres registrados y temporizadores en varios hilos planificadores, cada uno con su propia cola de ejecución",
           "Heaps por proceso con recolector de basura generacional por copia, min_heap_size, binarios compartidos fuera del heap, áreas de literales de módulo y límites de memoria opcionales",
           "Puertos para archivos, E/S estándar, subprocesos y sockets TCP/UDP en un único hilo de E/S basado en eventos",
-          "El módulo erlang: diccionario de proceso, formato externo de términos con compresión, tiempo y temporizadores, introspección de procesos, opciones de spawn, alias y hashing",
+          "El módulo erlang: diccionario de proceso, formato externo de términos con compresión, tiempo y temporizadores, introspección de procesos, opciones de spawn, alias, y phash y phash2 con los valores de OTP para todo salvo pids, puertos, referencias, funs y native records",
           "Toda exportación de OTP 29 de un módulo de biblioteca de Clause se compila; las funciones aún no implementadas lanzan not_implemented al llamarlas",
-          "io:format, io:fwrite e io:put_chars hacia cualquier dispositivo de E/S, con el formato ~p de OTP; subconjuntos de lists, maps, file, gen_tcp, gen_udp, inet, os y code",
-          "Módulos binary, math, persistent_term, atomics y counters completos; conversiones de unicode",
+          "io:format, io:fwrite e io:put_chars hacia cualquier dispositivo de E/S, con el formato ~p de OTP; subconjuntos de file, gen_tcp, gen_udp, inet, os y code",
+          "Módulos lists, maps, binary, math, unicode, string, persistent_term, atomics y counters completos",
+          "Todas las funciones documentadas de ordsets, orddict, proplists, dict, sets, gb_trees, gb_sets, queue y array, sobre las estructuras de datos de OTP",
+          "Módulos calendar, filename, uri_string, json, base64, rand y random completos; io_lib y su impresión formateada, todo salvo fread",
           "re sobre PCRE2 y zlib, compilados a partir de las versiones de las bibliotecas que incluye OTP 29",
           "Versiones de Clause de los módulos de ERTS que llaman kernel y stdlib de OTP, como init, erts_internal, erl_prim_loader, prim_eval y unicode_util",
         ],

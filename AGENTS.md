@@ -6,6 +6,8 @@ for more details.
 
 ## Website Implementation
 
+**IMPORTANT** Use local Codex for subagents with gpt-6.1-sol model, effort medium.
+
 Follow coding rules in `.agents/rules-web.md`.
 
 - Use next.js/typescript/react/tailwind css to create minimal website

@@ -28,7 +28,7 @@ export const en = {
     intro:
       "Clause is an ahead-of-time compiler for Erlang. It preprocesses, parses and analyzes Erlang source, compiles it through LLVM and links native executables with its own runtime: lightweight processes on several scheduler threads, message passing, ports and per-process garbage collection.",
     status:
-      "Work in progress: a growing subset of Erlang compiles to native executables and runs on Windows and Linux today, with Clause versions of most runtime modules that OTP's kernel and stdlib call. Still to come: validation on macOS Apple Silicon and native ARM hardware, wider comparisons with OTP's own test suites, and further optimization; the benchmarks page shows where Clause stands against OTP. The documentation lists what works and where Clause differs from Erlang/OTP.",
+      "Work in progress: a growing subset of Erlang compiles to native executables and runs on Windows and Linux today, with Clause versions of most runtime modules that OTP's kernel and stdlib call and a growing set of complete stdlib modules. Still to come: validation on macOS Apple Silicon and native ARM hardware, wider comparisons with OTP's own test suites, and further optimization; the benchmarks page shows where Clause stands against OTP. The documentation lists what works and where Clause differs from Erlang/OTP.",
     ctaDocs: "Read the documentation",
     ctaSource: "Source on GitHub",
     cardsTitle: "Features",
@@ -59,9 +59,9 @@ export const en = {
       },
       {
         id: "library",
-        property: "re · zlib · binary",
+        property: "string · json · rand",
         title: "OTP library modules",
-        text: "Runtime builtins for binary, math, unicode, persistent_term, atomics and counters, re over PCRE2 and zlib, with OTP 29's results and errors.",
+        text: "Every documented function of lists, maps, string, unicode, json, rand, calendar and the collection modules, mostly as runtime builtins, plus re over PCRE2 and zlib, with OTP 29's results and errors.",
       },
       {
         id: "ports",
@@ -139,10 +139,12 @@ export const en = {
           "Processes, messages, selective receive, links, monitors, registered names and timers on several scheduler workers, each with its own run queue",
           "Per-process heaps with a generational copying garbage collector, min_heap_size, shared off-heap binaries, module literal areas and optional memory limits",
           "Ports for files, standard I/O, subprocesses and TCP/UDP sockets on one event-driven I/O thread",
-          "The erlang module: process dictionary, external term format with compression, time and timers, process introspection, spawn options, aliases and hashing",
+          "The erlang module: process dictionary, external term format with compression, time and timers, process introspection, spawn options, aliases, and phash and phash2 with OTP's values for all but pids, ports, references, funs and native records",
           "Every OTP 29 export of a Clause library module compiles; functions not implemented yet raise not_implemented when called",
-          "io:format, io:fwrite and io:put_chars to any I/O device, with OTP's ~p pretty printing; subsets of lists, maps, file, gen_tcp, gen_udp, inet, os and code",
-          "Complete binary, math, persistent_term, atomics and counters modules; unicode conversions",
+          "io:format, io:fwrite and io:put_chars to any I/O device, with OTP's ~p pretty printing; subsets of file, gen_tcp, gen_udp, inet, os and code",
+          "Complete lists, maps, binary, math, unicode, string, persistent_term, atomics and counters modules",
+          "Every documented function of ordsets, orddict, proplists, dict, sets, gb_trees, gb_sets, queue and array, over OTP's data shapes",
+          "Complete calendar, filename, uri_string, json, base64, rand and random modules; io_lib and its pretty printer, all but fread",
           "re over PCRE2 and zlib, built from the library versions OTP 29 bundles",
           "Clause versions of the ERTS modules OTP's kernel and stdlib call, such as init, erts_internal, erl_prim_loader, prim_eval and unicode_util",
         ],

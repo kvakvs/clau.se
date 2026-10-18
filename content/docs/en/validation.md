@@ -23,23 +23,27 @@ cmake --preset debug --fresh -DBUILD_TESTING=ON -G Ninja -DCMAKE_C_COMPILER=clan
 cmake --build build/debug
 ctest --preset debug-fast                  # during development
 ctest --preset debug -j 16                 # full mode, at feature completion
-cmake --build build/debug --target check-quality      # changed files + dependents
+cmake --build build/debug --target check-quality      # changed files, one unit per header
 cmake --build build/debug --target check-quality-all  # whole tree
 ```
 
 - `CLAUSE_TEST_MODE=fast` runs golden corpora at O0 positional plus O2
   specialization-off project, runs mutations once and skips `full_only` tests
   (separate consumer projects such as `runtime_generated_link`, measurements,
-  the host-OTP `library_freshness` audit). Full mode (default) runs all
-  driver/policy combinations.
+  the host-OTP `library_freshness` audit, and the slow workflows
+  `linking_lto`, `linking_exports`, `linking_compile_cache`, `programs_compile`
+  and `transforms_cache`). Full mode (default) runs all driver/policy
+  combinations.
 - Long tests driven by a Python or CMake script carry a fixed CTest `COST`: CTest
   learns a wrapper's cost from its own small CPU time and would start them last.
 - `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplies the per-run limits of the golden
   runner (60 s) and the semantic case runner (15 s) for instrumented builds.
 - `check-quality`, `make format` and `make-format.bat` cover files changed since
-  `HEAD` plus untracked files; `cmake/quality_scope.py` adds translation units
-  that include a changed header (from Ninja's dependency data of any
-  configuration) and, for clang-tidy, units whose compile command differs from
+  `HEAD` plus untracked files; `cmake/quality_scope.py` adds, for each changed
+  header, one translation unit that includes it (its own source, else its first
+  user, from Ninja's dependency data of any configuration; the header's other
+  dependents are left to `check-quality-all` in the full gate) and, for
+  clang-tidy, units whose compile command differs from
   the one the last passing run recorded (`build/debug/quality/tidy-commands.json`),
   so a build rule edit rechecks only the units it changes. Changes to
   `.clang-tidy` or the tidy scripts select everything, as do build rule edits
@@ -203,12 +207,19 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   with six decimals and its spread, the change of Clause O2 against each system
   (`+N%`: Clause faster, the other takes N% longer; `-N%`: Clause takes N%
   longer; `(Fx)` the time ratio) with a geometric mean, `--lto` against OTP and
-  O2, program wall times including startup, failures and timeouts (`--timeout`,
-  600 s per run). Iteration counts keep a default run under 10 minutes; Clause,
+  O2, program wall times including startup, executable sizes, failures and
+  timeouts (`--timeout`, 600 s per run). Iteration counts keep a default run under 10 minutes; Clause,
   the slowest system, sets the sizes, so some OTP kernels last only a few
   milliseconds.
+- Executable sizes, in bytes: every program at `-O2`, with `--lto` and at `-O0`
+  (an extra build only measured, never run; both skipped by `--no-lto`) and the
+  baseline at `-O2`, with a total row and the changes O2 vs O0, `--lto` vs O2,
+  `--lto` vs O0 and O2 vs baseline (`-N%` smaller); and `clau` at HEAD and the
+  baseline. The history keeps them as `sizes_bytes` (`programs`:
+  program → column → bytes, `clau`: `head`/`baseline` → bytes; `null` where a
+  build failed).
 - History: `benchmarks/history/<host>.json` keeps one record per run day (run
-  date, HEAD hash and commit date, Clause, OTP and baseline medians),
+  date, HEAD hash and commit date, Clause, OTP and baseline medians, sizes),
   `benchmarks/history/reports/<host>/<day>-<hash>.txt` the text reports; a rerun
   on the same day replaces both. Records and reports run more than 183 days
   before the newest are pruned; a run with uncommitted source changes is
@@ -256,6 +267,7 @@ skips.
 | 2026-10-12 | Steps 62D1–62E build directory and caches | 263/264 | all | Full CTest, known `codegen_resource_cli` failure; `check-quality-all` clean |
 | 2026-10-13 | Steps 58U–58W inference cache | 278/279 | all | Full CTest, known `codegen_measurements` failure; `check-quality-all` clean |
 | 2026-10-14 | Step 41S `prim_eval` and the luerl rerun (H3 closed) | 299/300 | all | See current baseline |
+| 2026-10-17 | Plan 20 OPTM.2 (one-word Term, persistent terms in place and reclaimed) and OPTM.3 (unchecked accessors) | 330/332 | all | Full CTest: known `codegen_measurements` failure, and `library_freshness` (host OTP) still expects the `not_implemented` stub bodies that `b0e62a38` replaced; `check-quality-all` clean |
 
 PG = pattern/guard plan step; plan 11 step records are archived in
 `.agents/00-finished.md`.

@@ -30,7 +30,7 @@ export const sv = {
     intro:
       "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, portar och skräpsamling per process.",
     status:
-      "Under utveckling: en växande delmängd av Erlang kompileras till körbara program och körs redan idag på Windows och Linux, med Clause-versioner av de flesta runtime-moduler som OTP:s kernel och stdlib anropar. Återstår: validering på macOS med Apple Silicon och på riktig ARM-hårdvara, bredare jämförelser med OTP:s egna testsviter samt ytterligare optimering; sidan med prestandatester visar var Clause står jämfört med OTP. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
+      "Under utveckling: en växande delmängd av Erlang kompileras till körbara program och körs redan idag på Windows och Linux, med Clause-versioner av de flesta runtime-moduler som OTP:s kernel och stdlib anropar och en växande uppsättning kompletta stdlib-moduler. Återstår: validering på macOS med Apple Silicon och på riktig ARM-hårdvara, bredare jämförelser med OTP:s egna testsviter samt ytterligare optimering; sidan med prestandatester visar var Clause står jämfört med OTP. Dokumentationen beskriver vad som fungerar och var Clause skiljer sig från Erlang/OTP.",
     ctaDocs: "Läs dokumentationen",
     ctaSource: "Källkod på GitHub",
     cardsTitle: "Funktioner",
@@ -61,9 +61,9 @@ export const sv = {
       },
       {
         id: "library",
-        property: "re · zlib · binary",
+        property: "string · json · rand",
         title: "OTP-biblioteksmoduler",
-        text: "Inbyggda runtime-funktioner för binary, math, unicode, persistent_term, atomics och counters, re över PCRE2 och zlib, med samma resultat och fel som OTP 29.",
+        text: "Alla dokumenterade funktioner i lists, maps, string, unicode, json, rand, calendar och samlingsmodulerna, mest som inbyggda runtime-funktioner, samt re över PCRE2 och zlib, med samma resultat och fel som OTP 29.",
       },
       {
         id: "ports",
@@ -141,10 +141,12 @@ export const sv = {
           "Processer, meddelanden, selektiv receive, länkar, monitorer, registrerade namn och timrar på flera schemaläggartrådar, var och en med egen körkö",
           "Heap per process med generationsbaserad kopierande skräpsamlare, min_heap_size, delade binärer utanför heapen, literalområden per modul och valfria minnesgränser",
           "Portar för filer, standard-I/O, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd",
-          "Modulen erlang: processordbok, externt termformat med komprimering, tid och timrar, processinspektion, spawn-alternativ, alias och hashning",
+          "Modulen erlang: processordbok, externt termformat med komprimering, tid och timrar, processinspektion, spawn-alternativ, alias samt phash och phash2 med OTP:s värden för allt utom pid:ar, portar, referenser, funs och native records",
           "Varje OTP 29-export i en Clause-biblioteksmodul kompileras; funktioner som ännu inte är implementerade ger not_implemented när de anropas",
-          "io:format, io:fwrite och io:put_chars till valfri I/O-enhet, med OTP:s ~p-formatering; delmängder av lists, maps, file, gen_tcp, gen_udp, inet, os och code",
-          "Kompletta moduler binary, math, persistent_term, atomics och counters; unicode-konverteringar",
+          "io:format, io:fwrite och io:put_chars till valfri I/O-enhet, med OTP:s ~p-formatering; delmängder av file, gen_tcp, gen_udp, inet, os och code",
+          "Kompletta moduler lists, maps, binary, math, unicode, string, persistent_term, atomics och counters",
+          "Alla dokumenterade funktioner i ordsets, orddict, proplists, dict, sets, gb_trees, gb_sets, queue och array, över OTP:s datastrukturer",
+          "Kompletta moduler calendar, filename, uri_string, json, base64, rand och random; io_lib och dess formaterade utskrift, allt utom fread",
           "re över PCRE2 och zlib, byggda från de biblioteksversioner som ingår i OTP 29",
           "Clause-versioner av de ERTS-moduler som OTP:s kernel och stdlib anropar, till exempel init, erts_internal, erl_prim_loader, prim_eval och unicode_util",
         ],

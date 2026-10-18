@@ -282,6 +282,13 @@ registration rejects a module whose `code_convention` (0 none, 1 C, 2
   (at most 32 distinct) are written inline as classic map cells, keys sorted at
   compile time in exact term order, the last value of a repeated key kept;
   otherwise `CLAUSE_map_v1` builds them.
+- Map patterns (`#{K := V}`, `#{}`), `map_get/2`, `is_map_key/2`, `map_size/1`
+  and updates (`M#{K := V}`, `M#{K => V}`, at most 8 fields) read a classic map
+  cell inline when every key is an atom or a small integer, whose term equality
+  is word equality: a scan of the key words, then the value word, or a copy of
+  the cell with the new values when it already holds every key and the heap has
+  room. A missing key fails a pattern at once; map trees, other keys, a missing
+  key elsewhere and errors take `CLAUSE_map_v1` (small-map lookups).
 - Tuples and lists of at most 64 words are bump-allocated inline in
   `[heap_top, heap_limit)` (header or cons cells written in place, `heap_top`
   advanced), else built by `CLAUSE_construct_v1`; the result is rooted like a
@@ -356,7 +363,8 @@ Inline forms (`codegen/lowering_inline.cpp`): type tests (`is_atom`,
 native `is_record/1`, `is_binary/1` by the bit length word) read tags and, after
 a boxed tag test, the header kind (`abi::v1::HeaderKind`); they never call a
 service. Comparisons of two immediates (`==`, `/=`) or two small integers (`<`,
-`=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `hd/1`, `tl/1`, the boolean
+`=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `bit_size/1` and `byte_size/1`
+(from the bit length word, while the size is a small integer), `hd/1`, `tl/1`, the boolean
 operators, `band`, `bor`, `bxor`, `bsr`, `bsl` (while the result stays small)
 and small `div`/`rem` run inline; `self/0` reads `FrameState::self`. They run
 inline where their operands allow and call `CLAUSE_immediate_v1` otherwise,
@@ -374,13 +382,17 @@ is a builtin: entering it runs the builtin on the registers and returns into the
 caller, or suspends the process at the builtin's continuation when it trapped
 ([portions](builtins.md#portions)).
 
-A direct builtin (`BuiltinName::direct`: pure conversions such as
+A direct builtin (`BuiltinCall::direct`: pure conversions such as
 `integer_to_list/1`, `atom_to_list/1`, `list_to_tuple/1`, `setelement/3`,
 `phash2/1`) never traps, waits or acts on another process. Generated code calls
 it with `CLAUSE_builtin_call_v1(context, builtin, arguments)`, which runs its
 body at once and returns the result, with no frame transfer, no resume point and
 no entry safepoint; it spends one reduction, and a failure goes to the checked
-channel as a service's does.
+channel as a service's does. A quick builtin (`BuiltinCall::quick`: `length/1`,
+`binary_to_list/1`, `list_to_binary/1`, `iolist_to_binary/1`) is called the
+same way first; its bounded fast path returns 0 when it declines (longer
+inputs, other shapes, every error, and always while calls are traced), and the
+generated code then enters the builtin's frame as for any bridge builtin.
 
 `abi::v1::dispatch_builtin` calls host-registered builtins by module/function
 bytes, argument array and arity, returning a `Status`; output is written only on
@@ -429,3 +441,4 @@ success.
 | 20 | `MapOperation::entries` and inline map generators |
 | 21 | `ModuleDescriptor::fun_cache` and inline closures |
 | 22 | Direct builtins: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
+| 23 | Quick builtins: `BuiltinName::call` (`BuiltinCall`), 0 from `CLAUSE_builtin_call_v1` declines |
