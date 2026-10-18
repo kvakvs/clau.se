@@ -24,6 +24,7 @@ export const es = {
   footer: {
     tagline: "Erlang, compilado de antemano.",
     updated: "Actualizado",
+    cookies: "Cookies",
   },
   home: {
     title: "Erlang/OTP 29, compilado a código nativo",
@@ -271,6 +272,56 @@ export const es = {
       text: "Código fuente, incidencias e historial de desarrollo.",
     },
     credits: "Créditos de arte",
+  },
+  cookies: {
+    banner:
+      "Este sitio cuenta las visitas con Google Analytics, que solo instala cookies si se aceptan.",
+    accept: "Aceptar",
+    decline: "Rechazar",
+    policyLink: "Política de cookies",
+    title: "Política de cookies",
+    intro:
+      "clau.se cuenta las visitas con Google Analytics para saber qué páginas se leen. Google Analytics se carga y sus cookies se instalan solo después de aceptarlas; hasta entonces, o si se rechazan, no se envía nada a Google.",
+    choiceTitle: "Su elección",
+    choice:
+      "Rechazarlas no cambia nada en el sitio. La elección puede cambiarse en cualquier momento; al retirar el consentimiento se borran las cookies de analítica.",
+    current: "Elección actual: {state}",
+    granted: "aceptadas",
+    denied: "rechazadas",
+    unset: "sin elegir",
+    storedTitle: "Qué se almacena",
+    name: "Nombre",
+    purpose: "Finalidad",
+    duration: "Duración",
+    rows: [
+      {
+        name: "_ga",
+        purpose: "Cookie de Google Analytics: distingue a los visitantes",
+        duration: "2 años",
+      },
+      {
+        name: "_ga_8Y3XJHBHPB",
+        purpose: "Cookie de Google Analytics: mantiene el estado de una visita",
+        duration: "2 años",
+      },
+      {
+        name: "analytics-consent",
+        purpose:
+          "Almacenamiento local del navegador: la elección sobre cookies",
+        duration: "Hasta que se borre",
+      },
+      {
+        name: "theme, locale",
+        purpose:
+          "Almacenamiento local del navegador: el tema de color y el idioma elegidos",
+        duration: "Hasta que se borre",
+      },
+    ],
+    googleTitle: "Google Analytics",
+    google:
+      "Google Analytics es un servicio de Google. Con el consentimiento recibe las páginas visitadas, la página de referencia, el tipo de navegador y de dispositivo y una ubicación aproximada derivada de la dirección IP.",
+    googleLink: "Cómo usa Google esta información",
+    contact: "Preguntas sobre esta política:",
   },
   notFound: {
     title: "Página no encontrada",

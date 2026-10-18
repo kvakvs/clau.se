@@ -200,4 +200,6 @@ pnpm build          # must produce the static export in out/
 - Add a dependency only when it removes real complexity. Justify each new
   package in the commit message.
 - No UI kits (MUI, Chakra, shadcn bulk installs), no icon packs for a handful of
-  icons (inline SVG instead), no analytics or trackers.
+  icons (inline SVG instead), no analytics or tracker packages. The only
+  tracker is the Google tag, loaded by an inline script only after consent
+  (`lib/consent.ts`, cookie banner, `/<lang>/cookies/` policy page).

@@ -24,6 +24,7 @@ export const sv = {
   footer: {
     tagline: "Erlang, kompilerat i förväg.",
     updated: "Uppdaterad",
+    cookies: "Kakor",
   },
   home: {
     title: "Erlang/OTP 29, kompilerat till maskinkod",
@@ -272,6 +273,54 @@ export const sv = {
       text: "Källkod, ärenden och utvecklingshistorik.",
     },
     credits: "Bildkällor",
+  },
+  cookies: {
+    banner:
+      "Webbplatsen räknar besök med Google Analytics, som sätter kakor bara om du godkänner.",
+    accept: "Godkänn",
+    decline: "Avböj",
+    policyLink: "Kakpolicy",
+    title: "Kakpolicy",
+    intro:
+      "clau.se räknar besök med Google Analytics för att se vilka sidor som läses. Google Analytics laddas och dess kakor sätts först när du godkänner dem; dessförinnan, eller om du avböjer, skickas inget till Google.",
+    choiceTitle: "Ditt val",
+    choice:
+      "Att avböja ändrar ingenting på webbplatsen. Du kan ändra ditt val när som helst; när du drar tillbaka samtycket raderas analyskakorna.",
+    current: "Nuvarande val: {state}",
+    granted: "godkänt",
+    denied: "avböjt",
+    unset: "inte gjort än",
+    storedTitle: "Vad som lagras",
+    name: "Namn",
+    purpose: "Syfte",
+    duration: "Varaktighet",
+    rows: [
+      {
+        name: "_ga",
+        purpose: "Kaka från Google Analytics: skiljer besökare åt",
+        duration: "2 år",
+      },
+      {
+        name: "_ga_8Y3XJHBHPB",
+        purpose: "Kaka från Google Analytics: håller reda på ett besök",
+        duration: "2 år",
+      },
+      {
+        name: "analytics-consent",
+        purpose: "Lokal lagring i din webbläsare: ditt val om kakor",
+        duration: "Tills du rensar den",
+      },
+      {
+        name: "theme, locale",
+        purpose: "Lokal lagring i din webbläsare: valt färgtema och språk",
+        duration: "Tills du rensar den",
+      },
+    ],
+    googleTitle: "Google Analytics",
+    google:
+      "Google Analytics är en tjänst från Google. Med ditt samtycke tar den emot vilka sidor du besöker, hänvisande sida, typ av webbläsare och enhet samt en ungefärlig plats som härleds från din IP-adress.",
+    googleLink: "Hur Google använder informationen",
+    contact: "Frågor om policyn:",
   },
   notFound: {
     title: "Sidan hittades inte",

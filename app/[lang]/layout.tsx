@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { CookieBanner } from "@/components/cookie-banner";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { analyticsInitScript } from "@/lib/consent";
 import { isLocale, locales } from "@/lib/i18n";
 import { siteIcons } from "@/lib/site";
 import { themeInitScript } from "@/lib/theme";
@@ -39,13 +41,16 @@ export default async function LocaleLayout({ children, params }: Props) {
     <html lang={lang} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Google tag (gtag.js), loaded only after consent. */}
+        <script dangerouslySetInnerHTML={{ __html: analyticsInitScript }} />
       </head>
       <body className="flex min-h-dvh flex-col">
         <SiteHeader locale={lang} t={t} />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:py-14">
           {children}
         </main>
-        <SiteFooter t={t} />
+        <SiteFooter locale={lang} t={t} />
+        <CookieBanner lang={lang} t={t.cookies} />
       </body>
     </html>
   );

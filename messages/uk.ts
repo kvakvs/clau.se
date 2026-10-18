@@ -24,6 +24,7 @@ export const uk = {
   footer: {
     tagline: "Erlang, скомпільований заздалегідь.",
     updated: "Оновлено",
+    cookies: "Cookie",
   },
   home: {
     title: "Erlang/OTP 29, скомпільований у нативний код",
@@ -271,6 +272,54 @@ export const uk = {
       text: "Вихідний код, задачі та історія розробки.",
     },
     credits: "Авторство графіки",
+  },
+  cookies: {
+    banner:
+      "Сайт рахує відвідування за допомогою Google Analytics, який встановлює cookie лише з вашої згоди.",
+    accept: "Прийняти",
+    decline: "Відхилити",
+    policyLink: "Політика cookie",
+    title: "Політика cookie",
+    intro:
+      "clau.se рахує відвідування за допомогою Google Analytics, щоб бачити, які сторінки читають. Google Analytics завантажується і встановлює cookie лише після вашої згоди; до того, або якщо ви відмовитеся, до Google нічого не надсилається.",
+    choiceTitle: "Ваш вибір",
+    choice:
+      "Відмова нічого не змінює на сайті. Вибір можна змінити будь-коли; після відкликання згоди cookie аналітики видаляються.",
+    current: "Поточний вибір: {state}",
+    granted: "прийнято",
+    denied: "відхилено",
+    unset: "ще не зроблено",
+    storedTitle: "Що зберігається",
+    name: "Назва",
+    purpose: "Призначення",
+    duration: "Термін",
+    rows: [
+      {
+        name: "_ga",
+        purpose: "Cookie Google Analytics: розрізняє відвідувачів",
+        duration: "2 роки",
+      },
+      {
+        name: "_ga_8Y3XJHBHPB",
+        purpose: "Cookie Google Analytics: зберігає стан відвідування",
+        duration: "2 роки",
+      },
+      {
+        name: "analytics-consent",
+        purpose: "Локальне сховище браузера: ваш вибір щодо cookie",
+        duration: "Доки ви його не очистите",
+      },
+      {
+        name: "theme, locale",
+        purpose: "Локальне сховище браузера: вибрані колірна тема й мова",
+        duration: "Доки ви його не очистите",
+      },
+    ],
+    googleTitle: "Google Analytics",
+    google:
+      "Google Analytics — сервіс Google. З вашої згоди він отримує відвідані сторінки, сторінку переходу, тип браузера й пристрою та приблизне місцезнаходження, визначене за IP-адресою.",
+    googleLink: "Як Google використовує ці дані",
+    contact: "Питання щодо цієї політики:",
   },
   notFound: {
     title: "Сторінку не знайдено",

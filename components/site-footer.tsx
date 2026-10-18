@@ -2,7 +2,7 @@ import { GITHUB_URL } from "@/lib/site";
 import type { Messages } from "@/messages/en";
 import homeMeta from "@/content/home-meta.json";
 
-export function SiteFooter({ t }: { t: Messages }) {
+export function SiteFooter({ locale, t }: { locale: string; t: Messages }) {
   return (
     <footer className="border-t border-border">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-sm text-muted">
@@ -15,6 +15,9 @@ export function SiteFooter({ t }: { t: Messages }) {
               {homeMeta.updatedAt}
             </time>
           </span>
+          <a href={`/${locale}/cookies/`} className="hover:text-fg">
+            {t.footer.cookies}
+          </a>
           <a
             href={GITHUB_URL}
             rel="noopener noreferrer"

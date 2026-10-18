@@ -22,6 +22,7 @@ export const en = {
   footer: {
     tagline: "Erlang, compiled ahead of time.",
     updated: "Updated",
+    cookies: "Cookies",
   },
   home: {
     title: "Erlang/OTP 29, compiled to native code",
@@ -267,6 +268,55 @@ export const en = {
       text: "Source code, issues and development history.",
     },
     credits: "Art credits",
+  },
+  cookies: {
+    banner:
+      "This site counts visits with Google Analytics, which sets cookies only if you accept.",
+    accept: "Accept",
+    decline: "Decline",
+    policyLink: "Cookie policy",
+    title: "Cookie policy",
+    intro:
+      "clau.se counts visits with Google Analytics to see which pages are read. Google Analytics is loaded and its cookies are set only after you accept them; until then, or if you decline, nothing is sent to Google.",
+    choiceTitle: "Your choice",
+    choice:
+      "Declining changes nothing on the site. You can change your choice at any time; withdrawing consent deletes the analytics cookies.",
+    current: "Current choice: {state}",
+    granted: "accepted",
+    denied: "declined",
+    unset: "not made yet",
+    storedTitle: "What is stored",
+    name: "Name",
+    purpose: "Purpose",
+    duration: "Duration",
+    rows: [
+      {
+        name: "_ga",
+        purpose: "Google Analytics cookie: tells visitors apart",
+        duration: "2 years",
+      },
+      {
+        name: "_ga_8Y3XJHBHPB",
+        purpose: "Google Analytics cookie: keeps the state of a visit",
+        duration: "2 years",
+      },
+      {
+        name: "analytics-consent",
+        purpose: "Local storage in your browser: your cookie choice",
+        duration: "Until you clear it",
+      },
+      {
+        name: "theme, locale",
+        purpose:
+          "Local storage in your browser: the color theme and language you picked",
+        duration: "Until you clear it",
+      },
+    ],
+    googleTitle: "Google Analytics",
+    google:
+      "Google Analytics is a service of Google. With your consent it receives the pages you visit, the referring page, your browser and device type and an approximate location derived from your IP address.",
+    googleLink: "How Google uses this information",
+    contact: "Questions about this policy:",
   },
   notFound: {
     title: "Page not found",

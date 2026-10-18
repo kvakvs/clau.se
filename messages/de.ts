@@ -24,6 +24,7 @@ export const de = {
   footer: {
     tagline: "Erlang, vorab kompiliert.",
     updated: "Aktualisiert",
+    cookies: "Cookies",
   },
   home: {
     title: "Erlang/OTP 29, kompiliert zu nativem Code",
@@ -271,6 +272,55 @@ export const de = {
       text: "Quellcode, Issues und Entwicklungsverlauf.",
     },
     credits: "Bildnachweis",
+  },
+  cookies: {
+    banner:
+      "Diese Website zählt Besuche mit Google Analytics, das Cookies nur nach Zustimmung setzt.",
+    accept: "Zustimmen",
+    decline: "Ablehnen",
+    policyLink: "Cookie-Richtlinie",
+    title: "Cookie-Richtlinie",
+    intro:
+      "clau.se zählt Besuche mit Google Analytics, um zu sehen, welche Seiten gelesen werden. Google Analytics wird erst nach Zustimmung geladen und setzt erst dann Cookies; bis dahin oder bei Ablehnung wird nichts an Google gesendet.",
+    choiceTitle: "Auswahl",
+    choice:
+      "Eine Ablehnung ändert nichts an der Website. Die Auswahl lässt sich jederzeit ändern; ein Widerruf der Zustimmung löscht die Analyse-Cookies.",
+    current: "Aktuelle Auswahl: {state}",
+    granted: "zugestimmt",
+    denied: "abgelehnt",
+    unset: "noch keine",
+    storedTitle: "Was gespeichert wird",
+    name: "Name",
+    purpose: "Zweck",
+    duration: "Dauer",
+    rows: [
+      {
+        name: "_ga",
+        purpose: "Cookie von Google Analytics: unterscheidet Besucher",
+        duration: "2 Jahre",
+      },
+      {
+        name: "_ga_8Y3XJHBHPB",
+        purpose: "Cookie von Google Analytics: hält den Zustand eines Besuchs",
+        duration: "2 Jahre",
+      },
+      {
+        name: "analytics-consent",
+        purpose: "Lokaler Speicher des Browsers: die Cookie-Auswahl",
+        duration: "Bis zum Löschen",
+      },
+      {
+        name: "theme, locale",
+        purpose:
+          "Lokaler Speicher des Browsers: gewähltes Farbschema und gewählte Sprache",
+        duration: "Bis zum Löschen",
+      },
+    ],
+    googleTitle: "Google Analytics",
+    google:
+      "Google Analytics ist ein Dienst von Google. Mit Zustimmung erhält er die besuchten Seiten, die verweisende Seite, Browser- und Gerätetyp sowie einen aus der IP-Adresse abgeleiteten ungefähren Standort.",
+    googleLink: "Wie Google diese Informationen verwendet",
+    contact: "Fragen zu dieser Richtlinie:",
   },
   notFound: {
     title: "Seite nicht gefunden",
