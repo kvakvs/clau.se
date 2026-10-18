@@ -7,6 +7,7 @@ for more details.
 ## Website Implementation
 
 **IMPORTANT** Use local Codex for subagents with gpt-6.1-sol model, effort medium.
+Do not use "Co-Authored By" in the commit messages.
 
 Follow coding rules in `.agents/rules-web.md`.
 

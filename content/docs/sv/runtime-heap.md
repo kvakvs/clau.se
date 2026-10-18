@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: a8c3f8f6
-sourceSha256: cc0485350969c6f992d4987c8f893772eef2f3b1d7b9f3315e20c63541a45bc8
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
+translatedAt: 2026-10-18
 ---
 # Kontrakt för processheapen
 
@@ -164,8 +164,9 @@ håller sina HAMT-noder på heapen. Mindre maps förblir `map`-celler.
   skrivskyddad global (`ModuleDescriptor::literals`), registrerad
   runtime-omfattande (`detail::LiteralAreas`, en låsfri sorterad
   ögonblicksbild) när modulen registreras. Termer i varje process får peka in i
-  dem: tillträde och `TermAccess::object` läser celler via
-  `HeapStorage::readable` (heap, fragment, sedan literaler); skräpsamlaren
+  dem: tillträde kontrollerar
+  `HeapStorage::readable` (heap, fragment, sedan literaler), medan
+  `TermAccess::object` läser betrodda pekare. Skräpsamlaren
   lämnar literalord som de är (`owned` förblir endast heap); kopior mellan
   heapar och in i meddelandebuffertar fortsätter peka på dem (en literalrot
   behöver ingen kopia); verifieraren godtar dem. Literaler innehåller endast
@@ -274,16 +275,34 @@ tråd frigör sin cache när den avslutas.
 Pekare in i en processheap skapas endast av kompilatorn och runtime inuti den
 processen och namnger alltid början av ett objekt; det finns inga inre pekare
 att upptäcka. Tillträde (admission) är en ägarskapskontroll för ord som lämnas
-tillbaka till en process:
+tillbaka till en process. `Term::from_word(word, context)` /
+`TermAccess::admit` kontrollerar först att lagringen lever
+(`expired_context`); atomer och pids/portar måste tillhöra denna runtime
+(fasta atomer delas). För sammansatta ord:
 
 1. Adressen är ordjusterad inuti ett av processens områden, under dess `top`:
    heapblocket kontrolleras först, sedan fragmenten sorterade efter adress,
-   sedan literalområdena ([områden](#areas)). Främmande och inaktuella ord
-   misslyckas här utan någon läsning.
+   sedan literalområdena ([områden](#areas)). Adresser utanför dessa intervall
+   misslyckas utan någon läsning; detta upptäcker inte gamla ord på
+   återanvända adresser.
 2. Ett boxat ord namnger ett huvud av en godtagen sort (inte utfyllnad); ett
    listord namnger en cons-cell (ett ord som inte är ett huvud).
 
-Åtkomstfunktioner avkodar sort, antal och nyttolast från själva huvudet.
+Efter tillträde avkodar `TermAccess::object` sort, antal och nyttolast via
+`trusted_cell`, utan heapuppslag; `child` omsluter det lagrade ordet och
+`validate` kontrollerar endast representationen. Fabriker prövar fortfarande
+indata igen via `ProcessHeap::retain` och avvisar främmande sammansatta indata
+med `wrong_owner`.
+
+Dessa kontroller körs endast i Debug-byggen (`CHECKED_ADMISSION`, OPTM.2C).
+Ett Release-bygge litar på varje sammansatt ord, atom-, pid- och portord som
+lämnas till en inbyggd funktion, tjänst eller fabrik, som ERTS litar på sina
+Eterms: genererad kod producerar endast ord från den egna processen,
+literalområden och runtimens atomer, så intervall- och ägaruppslagen gav bara
+en kostnad för varje argument. Andra omedelbara värden klassificeras ännu.
+Tester som matar in förfalskade eller främmande ord väntar sig avvisning
+endast när `CHECKED_ADMISSION` gäller.
+`map_find` får jämföra en annan process nyckel skrivskyddat utan avvisningen.
 `verify()` förblir den fullständiga kontrollen av att varje plats namnger
 början av ett objekt, för tester.
 
@@ -297,7 +316,7 @@ säker punkt håller ingenting annat heapord för processen:
 | Ramens termplatser | De första `roots` platserna i varje ram på stacken | Bottenramar har inga; index för återupptagning och hanterare är heltal |
 | Råa ramplatser | Inga | Spillda native-värden; genererad kod håller inget heapord där vid en säker punkt ([omläsningsregel](#reload-rule)) |
 | Register | `x[0..live)` (`ProcessStack::keep_registers`) | En suspenderad ingångs argument; varje push och pop rensar `live` |
-| Felkanal | Felnyttolast (BEAM:s `fvalue`), argumentlistan till `erlang:error/2,3`, stackspårstermen | Binds om på plats; fångade spårramar är deskriptorpekare in i koden |
+| Felkanal | Felnyttolast (BEAM:s `fvalue`), argumentlista för `erlang:error/2,3`, stackspårsterm | `GeneratedCallState` Terms skrivs om av `Term::rebind`, som endast lagrar det nya ordet; fångade spårramar är deskriptorpekare in i kod |
 | Trap-tillstånd | Termorden i en trappande inbyggd funktions `TrapState` ([portioner](builtins.md#portions)) | Frigörs när den inbyggda funktionen avslutas eller misslyckas |
 | Processlexikon | Varje nyckel och värde | Tills de raderas eller processen avslutas |
 | Brevlåda | Varje meddelande i signalinkorgen och meddelandekön, inklusive `'EXIT'`- och `'DOWN'`-meddelanden | Tills en receive tar det; skrivs om på plats, så receive-markören (en listposition) och tidsgränsen förblir giltiga |
@@ -310,10 +329,14 @@ som lever lika länge som runtime; inlästa moduler avlastas aldrig, så varken
 funs eller spårdeskriptorer behöver ett lås. Små omedelbara värden är inte
 rötter.
 
-Som i ERTS C-kod är en `Term` hos värden ett rått taggat ord som är giltigt
-till nästa säkra punkt för dess heap; den låser inte heaplagringen
-([ägarskap](terms.md#ownership)). En `Term` är giltig endast inuti sin egen
-process; andra processer får bara läsa den.
+Som i ERTS C-kod är en värd-`Term` exakt ett trivialt kopierbart ord, giltigt
+till heapens nästa skräpsamling eller processens slut; den har inget fäste,
+ingen heappekare, livstidstoken eller skräpsamlingsepok
+([ägarskap](terms.md#ownership)). Åtkomst efter någon av dessa gränser läser
+flyttat eller frigjort minne och är odefinierad, utan `stale_term`-kontroll.
+Registrerade rötter skrivs om; en oregistrerad värd-Term måste byggas om från
+sitt omskrivna rotord. En Term tillhör sin process; andra processer får bara
+läsa den medan källan förblir stabil.
 
 Heapen flyttas endast vid en säker punkt, och aldrig medan en reservation är
 öppen:
@@ -333,20 +356,26 @@ en begäran som inte ryms skapar ett fragment.
 
 En `MessageBuffer`
 ([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) håller en term
-utanför varje process: `copy_of` kopierar grafen från dess processheap till en
-egen `HeapStorage` (egen livstidstoken, runtimens atomer och minneskonto,
-binaries utanför heapen delade och hållna), med samma `GraphCopy` som en
-sändning använder; `copy_to` kopierar den till en mottagares heap. Omedelbara
-värden behöver ingen lagring. Bufferten skräpsamlas aldrig och frigörs med sin
-sista ägare; dess block är exakt termens ord, oavsett avsändarens minsta heap.
-Meddelanden till en process som körs på en annan arbetare
-([arbetare](processes.md#workers)), timermeddelanden, monitortaggar och
-[persistenta termer](runtime.md#persistent-terms) använder den, så de kodas
-aldrig om.
+utanför varje process: `copy_of(value, sender)` kopierar grafen från avsändarens
+processheap till en egen `HeapStorage`. Avsändarens `ProcessContext` ger
+heapalternativ, literalområden, atomer, identiteter och runtimens minneskonto;
+bufferten behåller en egen livstidstoken och delar binaries utanför heapen.
+Den använder samma `GraphCopy` som en sändning; `copy_to` kopierar den till
+en mottagares heap. Omedelbara värden och literalrötter behöver ingen lagring.
+Fabriker, reservationer och meddelandebuffertar behåller sina livstidskontroller
+(`expired_context`); en Term läst från en buffert fäster inget och får inte
+överleva sitt underlag.
+Bufferten skräpsamlas aldrig och frigörs med sin sista ägare; dess block är
+exakt termens ord, oavsett avsändarens minsta heap. Meddelanden till en process
+som körs på en annan arbetare ([arbetare](processes.md#workers)),
+timermeddelanden och monitortaggar använder den, så de kodas aldrig om;
+[persistenta termer](runtime.md#persistent-terms) lever i ett eget
+adressintervall och kopieras till buffertar i stället för att delas.
 
 **Överlämning av meddelanden.** En sändning vars meddelande tar minst
-`MessageBuffer::ADOPTED_WORDS` (512) ord, räknat av en begränsad genomgång som
-stannar där, bygger bufferten innan exekutorlåset tas, så att avsändaren inte
+`MessageBuffer::ADOPTED_WORDS` (512) ord, räknat av
+`MessageBuffer::large(value, sender, minimum)` med en begränsad genomgång
+som stannar där, bygger bufferten innan exekutorlåset tas, så att avsändaren inte
 håller något lås under kopieringen. Mottagaren tar sedan över bufferten i
 stället för att kopiera den (`MessageBuffer::take`, `HeapStorage::adopt`), när
 bufferten inte har någon annan ägare och mottagaren har ett heapblock och ingen
@@ -520,8 +549,8 @@ aldrig återanvänder registret som höll `Y`.
 
 En Cheney-kopiering (`memory/heap_collect`), en fullständig genomsökning eller
 en mindre skräpsamling ([generationer](#generations)): allokera först det nya
-blocket (ett misslyckande ger `out_of_memory` och lämnar heapen orörd), markera
-sedan värdens `Term`-objekt som inaktuella, kopiera objektet bakom varje rotord
+blocket (ett misslyckande ger `out_of_memory` och lämnar heapen orörd), kopiera
+sedan objektet bakom varje rotord
 och genomsök det nya blocket från vänster till höger medan barnen till varje
 kopia kopieras. Ett flyttat boxat objekts huvud ersätts av en boxad pekare till
 dess kopia; en flyttad cons-cell får ett nollställt head och en tail som pekar
@@ -577,15 +606,19 @@ Generationsbaserad skräpsamling, så som ERTS gör den, utan dess skrivbarriär
 ## Kopiering mellan heapar
 
 `ProcessHeap::add(value)`, likvärdigt med `value.copy_to(heap)`, returnerar en
-term i målheapen (BEAM:s `size_object` och `copy_struct`). Varje källcell slås
-först upp i den föregåendes område, och en cons-cell behöver ingen tolkning:
+term i målheapen (BEAM:s `size_object` och `copy_struct`). Källceller läses
+via betrodda pekare, och en cons-cell behöver ingen tolkning:
 
-- Omedelbara värden och atomer i samma runtime behöver ingen lagring, och en
-  term i målheapen behåller sin identitet. En graf från en annan process i samma
-  runtime kopieras; en annan runtimes graf ger `wrong_owner`, en utgången källa
-  `expired_context` och ett källhandtag som är äldre än dess heaps senaste
-  skräpsamling `stale_term`. Fabriker vägrar fortfarande främmande indata
-  (`ProcessHeap::retain`), så endast en explicit kopiering flyttar en graf.
+- En term som målet kan läsa (dess egen heap eller ett literalområde,
+  kontrollerat av `storage_->readable(address)`) behåller sin identitet;
+  andra grafer kopieras. Literalområden som målruntimens register känner igen
+  förblir delade. Båda heaparna måste leva och tillhöra samma runtime: ett
+  anroparkontrakt, utan runtime-kontroll av sammansatta kopior eller kontroll
+  av källans livstid per handtag. Läsning av en källa efter skräpsamling eller
+  avslut är odefinierad. Rotatomer, pids och portar går ännu genom målets
+  tillträdeskontroll; ett utgånget mål rapporterar `expired_context`.
+  Fabriker vägrar ännu främmande sammansatta indata (`ProcessHeap::retain`),
+  så endast en uttrycklig kopia flyttar en graf.
 - Kopior är platta, som ERTS standard-`copy_struct` (utan dess valfria variant
   som bevarar delning): en delterm kopieras en gång per gång den nås, så
   `{T, T}` kopierar `T` två gånger, och en term vars delning fördubblas på varje

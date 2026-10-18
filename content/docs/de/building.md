@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: a8c3f8f6
-sourceSha256: 94c0fac180752b278facfe18589c191a0a15ee95e55d9dbf7d4d049c4774e079
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 86d39780700856574257fd2d598102b8e551505085c42a0a8175f9c2c7b2330c
+translatedAt: 2026-10-18
 ---
 # Den Compiler bauen
 
@@ -101,8 +101,9 @@ cmake --build build/debug --target check-quality-all   # whole tree
 ```
 
 `check-quality` prüft Dateien, die sich seit `HEAD` (oder
-`CLAUSE_QUALITY_BASE`) geändert haben, sowie Übersetzungseinheiten, die einen
-geänderten Header einbinden, und benötigt einen Build mit aktiviertem Compiler
+`CLAUSE_QUALITY_BASE`) geändert haben, sowie eine Übersetzungseinheit pro
+geändertem Header (`check-quality-all` erfasst alle abhängigen Einheiten in
+der vollständigen Prüfstufe), und benötigt einen Build mit aktiviertem Compiler
 und aktivierter Runtime; `check-complexity-all` und `check-clang-tidy-all`
 führen jeweils ein Werkzeug aus. `cmake/CheckClangTidy.cmake` akzeptiert
 `QUALITY_SHARD=K/N`, um einen langen Lauf aufzuteilen.

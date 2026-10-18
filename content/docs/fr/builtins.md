@@ -1,8 +1,8 @@
 ---
 source: docs/builtins.md
-sourceCommit: a8c3f8f6
-sourceSha256: c5b5b3ed022c6da6d2e2862ed0b124314e7f7a5b8cfdfcc5b3a787b4b99841fb
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: c5d99568a38fc1f7bc865c63163039a8c2acba8d978636c0b9290afdf0b9a637
+translatedAt: 2026-10-18
 ---
 # Builtins
 
@@ -34,6 +34,11 @@ commentaires nomment le fichier source qui les implémente :
 - autres modules : sortie `io` ([io](io.md)), les fonctions de données de
   [`lists`](#lists-module), [`math`](#math-module),
   [`binary`](#binary-module), [`maps` et `os`](#maps-module),
+  [`ordsets`, `orddict`, `proplists`, `dict`, `sets`, `gb_trees`, `gb_sets`,
+  `queue` et `array`](#collections), [`base64` et `json`](#encodings),
+  [`calendar`](#calendar), [`filename`](#filename),
+  [`uri_string`](#uri-string), [`string`](#string),
+  [`rand` et `random`](#random-numbers),
   [`persistent_term`](#persistent-terms), [`unicode`](#unicode-module),
   [`code`](#code-module), [`init`](#init-module),
   [`atomics`](#atomics-and-counters), [`erts_internal`](#erts-internal),
@@ -58,8 +63,9 @@ atteint le [module de bibliothèque erlang](#erlang-module).
 | Source | Chemin |
 | --- | --- |
 | `abs(X)`, `X + Y`, `erlang:display(X)`, `halt()`, `error(R)` | Code en ligne ou service dédié du runtime |
-| `erlang:function_exported(M, F, A)`, `A -- B`, `length(L)` dans un corps (builtins du catalogue sans service en ligne) | Entrées comme une fonction : `CLAUSE_builtin_frame_v1(context, index)` donne le cadre de la builtin, les arguments vont dans les registres ([portions](#portions)) |
+| `erlang:function_exported(M, F, A)`, `A -- B` dans un corps (builtins du catalogue sans service en ligne) | Entrées comme une fonction : `CLAUSE_builtin_frame_v1(context, index)` donne le cadre de la builtin, les arguments vont dans les registres ([portions](#portions)) |
 | `integer_to_list(I)`, `atom_to_list(A)`, `setelement(I, T, V)`, ... (builtins directes : jamais de trap, d'attente ni d'action sur un autre processus) | Appelées immédiatement : `CLAUSE_builtin_call_v1(context, index, arguments)` renvoie le résultat ([ABI](abi.md#runtime-services)) |
+| `length(L)`, `binary_to_list(B)`, `list_to_binary(L)`, `iolist_to_binary(L)` (builtins rapides) | `CLAUSE_builtin_call_v1` exécute un chemin rapide borné sur les mots d'arguments (au plus 256 cellules, éléments ou octets, 4096 octets de résultat) ; il renvoie 0 pour les entrées plus longues, les autres formes et les erreurs, et l'appel entre alors dans le cadre du builtin |
 | `A ++ B` | Un `A` propre et court est copié en ligne ; sinon entrée comme une fonction ([ABI](abi.md#frames-and-transfers)) |
 | `fun abs/1`, `fun erlang:'+'/2` | Fun externe `erlang:F/A` ; l'enregistrement la lie à la builtin |
 | `M:F(Args)`, `apply(M, F, Args)`, `fun M:F/A` à l'exécution | Le serveur de code cherche d'abord un export du module, puis une builtin |
@@ -184,7 +190,10 @@ paramètres typés ([typed.hpp](../runtime/src/builtins/typed.hpp)),
   convertit chacun vers le type de son paramètre (`Term`, un petit entier ou
   un entier quelconque, `double`, des arguments liste, tuple, binary, atome,
   map ou pid local ; voir `typed.hpp`) ; une non-correspondance lève `badarg`
-  et la fonction ne s'exécute pas.
+  et la fonction ne s'exécute pas. `Named<Role>` est un terme quelconque
+  sous son propre type de rôle (`collections::Key`, `Value`, `List`, ...),
+  afin que deux paramètres ne puissent être intervertis dans un builtin ayant
+  plusieurs paramètres de terme ; le builtin vérifie le terme.
 - Une fonction renvoie un terme, un `BuiltinResult` (`std::expected` avec un
   `BuiltinFailure`) ou un `Word` brut qu'elle a publié elle-même, ou lance
   `BuiltinFailure` (une erreur Erlang ou un échec d'accès aux termes) ;
@@ -194,7 +203,12 @@ paramètres typés ([typed.hpp](../runtime/src/builtins/typed.hpp)),
   (`erlang/core.cpp`), les builtins de listes qui font un trap et quelques
   autres sont des adaptateurs `BuiltinBody` au niveau des mots, qui
   transmettent leurs mots d'arguments aux services en ligne que le code généré
-  appelle aussi.
+  appelle aussi. Les conversions fréquentes lisent sur place les cellules
+  de leurs arguments (`TermAccess::trusted`) au lieu d'admettre des `Term` :
+  `tuple_to_list/1`, `phash2/1` (listes, tuples et petits entiers), ainsi que
+  `list_to_atom/1`, `list_to_integer/1` sur de courtes chaînes ASCII, et
+  `binary:part/2,3`, un builtin direct dont le résultat court est écrit
+  directement dans les mots du tas (arguments de builtin au niveau des mots).
 
 ## Enregistrement
 
@@ -210,8 +224,9 @@ paramètres typés ([typed.hpp](../runtime/src/builtins/typed.hpp)),
 - Les builtins sont collantes : quand un module s'enregistre, le serveur de
   code ignore chaque export qui porte le nom d'une builtin enregistrée, de
   sorte que `M:F(Args)`, `apply/3` et les funs externes se lient à la builtin,
-  jamais à un bouchon de bibliothèque ni à une fonction utilisateur de même
-  nom.
+  jamais au corps `clause_builtin_placeholder` d'un module de bibliothèque
+  ([corps de substitution](library.md#provided-or-missing)) ni à une fonction
+  utilisateur de même nom.
 - Un corps lit exactement son arité en mots d'arguments et consigne les
   erreurs dans le canal vérifié ; les exceptions de l'hôte deviennent des
   échecs `out_of_memory` ou `internal_error`.
@@ -248,7 +263,8 @@ propres au projet, jamais grâce au code du runtime :
   `tests/compiler/builtins/observe_erlang.escript` observe l'OTP de l'hôte et
   conserve les états, qui sont maintenus à la main.
 - `tests/compiler/builtins/generate_erlang.py` le transforme en
-  `library/erts/erlang.erl` (le module de bouchons propre à Clause) et en
+  `library/erts/erlang.erl` (le module de bouchons propre à Clause, un corps
+  de substitution pour chaque builtin du catalogue) et en
   `compiler/src/semantic/erlang_auto_imports.inc` (la liste des auto-imports
   d'OTP). Le test CTest `builtins_erlang_inventory` vérifie que les deux sont
   à jour et que `implemented` désigne une builtin du catalogue, une fonction
@@ -342,12 +358,17 @@ bibliothèque C. Minuteries : [processus](processes.md#timers).
 
 `erlang/hashing.cpp`, `erlang/md5.cpp`.
 
-- `phash2/1,2` et `phash/2` hachent la structure d'un terme : des termes
-  exactement égaux ont le même hachage dans chaque exécution du programme
-  (atomes selon leur orthographe, maps dans l'ordre des clés, `1` et `1.0`
-  distincts). `phash2/1` est dans 0..2^27-1, `phash2/2` dans 0..Range-1,
-  `phash/2` dans 1..Range ; Range est dans 1..2^32, sinon `badarg`. Les
-  valeurs sont propres à Clause, pas celles d'OTP.
+- `phash2/1,2` est le `make_hash2` d'OTP et `phash/2` son `make_hash`,
+  parcourant sur place les cellules de listes et de tuples : les atomes (par
+  le hachage d'OTP de leur orthographe), entiers, flottants, binaries et
+  bitstrings, listes, tuples et maps (indépendamment de l'ordre) donnent les
+  valeurs de hachage d'OTP ; `dict` et `sets` de version 1 disposent donc
+  leurs compartiments comme OTP. Les pids, ports et références sont hachés
+  selon les numéros de Clause, les funs selon le module, l'arité ou l'indice
+  et les captures, les native records selon les valeurs des champs
+  ([différences](differences.md)). `phash2/1` est dans 0..2^27-1, `phash2/2`
+  dans 0..Range-1, `phash/2` dans 1..Range ; Range est dans 1..2^32, sinon
+  `badarg`.
 - `md5/1` et `md5_init/0`, `md5_update/2`, `md5_final/1` donnent les
   condensés de la RFC 1321 (les octets d'OTP) d'iodata. Le contexte est un
   binary opaque de 96 octets, à la disposition propre à Clause ; un autre
@@ -372,11 +393,25 @@ quelques BIF), donc les builtins de Clause lèvent ce que lèvent les clauses
 d'OTP :
 
 - `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`,
-  `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2` et
-  `keydelete/3` lèvent `function_clause` pour un argument qu'aucune clause
+  `join/2`, `flatten/1,2`, `flatlength/1`, `delete/2`, `concat/1`, `max/1`,
+  `min/1`, `usort/1`, `umerge/1,2`, `merge/1,2`, `merge3/3`, `umerge3/3`,
+  `keymerge/3`, `ukeymerge/3`, `ukeysort/2`, `keydelete/3`, `keyreplace/4`,
+  `keystore/4`, `keytake/3`, `zip/2,3`, `zip3/3,4`, `unzip/1`, `unzip3/1` et
+  `enumerate/1,2,3` lèvent `function_clause` pour un argument qu'aucune clause
   d'OTP n'accepte, et parcourent les listes aussi paresseusement qu'OTP :
   `sublist([a | b], 1)` vaut `[a]`, `nthtail(1, [a | b])` vaut `b`,
-  `flatten/2` ne vérifie pas sa queue au-delà de `is_list`.
+  `flatten/2` ne vérifie pas sa queue au-delà de `is_list`, une fusion renvoie
+  l'autre liste telle quelle lorsque l'une est `[]` et lève `badarg` pour
+  un reste impropre qu'elle concatène, et une fusion par clé lève `badarg`
+  pour un élément qui n'est pas un tuple de la taille de la clé, comme
+  `element/2`.
+- `zipwith/3,4` et `zipwith3/4,5` sont en Erlang au-dessus des builtins `zip`,
+  qui apparient d'abord les éléments ; `flatmap/2`, `keymap/3`, `search/2`,
+  `umerge/3` et `usort/2` sont aussi en Erlang. Dans `lists.erl`, l'appel
+  d'un builtin est qualifié (`lists:zip(...)`) : un appel local atteindrait
+  son corps de substitution. Les fonctions non documentées `rmerge/2,3`,
+  `rmerge3/3`, `rumerge/2,3`, `rumerge3/3`, `rkeymerge/3` et `rukeymerge/3`
+  (auxiliaires de tri d'OTP) restent des bouchons.
 - `keymember/3` et `keysearch/3` sont des BIF dans OTP : `badarg` pour une
   position qui n'est pas un petit entier positif ou pour une queue impropre
   atteinte avant une correspondance.
@@ -439,14 +474,21 @@ fonctions sont des builtins :
 
 `runtime/src/builtins/maps.cpp`, `runtime/src/builtins/os.cpp`.
 
-- `maps:get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`,
-  `take/2`, `update/3`, `with/2`, `without/2` et `from_keys/2` sont des
+- Chaque fonction documentée de `maps` fonctionne. `maps:get/3`, `is_key/2`,
+  `remove/2`, `new/0`, `size/1`, `merge/2`, `take/2`, `update/3`, `with/2`,
+  `without/2`, `from_keys/2`, `intersect/2` et `is_iterator_valid/1` sont des
   builtins avec les erreurs d'OTP : un argument qui n'est pas une map donne
   `{badmap, Map}`, une clé absente pour `update/3` `{badkey, Key}`, une liste
   de clés qui n'est pas une liste propre `badarg`. Les clés correspondent
-  exactement (`1` et `1.0` sont des clés différentes). Les autres fonctions
-  implémentées (`filter/2`, `map/2`, `fold/3`, `iterator/1,2`, `next/1`, ...)
-  sont en Erlang dans `library/stdlib/maps.erl` ; les itérateurs utilisent
+  exactement (`1` et `1.0` sont des clés différentes).
+- Les fonctions prenant des funs sont en Erlang dans `library/stdlib/maps.erl` :
+  `filter/2`, `filtermap/2`, `map/2`, `fold/3` et `foreach/2` prennent une map
+  ou un itérateur (tout autre argument donne `{badmap, MapOrIter}`),
+  `intersect_with/3` combine au-dessus d'`intersect/2` et `merge_with/3`
+  au-dessus de `merge/2`. `groups_from_list/2,3` appellent les funs en
+  commençant par le dernier élément, comme OTP, et le builtin privé
+  `clause_maps:groups/1` regroupe les paires `{Key, Value}`. Les itérateurs
+  (`iterator/1,2`, `next/1`) utilisent
   [`erts_internal:map_next/3`](#erts-internal).
 - Les curseurs de map (`runtime/src/terms/map_cursor.hpp`) parcourent de la
   même façon une cellule de map plate et un arbre de map, sous forme de mots
@@ -464,6 +506,248 @@ fonctions sont des builtins :
   au-dessus des builtins de temps d'`erlang` et de `getenv/1` ; `os:cmd/1`
   s'exécute au-dessus d'un port ([sous-processus](ports.md#subprocesses)).
 
+## Collections
+
+`runtime/src/builtins/collections/` : `ordsets`, `orddict`, `proplists`,
+`dict`, `sets`, `gb_trees`, `gb_sets`, `queue` et `array`, chaque fonction
+documentée.
+
+- Les parcours de listes sont des builtins : appartenance, insertion,
+  suppression et algèbre des ensembles d'`ordsets` (`union/2`,
+  `intersection/1,2`, `subtract/2`, `is_subset/2`, `is_disjoint/2`,
+  `is_set/1`) ; recherches et mises à jour sans funs d'`orddict` (`store/3`,
+  `append/3`, `append_list/3`, `update_counter/3`, `take/2`, `from_list/1`,
+  ...) ; toutes les fonctions de `proplists` sauf `property/1,2`,
+  `get_value/2`, `normalize/2`, `to_map/2` et `from_map/1`, qui sont du code
+  de liaison Erlang dans `library/stdlib/`.
+- Les fonctions prenant des funs (`ordsets:fold/3`, `filter/2`, `map/2`,
+  `filtermap/2`, `orddict:update/3,4`, `fold/3`, `map/2`, `filter/2`,
+  `merge/3`) sont en Erlang.
+- Chaque builtin parcourt ses listes comme les clauses d'OTP, donc les
+  résultats et les erreurs concordent pour toute entrée : les éléments et les
+  clés se comparent avec `<` et `==` (entre `1` et `1.0`, le représentant
+  conservé par OTP est conservé, y compris après que `union/2` a échangé ses
+  ensembles), un reste qu'OTP renvoie sans vérification (`ordsets:union([], X)`
+  vaut `X`) est renvoyé tel quel, une forme qu'aucune clause n'accepte donne
+  `function_clause`, une entrée de comprehension qui n'est pas une liste
+  `{bad_generator, Rest}`, `Old ++ New` avec `Old` impropre `badarg`, et
+  `update_counter/3` sur autre chose qu'un nombre `badarith`. Les clés de
+  `proplists` correspondent avec `=:=`.
+- `proplists:get_keys/1` liste les clés dans l'ordre des clés d'une map, comme
+  l'ensemble de clés d'OTP ([différences](differences.md)).
+- `dict` et `sets` : un dictionnaire et un ensemble de version 1 sont les
+  records d'OTP au-dessus d'une table de hachage linéaire
+  (`collections/linear_hash.cpp`), des segments de 16 listes de compartiments
+  avec des emplacements issus d'`erlang:phash/2`, agrandis et réduits exactement
+  comme OTP ; les records, `to_list/1` et l'ordre des folds sont donc ceux
+  d'OTP. Un ensemble de version 2 (par défaut) est une map de valeurs `[]` ;
+  l'intersection et la soustraction de deux maps utilisent les valeurs d'OTP
+  (les valeurs propres d'une map lorsque suffisamment de clés sont conservées,
+  sinon `[]`). Les recherches et mises à jour d'un dictionnaire, les opérations
+  de `sets` sans funs, `new/0` et `from_list/1` sont des builtins ; `update`,
+  `fold`, `map`, `filter`, `merge` et `sets:new/1`, `from_list/2`, `fold`,
+  `filter`, `map`, `filtermap` sont en Erlang, les opérations hachées au-dessus
+  des builtins privés `clause_hashed:entries/1` (ordre de stockage),
+  `with_values/2` et `keep/2`. Un terme qui n'est pas un dictionnaire lève
+  `{badrecord, Term}` (`size/1`, `is_empty/1` donnent `function_clause`), un
+  terme qui n'est pas un ensemble `function_clause`.
+- `gb_trees` et `gb_sets` partagent un moteur d'arbres équilibrés
+  (`collections/balanced_tree.cpp`) : l'insertion vérifie la règle de poids
+  d'Andersson en remontant et reconstruit un sous-arbre à partir de ses entrées
+  triées comme OTP, la suppression remonte le plus petit nœud du côté le plus
+  grand, et l'union, l'intersection et la différence de `gb_sets` fusionnent
+  les listes triées ou insèrent et recherchent selon la règle de taille d'OTP
+  (`N2 < 10` ou `N2 < N1 * round(1.46 ln N2)`), construisant les arbres
+  fusionnés plus lourds à droite comme `balance_revlist` d'OTP ; chaque arbre
+  est donc identique à celui d'OTP. `map`, `fold`, `filter`, `filtermap` et les
+  constantes sont en Erlang.
+- `queue` : le `{Rear, Front}` d'OTP ; chaque opération déplace les éléments
+  entre les listes comme OTP (un côté d'un seul élément se déplace, une liste
+  laissée seule est divisée en deux), donc les files sont identiques à celles
+  d'OTP. Un terme qui n'est pas une paire de listes donne `badarg`, `get`,
+  `drop`, `head` sur une file vide l'erreur `empty`. Les fonctions prenant des
+  funs et les noms d'Okasaki sont en Erlang.
+- `array` : le record `#array{}` d'OTP 29, un arbre de tuples aux feuilles de
+  16 entrées (`[]` pour un sous-arbre vide), avec une feuille en cache et un
+  décalage nul ; `set`, `append`, `shift`, `prepend`, `slice`, `reset`,
+  `resize` et les constructeurs (`from_list`, `from_orddict` avec ses marqueurs
+  de trous, `from`) modifient le record exactement comme OTP. Les folds et
+  mapfolds sont en Erlang au-dessus des builtins privés
+  `clause_array:values/3`, `sparse/3` et `replace/4`, ce dernier reconstruisant
+  une plage transformée comme les mapfolds d'OTP (sous-arbres vides dépliés
+  sauf si la transformation est creuse) et relisant le cache.
+
+## Encodages
+
+`runtime/src/builtins/encoding/`.
+
+- `base64` : chaque fonction documentée est un builtin. L'encodage prend un
+  binary ou une liste d'entiers (avec l'arithmétique d'OTP : `badarith` pour
+  un élément non entier, `badarg` au-delà de la table de l'alphabet) ; le
+  décodage parcourt son entrée comme les automates d'OTP, donc les erreurs
+  concordent pour toute entrée : les espaces sont ignorés, une entrée se
+  terminant après un caractère d'un groupe donne `function_clause`, après
+  deux ou trois `missing_padding` sauf si `padding => false`, un caractère
+  hors de l'alphabet `badarg` lorsque son groupe est construit (`badarith`
+  dans les décalages d'OTP), tout caractère autre qu'un espace après le
+  remplissage `{case_clause, Symbol}`. `mime_decode` ignore tout caractère
+  hors de l'alphabet et les données après un `=` mal placé.
+- `json` (`encoding/json.cpp`) : `decode/1` est un builtin parcourant les
+  états du décodeur d'OTP sur une pile explicite de conteneurs ouverts ; les
+  valeurs (un objet conserve la première valeur d'une clé), le reste après la
+  valeur et les erreurs concordent donc : `unexpected_end` lorsqu'une entrée
+  supplémentaire pourrait compléter le texte, `{invalid_byte, Byte}` à
+  l'octet rejeté par OTP (pour un littéral tronqué, l'octet après son premier),
+  `{unexpected_sequence, Bytes}` pour un échappement `\u` incorrect ou un
+  flottant rejeté par `binary_to_float/1`. `encode_binary/1` et
+  `encode_binary_escape_all/1` sont des builtins construisant les iodata
+  imbriquées d'OTP, comme les chemins par défaut `encode/1` et `format/1,2`
+  (`encoding/json_encode.cpp`, via `clause_json:encode/1` et `format/2`) ;
+  au-delà de 256 niveaux d'imbrication, ou pour des options de format autres
+  que de petits entiers non négatifs, ils répondent `fallback` et `json.erl`
+  construit lui-même les mêmes iodata. Les encodeurs et formateurs prenant des
+  funs et les décodeurs à rappels `decode/3`, `decode_start/3`,
+  `decode_continue/2` sont en Erlang ; les décodeurs parcourent les états
+  d'OTP au-dessus des analyseurs privés `clause_json:string/2` et `number/2`,
+  donc les rappels s'exécutent dans l'ordre d'OTP et les états de continuation
+  sont les tuples d'OTP.
+
+## Noms de fichiers
+
+`runtime/src/builtins/filename/`.
+
+- `flatten/1`, `join/1,2`, `absname_join/2`, `append/2`, `basename/1,2`,
+  `dirname/1`, `extension/1`, `rootname/1,2`, `split/1`, `pathtype/1`,
+  `nativename/1` et `validate/1` sont des builtins suivant les clauses d'OTP
+  pour la famille de l'hôte : Unix `/`, ou Windows `/` et `\`, lettres de
+  lecteur (mises en minuscules par `join` et `split`) et noms réseau `//`.
+  Les listes sont parcourues à mesure que les clauses d'OTP les ouvrent
+  (listes imbriquées et atomes là où une clause les ouvre, `List ++ Rest`
+  levant `badarg` pour une liste impropre) ; les résultats conservent donc
+  les formes d'OTP : les éléments du nom, les binaries conservés comme
+  éléments par `flatten/1`, les sous-listes et sous-binaries, et le
+  `function_clause` d'OTP lorsqu'une clause rencontre autre chose qu'un
+  caractère.
+- `absname/1,2` (le répertoire courant et celui d'un lecteur) et `basedir/2,3`
+  (l'environnement) sont en Erlang au-dessus de ces fonctions.
+
+## Chaînes
+
+`runtime/src/builtins/string/` : chaque fonction de `string`.
+
+- Les parcours suivent `string.erl` clause par clause au-dessus de
+  `unicode_util:cp/1` et `gc/1`, que `unicode/code_points.cpp` porte en
+  termes aux formes d'OTP : listes imbriquées ouvertes aussi loin qu'OTP
+  (jusqu'à trois points de code supplémentaires aplatis après le premier),
+  binaries conservés comme tranches partageant leur tampon, `{error, Rest}`
+  en cas d'UTF-8 invalide. Ainsi, `trim`, `take`, `lexemes`, `split`, `find`,
+  `slice` et `prefix` renvoient des queues de l'entrée, des sous-binaries et
+  les listes mixtes qu'OTP construit (`[Keep | Cont]`, `[Token, Bin]`,
+  l'imbrication de `stack/2`), et lèvent les erreurs d'OTP (`{badarg, Rest}`,
+  `function_clause`, `case_clause` et `badmatch` lorsque ses clauses
+  rencontrent une réponse inattendue, `badarg` de `binary:compile_pattern([])`
+  lorsque `nth_lexeme/3` compile un ensemble de séparateurs vide).
+- Les parcours depuis la fin (`trim/3`, `take/4` avec `trailing`), récursifs
+  dans le corps sous OTP, s'exécutent en boucles enregistrant un cadre par
+  étape puis repliant les cadres à la fin ; les longues chaînes ne peuvent
+  donc pas faire déborder la pile C++.
+- `uppercase/1`, `lowercase/1`, `casefold/1` renvoient l'entrée elle-même
+  lorsqu'aucun caractère ne change, comme OTP ; `titlecase/1` transforme le
+  premier point de code. `equal/4` normalise via `unicode/normalize.cpp`, le
+  portage de `nfc/nfd/nfkc/nfkd` d'`unicode_util` (tables de décomposition,
+  ordre canonique, composition par paires, jamos hangul), et revérifie les
+  restes identiques à chaque étape comme la clause `equal_nocase(A, A)` d'OTP.
+- `to_integer/1` et `to_float/1` prennent les caractères du nombre avec
+  `take/2` et les analysent comme `string:list_to_integer/1` (le
+  `{Int, Rest}` d'erts avec `no_integer`, `not_a_list`, `system_limit`) et
+  `list_to_float/1` (syntaxe des flottants d'Erlang, virgule admise comme
+  séparateur décimal, exposant uniquement avec des chiffres) ; toute erreur
+  interne donne `{error, badarg}`.
+- L'API Latin-1 (`len`, `chr`, `tokens`, `strip`, `left`, `centre`, ...) est
+  portée avec ses erreurs : `function_clause` lorsqu'une clause parcourt
+  jusqu'à `[]`, `badarg` d'`erlang:length/1`, de `++` et de `lists:reverse/2`.
+- `jaro_similarity/2` apparie les grappes de graphèmes dans la distance d'OTP
+  et compte les transpositions dans l'ordre d'OTP.
+
+## Chaînes URI
+
+`runtime/src/builtins/uri/`.
+
+- `parse/1` est un parcours de la grammaire RFC 3986 piloté par une table de
+  délimiteurs, conservant l'ordre d'OTP pour que ses réponses indiquent où
+  l'analyseur d'OTP s'est arrêté : d'abord un URI avec schéma (un échec après
+  le deux-points du schéma est définitif), sinon une référence relative ;
+  `userinfo@host` si le parcours de userinfo réussit, sinon l'autorité comme
+  hôte ; un hôte numérique qui n'est pas une adresse IPv4 stricte est
+  reparcouru comme nom enregistré ; `{error,
+  invalid_uri, Fragment}` avec le fragment d'OTP. Les hôtes sont vérifiés
+  avec les formes IPv4 et IPv6 strictes d'`inet`.
+- `recompose/1`, `normalize/1,2` et `resolve/2,3` travaillent sur les
+  composants de la map comme `uri_string.erl` : la forme liste ou binary de
+  chaque composant décide de celle du résultat, les réponses `{error, ...}`
+  d'OTP sont renvoyées, levées ou lancées là où OTP le fait, et `resolve`
+  fusionne un chemin relatif après la dernière barre oblique du chemin de
+  base (un parcours de graphèmes, comme `string:split/3` d'OTP).
+- `percent_decode/1`, `quote/1,2`, `unquote/1`, `transcode/2`,
+  `compose_query/1,2`, `dissect_query/1` et les classes de caractères suivent
+  les parcours d'octets d'OTP, y compris les erreurs lancées pour un binary et
+  renvoyées pour une liste, les références numériques HTML et `+` dans les
+  requêtes de formulaire.
+- `unicode/graphemes.cpp` segmente les points de code en grappes de graphèmes
+  selon les règles d'`unicode_util:gc/1` pour les builtins qui ont besoin des
+  limites de grappes.
+
+## Nombres aléatoires
+
+`runtime/src/builtins/rand/`.
+
+- `rand` : les états sont les `{AlgHandler, AlgState}` d'OTP avec ses maps
+  de gestionnaires (leurs funs sont celles de `rand`) et ses dispositions
+  d'états ; les graines exportées, les séquences et les états après saut
+  sont donc identiques à ceux d'OTP pour chaque algorithme (`exsss`,
+  `exro928ss`, `exrop`, `exs1024s`, `exsp` et les obsolètes `exs64`,
+  `exsplus`, `exs1024`, ainsi que `dummy`). Pour un gestionnaire identique
+  à celui d'OTP, les builtins privés `clause_rand:seed/2`, `next/2`,
+  `uniform/2,3`, `uniform_real/2`, `bytes/3`, `normal/2`, `shuffle/3` et
+  `jump/2` font le travail en C++ : initialisation des graines (SplitMix64,
+  listes, hachages de tuples de 3 éléments et erreurs de graines d'OTP),
+  plages dépassant les bits du générateur, flottants denses, octets,
+  ziggurat normale et flux de bits du mélange. Tout autre gestionnaire est
+  un greffon : `rand.erl` exécute les algorithmes génériques d'OTP sur ses funs.
+- `splitmix64_next/1`, `exsp_next/1`, `exsp_jump/1` et les fonctions `mwc59`
+  sont des builtins ; `mwc59_seed/0` hache la graine par défaut de `rand`.
+- `tools/rand/observe.escript` observe les constantes d'OTP via l'API de
+  greffons de `rand` : les largeurs des bandes de la ziggurat (produits du
+  chemin rapide) et leurs limites (où les mots d'une bande atteignent le
+  chemin lent), et les états après saut, à partir desquels
+  `tools/rand/generate.py` résout chaque polynôme de saut sur GF(2) (vérifié
+  sur un second état) et écrit `tables.cpp` ; les hauteurs des bandes sont
+  calculées en haute précision
+  ([différences](differences.md#random-numbers)).
+- `random` (obsolète) : `uniform_s/1` est un builtin du générateur
+  Wichmann-Hill ; les fonctions d'initialisation des graines et de
+  dictionnaire de processus sont en Erlang.
+
+## Calendrier
+
+`runtime/src/builtins/calendar.cpp`.
+
+- L'arithmétique grégorienne est constituée de builtins sur des entiers de
+  toute taille, avec `div` et `rem` tronqués d'Erlang, selon les formules
+  d'ères d'OTP : `date_to_gregorian_days/1,3`, `gregorian_days_to_date/1`,
+  `datetime_to_gregorian_seconds/1`, `gregorian_seconds_to_datetime/1`,
+  `day_of_the_week/1,3`, `is_leap_year/1`, `last_day_of_the_month/2`,
+  `valid_date/1,3`, `seconds_to_time/1`, `seconds_to_daystime/1`,
+  `time_to_seconds/1`, `time_difference/2`, `iso_week_number/1`. Une forme
+  rejetée par les clauses d'OTP donne `function_clause`, un argument non entier
+  utilisé dans un calcul `badarith` ; les dates hors limites sont calculées
+  comme OTP les calcule.
+- L'heure locale et universelle, l'heure système et l'analyse et le formatage
+  RFC 3339 sont en Erlang dans `library/stdlib/calendar.erl` au-dessus des
+  builtins de temps d'`erlang` et de `proplists`, avec les erreurs d'OTP
+  (`{badarg, [Arg, Options]}` hors limites, `{badmatch, _}` et
+  `{case_clause, _}` pour un décalage mal formé).
+
 ## Termes persistants
 
 `runtime/src/builtins/persistent_term.cpp`, au-dessus de la table du runtime
@@ -473,15 +757,17 @@ exactement égale, sinon `badarg`) ; `get/1` d'une clé non stockée donne
 `badarg`, `get/2` renvoie la valeur par défaut ; `get/0` liste chaque
 `{Key, Value}` ; `erase/1` indique si la clé était stockée ; `info/0` vaut
 `#{count => N, memory => Bytes}` (les mots des copies stockées). Les clés
-correspondent exactement (`1` et `1.0` diffèrent). Chaque lecture copie la
-valeur dans le tas de l'appelant.
+correspondent exactement (`1` et `1.0` diffèrent). Les lectures renvoient le
+terme stocké sur place, sans copie.
 
 ## Module unicode
 
-`runtime/src/builtins/unicode/`. `characters_to_binary/1,2,3`,
-`characters_to_list/1,2`, `bin_is_7bit/1`, `bom_to_encoding/1` et
-`encoding_to_bom/1` sont des builtins ; les fonctions de normalisation, de
-catégorie et d'identifiant de `library/stdlib/unicode.erl` sont des bouchons.
+`runtime/src/builtins/unicode/`. Chaque fonction est un builtin :
+`characters_to_binary/1,2,3`, `characters_to_list/1,2` (également sous les noms
+internes d'OTP `characters_to_binary_int/2` et `characters_to_list_int/2`),
+`bin_is_7bit/1`, `bom_to_encoding/1`, `encoding_to_bom/1`, et
+(`unicode/forms.cpp`) les formes de normalisation, `category/1`,
+`is_whitespace/1`, `is_id_start/1` et `is_id_continue/1`.
 
 - Encodages : `latin1`, `unicode`/`utf8`, `utf16` et `utf32`, gros-boutistes
   par défaut ou `{utf16 | utf32, big | little}` ; tout le reste donne `badarg`
@@ -503,6 +789,15 @@ catégorie et d'identifiant de `library/stdlib/unicode.erl` sont des bouchons.
   et avec une sortie `latin1` un entier en échec est enveloppé dans une liste.
 - `bin_is_7bit/1` est faux pour tout ce qui n'est pas un binary d'octets
   inférieurs à 128.
+- `characters_to_nfc_list/1` et les fonctions apparentées exécutent la boucle
+  d'OTP sur les formes normales d'`unicode_util` : les points de code sous
+  forme de liste ou de binary UTF-8, `{error, Converted, Rest}` en cas d'UTF-8
+  invalide et `badarg` pour tout autre cas. Les fonctions de propriétés
+  prennent un point de code (sinon `badarg`) et conservent les raccourcis
+  d'OTP : `is_whitespace/1` est faux en dessous de 5001 hors de sa liste ASCII
+  et Latin-1, et les tests d'identifiants décident directement pour ASCII et
+  pour le reste selon la catégorie, Other_ID_Start, Other_ID_Continue et la
+  syntaxe des motifs.
 
 ## Module code
 
@@ -604,10 +899,15 @@ car le code lié n'a pas d'ancien code ; le processus de purge et
 données dans des tables C++ générées (`unicode/tables.cpp`) interrogées par
 les builtins de son module privé `clause_unicode`, et `unicode_util.erl`
 répond à chaque fonction d'OTP au-dessus d'elles avec les formes de résultat
-d'OTP (`{error, Rest}` ou `{badarg, Rest}` en cas d'UTF-8 invalide). `gc/1`
+d'OTP (`{error, Rest}` ou `{badarg, Rest}` en cas d'UTF-8 invalide). Les parcours de chardata sont des
+builtins : `cp/1` (`unicode/code_points.cpp`) ouvre les listes imbriquées
+aussi loin qu'OTP et conserve le reste d'un binary comme une tranche de
+celui-ci ; `gc/1`
 découpe les grappes de graphèmes étendues selon UAX #29 dans l'ordre des
-règles d'OTP ; `nfd/1`, `nfc/1`, `nfkd/1`, `nfkc/1` normalisent la première
-grappe ; `spec_version/0` vaut `{17, 0}`.
+règles d'OTP ; `nfd/1`, `nfc/1`, `nfkd/1`, `nfkc/1` (`unicode/normalize.cpp`) normalisent la première grappe, `nfkc/1`
+conservant une liste lorsque sa décomposition avait plusieurs points de code,
+comme `compose_compat_0` d'OTP ; `uppercase/1`, `lowercase/1`, `titlecase/1`
+et `casefold/1` transforment le premier point de code. `spec_version/0` vaut `{17, 0}`.
 
 `tools/unicode/generate.py` écrit les tables une fois par mise à jour
 d'Unicode : correspondances de casse, catégories, décompositions et prédicats
@@ -618,7 +918,62 @@ Character Database qu'épingle OTP 29 (Unicode 17.0). Seules les tables
 générées sont commitées, avec la mention qu'exige la Unicode License v3 ; les
 compilations n'ont besoin ni d'OTP ni des fichiers de données.
 `executables_unicode_tables` et `executables_unicode_clusters` comparent les
-réponses, les grappes et les formes normales avec celles d'OTP.
+réponses, les grappes et les formes normales avec celles d'OTP,
+`executables_unicode_forms` les formes et propriétés d'`unicode`.
+
+## io_lib
+
+`library/stdlib/io_lib.erl`, `runtime/src/builtins/io_lib/`. Les résultats sont
+les listes de caractères profondément imbriquées d'OTP, exactement comme
+`io_lib` et `io_lib_format` les construisent : le texte est d'abord construit
+comme cellules d'une arène C++ (`io_lib/deep.cpp`), puis devient un terme
+(`io_lib`) ou des caractères à plat (`io:format/1,2,3`, qui exécute le même
+moteur).
+
+- Fonctions d'écriture (`io_lib/write.cpp`) : `write/1,2,5` suivent `write1/4`
+  avec des limites de profondeur (`[...]`, `|...`, `,...`), les atomes selon
+  l'encodage (`latin1` échappe les caractères au-delà de Latin-1), les maps
+  dans l'ordre des clés de Clause, `ordered` ou `reversed` ; `write_bin/5`
+  renvoie les tailles d'OTP, particularités comprises. `write_string/1,2` et
+  ses formes Latin-1 et `as_latin1`, `write_char/1` et apparentées,
+  `write_atom/1`, `quote_atom/2`, `write_binary/3` et les formes binary
+  échappent comme `string_char/4` et `needs_escape/2`.
+- Moteur de formatage (`io_lib/format_scan.cpp`, `format_build.cpp`) : `scan`
+  transforme le format en littéraux et maps `format_spec()` (`scan_format/2`,
+  `unscan_format/1`, `build_text/1,2`) ; `build_small` aplatit les petits
+  contrôles (`~e ~f ~g ~b ~B ~x ~X ~+ ~# ~c ~~ ~n ~i`, `~s` d'un atome)
+  dans le résultat ; `build_limited` répartit `chars_limit` entre
+  `~w ~W ~s ~p ~P` et les écrit via `string/6`, `term/6` et le remplissage
+  équilibré de `chars/2`. `~e`, `~f`, `~g` arrondissent les 21 chiffres de
+  `float_to_list/1` comme `float_man/3` (`format_float.cpp`). Les erreurs
+  internes donnent `badarg`, comme avec le catch d'`io_lib` ;
+  `unscan_format/1` lève les siennes. `bformat/2,3` et `bfwrite/2,3` donnent
+  le même texte en UTF-8.
+- Vérifications et auxiliaires : `char_list/1`, `deep_char_list/1`, les
+  vérifications de caractères imprimables (`printable_list/1` est en Latin-1 :
+  `io:printable_range/0` vaut `latin1`), `chars_length/1`, `indentation/2`
+  (avec les décalages de binary d'OTP après une tabulation), `limit_term/2`,
+  `nl/0`, et les états du serveur d'E/S `collect_chars/1,3,4`,
+  `collect_chars_eager/4`, `collect_line/1,3,4`, `collect_line_no_eol/4`
+  (`io_lib/collect.cpp`).
+- Affichage formaté (`io_lib/pretty*.cpp`) : l'`io_lib_pretty` d'OTP pour
+  `print/1,4`, `~p`/`~P` (profondeur et `chars_limit`), `write/2,5`,
+  `bwrite/2` et `write_bin/5` avec `chars_limit` supérieur à 0, et les rapports
+  de plantage. `print_length/7` construit le format intermédiaire dans une
+  arène (chaque valeur avec sa longueur sur une ligne, les points portant ce
+  qu'il faut afficher plus profondément) ; `intermediate/7` l'approfondit dans
+  la limite de `chars_limit` (`expand/3`, `find_upper`, `search_depth`) ;
+  `cind/7` choisit l'indentation des étiquettes et `pp/8` coupe les lignes
+  selon les formes de listes imbriquées d'OTP. `bformat/2,3` met `~p` en
+  page comme `print_bin/2`, avec ses sauts de ligne de binary, sa taille et
+  sa colonne.
+- Erlang : `get_until/1,3,4` (applique l'analyseur de l'appelant),
+  `format_prompt/1,2` et `write/3`. Bouchons : `fread/2,3`.
+- Les conteneurs imbriqués sur plus de 256 niveaux lèvent `system_limit`, et
+  les funs de comparaison de `maps_order` donnent `badarg`
+  ([différences](differences.md#io)). `executables_io_lib_text` compare les
+  formes de chaque fonction avec celles d'OTP, `executables_pretty_print`
+  celles de l'affichage formaté.
 
 ## Module zlib
 

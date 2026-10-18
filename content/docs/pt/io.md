@@ -1,17 +1,17 @@
 ---
 source: docs/io.md
-sourceCommit: a8c3f8f6
-sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
+translatedAt: 2026-10-18
 ---
 # Saída para a consola (`io`)
 
 `io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` e `io:nl/0,1` são
 builtins do runtime do módulo `io` no catálogo da ponte
-([builtins](builtins.md)); o runtime implementa as regras de `io_lib_format` e
-`io_lib_pretty` do OTP em C++
-([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). As funções de entrada
+([builtins](builtins.md)); o texto é o de `io_lib:format/2`, construído pelo
+[motor de io_lib](builtins.md#io_lib) e aplanado, com `~p` disposto segundo as
+regras de `io_lib_pretty` do OTP
+([io_lib/pretty.cpp](../runtime/src/builtins/io_lib/pretty.cpp)). As funções de entrada
 de `io` são Erlang na [biblioteca](library.md#contents).
 
 ## Chamadas
@@ -48,30 +48,33 @@ de `io` são Erlang na [biblioteca](library.md#contents).
 - Sequências de controlo `~F.P.PadModC`: largura do campo `F` (negativa ou `-`:
   alinhado à esquerda), precisão `P`, carater de preenchimento, `*` que retira
   um inteiro (ou o preenchimento) dos argumentos, modificadores `t` (Unicode),
-  `l` (sem deteção de strings) e `k` (maps ordenados; o Clause imprime sempre
-  os maps por ordem das chaves).
-- `C` suportados: `~w`, `~p`, `~s`, `~c`, `~b`, `~B`, `~i`, `~n`, `~~`, com as
-  regras de campo do OTP: `~s` trunca ou preenche até `P` dentro de `F`; `~w` e
-  `~b` imprimem carateres `*` quando o texto não cabe em `F`; `~c` repete o
-  carater; `~b`/`~B` obtêm a base de `P` (2..36); `~n` com `F` escreve `F`
-  mudanças de linha.
+  `l` (sem deteção de strings), `k` (maps ordenados) e `K` (a ordem dos
+  argumentos: `ordered`, `reversed`; funs de comparação são `badarg`). Os maps
+  são impressos por ordem das chaves.
+- Todos os controlos do OTP 29 com as suas regras de campo: `~w ~W ~p ~P ~s ~e ~f ~g ~b
+  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` trunca ou preenche até `P` dentro de `F`;
+  `~w`, inteiros e floats imprimem carateres `*` quando o texto não cabe em `F`;
+  `~c` repete o carater; as bases dos inteiros vêm de `P` (2..36); `~n` com
+  `F` escreve `F` mudanças de linha; as larguras contam como
+  `io_lib:chars_length/1`.
 - Sem `t`, `~s` aceita apenas carateres Latin-1 e `~c` escreve o byte menos
   significativo do seu inteiro; `~w`/`~p` escapam os carateres de átomos fora
   do Latin-1 como `\x{...}`. Com `t`, `~s` lê binaries como UTF-8 (recorrendo
   a Latin-1 em alternativa) e `~p` escreve `<<"..."/utf8>>` para binaries UTF-8
   imprimíveis.
-- `badarg`: um carater de controlo desconhecido, argumentos em falta ou a mais,
-  um argumento do tipo errado, `F` menor do que `P` para `~s`/`~c`, um `~p` ou
-  `~n` alinhado à esquerda, uma base fora de 2..36, uma saída que não é
-  Unicode.
-- Não implementado (`badarg`, ver [diferenças](differences.md#io)): `~e`, `~f`,
-  `~g`, `~x`, `~X`, `~+`, `~#`, `~W`, `~P` e o modificador `K`.
+- `badarg`: tudo o que faz falhar `io_lib:format/2` (um carater de controlo
+  desconhecido, argumentos em falta ou a mais, um argumento do tipo errado,
+  `F` menor do que `P`, um `~p` ou `~n` alinhado à esquerda, uma base fora de
+  2..36), e uma saída que não é Unicode.
 
 ## Impressão formatada (`~p`)
 
 - O comprimento da linha é `F` (por omissão 80; 0 escreve uma só linha); a
   primeira coluna é `P` ou, caso contrário, a coluna que a saída já atingiu na
   sua linha (tabulações para múltiplos de 8).
+- `~P` corta o termo no seu argumento de profundidade e `chars_limit` (opções
+  de `io:format/3` e `io_lib:format/3`) na parte dos carateres atribuída ao
+  controlo, imprimindo `...` onde foram omitidas partes, como faz o OTP.
 - O termo passa à forma intermédia do OTP: cada valor com o seu comprimento
   numa linha; strings (listas planas de carateres Latin-1 imprimíveis, o
   `io:printable_range()` por omissão), binaries imprimíveis, átomos e números

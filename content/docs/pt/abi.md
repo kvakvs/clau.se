@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: a8c3f8f6
-sourceSha256: 0717f1e1336ae5419c5ef646d39a5488fd45468113ecbf7eb15897e3370b69c4
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
+translatedAt: 2026-10-18
 ---
 # ABI do código gerado (revisão 21)
 
@@ -324,6 +324,15 @@ que chama `CLAUSE_invoke_v1(context, frame, arguments)`.
   map clássico, com as chaves ordenadas em tempo de compilação pela ordem exata
   dos termos e mantendo o último valor de uma chave repetida; caso contrário,
   `CLAUSE_map_v1` constrói-as.
+- Os padrões de map (`#{K := V}`, `#{}`), `map_get/2`, `is_map_key/2`,
+  `map_size/1` e as atualizações (`M#{K := V}`, `M#{K => V}`, no máximo 8
+  campos) leem uma célula de map clássico inline quando todas as chaves são
+  átomos ou inteiros pequenos, cuja igualdade de termos é igualdade de palavras:
+  um percurso das palavras das chaves e depois da palavra do valor, ou uma cópia
+  da célula com os novos valores quando já contém todas as chaves e o heap tem
+  espaço. Uma chave em falta faz falhar um padrão de imediato; árvores de map,
+  outras chaves, uma chave em falta noutros casos e erros passam por
+  `CLAUSE_map_v1` (pesquisas em maps pequenos).
 - Os tuplos e as listas de no máximo 64 palavras são alocados inline por
   incremento em `[heap_top, heap_limit)` (cabeçalho ou células cons escritos no
   local, `heap_top` avançado), caso contrário construídos por
@@ -407,7 +416,9 @@ Formas inline (`codegen/lowering_inline.cpp`): os testes de tipo (`is_atom`,
 comprimento em bits) leem as tags e, depois de um teste de tag boxed, o tipo do
 cabeçalho (`abi::v1::HeaderKind`); nunca chamam um serviço. As comparações de
 dois imediatos (`==`, `/=`) ou de dois inteiros pequenos (`<`, `=<`, `>`,
-`>=`), `element/2`, `tuple_size/1`, `hd/1`, `tl/1`, os operadores booleanos,
+`>=`), `element/2`, `tuple_size/1`, `bit_size/1` e `byte_size/1` (a partir da
+palavra do comprimento em bits, enquanto o tamanho é um inteiro pequeno),
+`hd/1`, `tl/1`, os operadores booleanos,
 `band`, `bor`, `bxor`, `bsr`, `bsl` (enquanto o resultado se mantiver pequeno)
 e `div`/`rem` pequenos correm inline; `self/0` lê `FrameState::self`. Correm
 inline quando os seus operandos o permitem e chamam `CLAUSE_immediate_v1` caso
@@ -426,13 +437,18 @@ corpo nulo é um builtin: entrar nele executa o builtin sobre os registos e
 regressa ao chamador, ou suspende o processo na continuação do builtin quando
 este fez trap ([porções](builtins.md#portions)).
 
-Um builtin direto (`BuiltinName::direct`: conversões puras como
+Um builtin direto (`BuiltinCall::direct`: conversões puras como
 `integer_to_list/1`, `atom_to_list/1`, `list_to_tuple/1`, `setelement/3`,
 `phash2/1`) nunca faz trap, nunca espera nem atua sobre outro processo. O
 código gerado chama-o com `CLAUSE_builtin_call_v1(context, builtin, arguments)`,
 que executa o seu corpo de imediato e devolve o resultado, sem transferência de
 frame, sem ponto de retoma e sem safepoint de entrada; gasta uma redução, e uma
-falha vai para o canal verificado tal como a de um serviço.
+falha vai para o canal verificado tal como a de um serviço. Um builtin rápido
+(`BuiltinCall::quick`: `length/1`, `binary_to_list/1`, `list_to_binary/1`,
+`iolist_to_binary/1`) é chamado primeiro da mesma forma; o seu caminho rápido
+limitado devolve 0 quando recusa (entradas mais longas, outras formas, todos os
+ erros e sempre que as chamadas são rastreadas), e o código gerado entra então
+no frame do builtin como para qualquer builtin de ponte.
 
 `abi::v1::dispatch_builtin` chama builtins registados pelo anfitrião através
 dos bytes do módulo/função, do array de argumentos e da aridade, devolvendo um
@@ -481,3 +497,4 @@ dos bytes do módulo/função, do array de argumentos e da aridade, devolvendo u
 | 20 | `MapOperation::entries` e geradores de map inline |
 | 21 | `ModuleDescriptor::fun_cache` e closures inline |
 | 22 | Builtins diretos: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
+| 23 | Builtins rápidos: `BuiltinName::call` (`BuiltinCall`), 0 de `CLAUSE_builtin_call_v1` indica recusa |

@@ -1,8 +1,8 @@
 ---
 source: docs/differences.md
-sourceCommit: a8c3f8f6
-sourceSha256: 3ef4e2009b365f68cd20c9627686948139c57277d62690565abaab54507ac818
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 13b6b1fdfa7e9d5bd89113388e71d62567ddd4ab43cf8621051655c3f31fe56b
+translatedAt: 2026-10-18
 ---
 # Diferencias con Erlang/OTP
 
@@ -19,9 +19,9 @@ plan.
 | --- | --- | --- | --- |
 | Orden del generador de map (`K := V <- M`) | Los maps planos (hasta 32 claves) se recorren en orden de clave, pero las claves átomo en el orden de la tabla de átomos, que varía entre ejecuciones de la VM; los maps mayores en orden de hash | Siempre el orden canónico de claves (orden de términos) | [patrones](patterns.md#comprehensions) |
 | Contenido de `bad_generators` de un generador de map en un grupo zip | Su iterador: cadena `{K, V, Next}` que termina en `none`, en el orden de OTP | La misma cadena, construida en el orden canónico de claves | [patrones](patterns.md#comprehensions) |
-| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3` | Orden interno (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves); un iterador es una posición o una cadena `{K, V, Next}` | Orden canónico de claves; un iterador continúa sobre una lista de claves | [builtins](builtins.md#erts-internal) |
+| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3`, el orden de ejecución de los funs de `maps` (`intersect_with/3`, `merge_with/3`, ...), `proplists:get_keys/1`, `sets` de versión 2 (`to_list/1`, `fold/3`) | Orden interno (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves); un iterador es una posición o una cadena `{K, V, Next}` | Orden canónico de claves; un iterador continúa sobre una lista de claves | [builtins](builtins.md#erts-internal) |
 | Impresión de maps (`erlang:display/1`, `~w`, `~p`) | Orden de la disposición interna (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves) | Orden de claves del map, como `~kw` de OTP | [términos](terms.md#printing) |
-| Orden de `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` | El orden interno del map (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves) | Orden de claves | [biblioteca](library.md) |
+| Orden de `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` y de los miembros que escribe `json:encode/1` | El orden interno del map (orden de la tabla de átomos para claves átomo, orden de hash por encima de 32 claves) | Orden de claves | [biblioteca](library.md) |
 | Impresión de native records (`erlang:display/1`) | Campos en el orden de índice de la tabla de átomos | Orden de definición, como `~w` | [native records](native-records.md#printing-and-order) |
 | `==` entre native records cuyos campos solo difieren como entero/flotante | El compilador puede plegarlo a `=:=` (false) | Comparación numérica (true) | [native records](native-records.md#printing-and-order) |
 | Construcción externa de un native record de un módulo que no está cargado | Falla hasta que se carga el módulo que lo define | Todos los módulos del lote se cargan al arrancar; un módulo fuera del lote siempre falla | [native records](native-records.md#differences-kept) |
@@ -41,7 +41,7 @@ plan.
 | Último bit de los resultados de `math` (`math:erfc(1)`, ...) | La biblioteca C con la que se compiló OTP | La biblioteca C que enlazan los programas Clause (Windows: `0.15729920705028513` para `erfc(1)`, OTP `0.1572992070502851`) | [builtins](builtins.md#math-module) |
 | Resultado de `binary:compile_pattern/1` | `{bm, Ref}` o `{ac, Ref}` con una referencia opaca | `{bm, [Pattern]}` o `{ac, Patterns}` | [builtins](builtins.md#binary-module) |
 | `binary:referenced_byte_size/1` de un sub-binary | El tamaño del binary al que hace referencia | Su propio tamaño | [builtins](builtins.md#binary-module) |
-| Coste de `persistent_term:get/1,2` | Constante: el valor permanece en un área de literales; `put`/`erase` de un valor reemplazado desencadenan una recolección global | Copia el valor en el heap del lector en cada lectura; sin recolección global | [runtime](runtime.md#persistent-terms) |
+| Memoria de términos persistentes reemplazados o borrados | Recuperada por un proceso recolector de áreas de literales que hace que cada proceso copie el valor fuera de ellas, en segundo plano | Cada proceso lo copia fuera en su siguiente turno (los aparcados de inmediato, mediante `put`/`erase`), y después se libera el área; sin proceso recolector | [runtime](runtime.md#persistent-terms) |
 | `persistent_term:info/0` y `get/0` | Incluyen los términos que `kernel` y `stdlib` de OTP almacenan durante el arranque (26 en OTP 29) | Solo los términos propios del programa | [builtins](builtins.md#persistent-terms) |
 | `code:is_loaded/1`, `code:which/1`, `code:all_loaded/0` de un módulo compilado | El archivo `.beam` desde el que se cargó | `preloaded`: todo módulo está enlazado en el ejecutable | [builtins](builtins.md#code-module) |
 | `init:get_arguments/0`, `init:get_argument/1` | Los flags del emulador: `root`, `bindir`, `progname`, `home` y cada `-Flag` de la línea de órdenes | Solo `home`; un ejecutable no tiene flags de emulador | [builtins](builtins.md#init-module) |
@@ -83,7 +83,8 @@ plan.
 | `monitor(port, Item, Options)` con opciones | Se acepta | `badarg` | [procesos](processes.md#aliases) |
 | `spawn_request_abandon/1` | `true` mientras la respuesta está pendiente | Siempre `false`: la respuesta se envía antes de que `spawn_request` retorne | [procesos](processes.md#spawn-options) |
 | Último bit de `math:log2/1` (Windows) | La compilación de OTP para Windows divide `log(X)` entre `log(2)` (`math:log2(1.0e308)` es `1023.1538532253077`) | El `log2` de la biblioteca C (`1023.1538532253076`) | [builtins](builtins.md#math-module) |
-| Valores de `phash/2`, `phash2/1,2` | La función hash de OTP | El hash estable propio de Clause, con los mismos rangos y la misma garantía de igualdad | [builtins](builtins.md#hashing) |
+| `phash/2`, `phash2/1,2` de pids, puertos, referencias, funs y native records | Hashes de los números de proceso, puerto y referencia de OTP, del índice y número único de un fun, del hash de definición de un record | Hashes de los números de Clause, del módulo, aridad o índice y capturas de un fun, de los valores de campo de un record; cualquier otro término tiene el hash de OTP | [builtins](builtins.md#hashing) |
+| `dict:fold/3`, `map/2`, `filter/2` con algo que no es un fun | `function_clause`, o `{badfun, F}` cuando el primer bucket que visita OTP contiene una entrada | `function_clause` | [builtins](builtins.md#collections) |
 | `erlang:is_builtin/3` de `lists:reverse/2` y otras funciones de biblioteca implementadas en C | `true` | `false`: solo los builtins del runtime y `apply/2,3` | [funs](funs.md#fun-information) |
 | `pid`, `uniq`, `new_uniq` de `fun_info/1,2` de un fun local | Pid del creador, sumas de comprobación del compilador | `undefined`, MD5 del nombre del módulo | [funs](funs.md#fun-information) |
 | Contexto de `md5_init/0` | El estado de 92 bytes de OTP | El estado de 96 bytes de Clause; los resúmenes son iguales | [builtins](builtins.md#hashing) |
@@ -136,7 +137,7 @@ plan.
 | `module_info(compile)` | `version` de la aplicación compiler de OTP, `options` que se le pasaron | La versión de Clause; `options` siempre `[]` | [semántica](semantic.md#predefined-functions) |
 | `module_info(functions)` | También enumera las funciones que OTP genera para los funs (`'-f/0-fun-0-'/0`) | Solo las funciones del código fuente y las predefinidas | [semántica](semantic.md#predefined-functions) |
 | `-nominal` en `module_info(attributes)` | Se conserva como `{nominal,[{Name,AbstractType,Params}]}` en formato abstracto | Se omite | [semántica](semantic.md#predefined-functions) |
-| Una función de un módulo de biblioteca de Clause que Clause no ha implementado (un BIF de `erlang`, `lists:ukeysort/2`, ...) | Se ejecuta | Compila; lanza `error({not_implemented, F, A})` al llamarla, con `M:F/A` en la cima de la pila ([estados](../library/modules.terms)) | [biblioteca](library.md#provided-or-missing), [builtins](builtins.md#erlang-module) |
+| Una función de un módulo de biblioteca de Clause que Clause no ha implementado (un BIF de `erlang`, `lists:rmerge/2`, ...) | Se ejecuta | Compila; lanza `error({not_implemented, F, A})` al llamarla, con `M:F/A` en la cima de la pila ([estados](../library/modules.terms)) | [biblioteca](library.md#provided-or-missing), [builtins](builtins.md#erlang-module) |
 | Importación de un módulo fuera del lote | Compila; la llamada lanza `undef` en tiempo de ejecución si falta el módulo | Error de compilación `unknown module M` cuando se llama a la importación (las importaciones no usadas no necesitan el módulo) | [semántica](semantic.md#imports) |
 | Advertencia `import directive overrides auto-imported BIF` | Para todo BIF autoimportado de `erl_internal:bif/2` | Solo para los BIF autoimportados que Clause implementa | [semántica](semantic.md#imports) |
 
@@ -157,10 +158,16 @@ plan.
 
 | Diferencia | OTP | Clause | Responsable |
 | --- | --- | --- | --- |
-| Secuencias de control `~e ~f ~g ~x ~X ~+ ~# ~W ~P`, modificador `K` | Se formatean | `badarg` | [io](io.md#formats) |
-| `~p` de contenedores anidados a más de 256 niveles | Se imprimen | `system_limit` | [io](io.md#pretty-printing-p) |
-| Anchos de campo y precisión de `~ts` con caracteres combinables o `\r\n` | Cuentan clústeres de grafemas | Cuentan puntos de código | [io](io.md#formats) |
+| Funs de comparación de `maps_order` (`~K` con un fun, opción de `io_lib:write/2`) | Maps ordenados por el fun | `badarg` cuando se escribe un map | [io_lib](builtins.md#io_lib) |
+| `~p`, `~w` y escritores de `io_lib` de contenedores anidados a más de 256 niveles | Se imprimen | `system_limit` | [io](io.md#pretty-printing-p) |
+| `io_lib:print/4` con una columna o longitud de línea que no es un entero | Depende del término: se imprime (los guards fallan silenciosamente), `function_clause` o `badarith` | `badarith` para cualquier término contenedor | [io_lib](builtins.md#io_lib) |
 | Precisión o número de relleno negativos (`~.*c` con -1) | Bucle infinito | `badarg` | [io](io.md#formats) |
+
+## Números aleatorios
+
+| Diferencia | OTP | Clause | Responsable |
+| --- | --- | --- | --- |
+| Alturas de las franjas del zigurat normal de `rand` | Constantes tabuladas | Calculadas al double más cercano a partir de las constantes del zigurat; una altura puede diferir en su último bit, lo que cambia una aceptación de la vía lenta solo para una extracción dentro de ese bit del límite (probabilidad cercana a 2^-53 por extracción de la vía lenta). Los anchos y límites de las franjas se observan de OTP y son iguales | [builtins](builtins.md#random-numbers) |
 
 ## Parse transforms
 

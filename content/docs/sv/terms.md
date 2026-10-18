@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: a8c3f8f6
-sourceSha256: ceb9d797b2321fa19ef5f072328d39fd9fca241aa41e24f7a8fceea9ff69a78b
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
+translatedAt: 2026-10-18
 ---
 # Termrepresentationer
 
@@ -18,24 +18,25 @@ finns i [abi.md](abi.md#terms).
 - Sammansatta värden lever i sin processheap ([heapkontrakt](runtime-heap.md))
   eller i en moduls skrivskyddade literalområde
   ([områden](runtime-heap.md#areas)). Processpekare pekar alltid på början av
-  ett objekt. Admissionen kontrollerar det ägda intervallet och huvudets form
-  och avvisar främmande och inaktuella ord
+  ett objekt. Admissionen (endast Debug-byggen; Release litar på ord,
+  `CHECKED_ADMISSION`) kontrollerar det ägda intervallet och huvudets form
+  och avvisar främmande adresser och ogiltiga former
   ([admission](runtime-heap.md#admission)); sort och utsträckning avkodas från
   huvudet.
-- En värd-`Term` för ett heapvärde är ett rått taggat ord, giltigt till heapens
-  nästa skräpsamling ([rötter](runtime-heap.md#roots-and-safe-points)); den
-  fäster inte heapens minne. Efter att kontexten rivits returnerar åtkomst
-  `expired_context`; efter en senare skräpsamling `stale_term`. Termer är
-  alltid säkra att förstöra. Kontrollen av nedrivning läser kontextens
-  livstidstoken utan att låsa den: en kontext och dess termer används av en
-  tråd åt gången.
+- En värd-`Term` är exakt ett `Word`, trivialt kopierbar, med endast `value_`.
+  En heap-Term är giltig till heapens nästa skräpsamling eller processens slut
+  ([rötter](runtime-heap.md#roots-and-safe-points)); den fäster inget och bär
+  varken heap, livstidstoken eller antal skräpsamlingar. Åtkomst läser då
+  flyttat eller frigjort minne och är odefinierad; inget `stale_term`-fel
+  finns. Destruktion är säker. Fabriker, reservationer och meddelandebuffertar
+  behåller sina egna livstidskontroller och rapporterar ännu `expired_context`.
 - Konstruktion validerar barn, reserverar, initierar och publicerar sedan i ett
   steg; vid fel rullas minne och räknare tillbaka.
 - `Term::from_word(word)` tillåter endast ägaroberoende omedelbara värden;
   `Term::from_word(word, context)` tillåter även atomer och heaptermer från den
   kontexten. Överlämning inom samma heap behåller identiteten.
-  `copy_to`/`ProcessHeap::add` kopierar en graf från en annan process i samma
-  runtime med dess delning; termfabriker vägrar främmande indata med
+  `copy_to`/`ProcessHeap::add` kopierar en graf från en annan process med ett anroparkontrakt om samma
+  runtime; termfabriker vägrar främmande indata med
   `wrong_owner` ([kopiering mellan heapar](runtime-heap.md#copying-between-heaps)).
 - Celler lever tills en skräpsamling finner dem onåbara, eller tills heapen
   rivs ([skräpsamling](runtime-heap.md#collection)).
@@ -48,18 +49,24 @@ finns i [abi.md](abi.md#terms).
   vid full kapacitet.
 - Upp till 255 Unicode-skalärer; tom sträng, NUL och supplementära tecken
   tillåts; felaktig/överlång/surrogat-UTF-8 avvisas.
-- Nyttolaster kommer från en räknare för hela processen så att en främmande
-  runtimes atomord kan upptäckas. 32-bitarsprocesser har totalt 2^26
-  identiteter under sin livstid.
-- Att godta ett atomord läser ett låsfritt index efter atomnummer (de fasta
-  atomerna direkt, sedan block om 4 096 poster som publiceras en gång under
-  interneringslåset); nummer bortom 2^24 faller tillbaka på den låsta tabellen.
-- Värdens atom-Terms fäster stavningen och överlever att runtime rivs. Att
-  flytta en atom mellan runtimes innebär att `atom_utf8()` interneras i målet.
+- Nyttolaster kommer från en räknare för hela processen och återanvänds aldrig,
+  inte heller mellan runtimes. Det globala indexet rymmer 2^28 nummer,
+  begränsat av ordets atomnyttolast på 32-bitarsmål (2^26 identiteter under
+  livstiden). Gränserna per runtime är oförändrade. Atomnummer lämnar aldrig
+  en nod: ETF och diskformat använder stavningar.
+- `detail::atom_table` ger låsfria läsningar efter atomnummer: fasta poster
+  direkt, sedan block om 4 096 platser som behålls under processens livstid.
+  Varje `AtomStorage` äger sina poster efter stavning, publicerar dem i detta
+  index och godtar endast egna eller fasta poster. Vid nedrivning tas dess
+  platser ur bruk.
+- Atom-Terms fäster inget. `atom_spelling()` lånar fram till runtimens
+  nedrivning; den och `atom_utf8()` rapporterar `expired_context` efter att
+  en icke-fast atoms runtime rivits. Att flytta en atom mellan runtimes
+  innebär att dess stavning interneras i målet medan källans runtime lever.
 - Booleska värden är atomerna `true`/`false`. De fasta atomerna `false`,
   `true`, `undefined`, `ok` och `error` (`abi::v1::fixed_atom_spellings`) har
-  orden för atomnummer 0–4 i varje runtime, läggs in tillsammans med
-  lagringen, hittas utan låset och räknas varken av `size()` eller mot
+  orden för atomnummer 0–4 i varje runtime, med odödliga statiska
+  poster, hittas utan låset och räknas varken av `size()` eller mot
   `max_atoms`; genererad kod använder dem som konstanter. Varje annat atomord
   är privat för sin runtime.
 - Sammansatta literaler av konstanter (strängar, listor och tupler av
@@ -225,10 +232,10 @@ finns i [abi.md](abi.md#terms).
   den skrivs ut som `#Port<0.N>` och ordnas mellan funs och pids
   ([portar](ports.md#identity)).
 - En referens är en heapcell (`reference`: huvud plus ett ospårat 64-bitars
-  nummer) som tillåts som alla heaptermer: endast i sin egen process, inaktuell
-  efter en skräpsamling för en värd-`Term`, kopieras som värde mellan
-  processer. Nummer kommer från en räknare för hela processen, så varje
-  referens i en programkörning är unik.
+  nummer) som tillåts som alla heaptermer: endast i sin egen process, kopieras
+  som värde mellan processer. En orotad värd-`Term` får inte läsas efter
+  skräpsamling eller processens slut. Nummer kommer från en räknare för hela
+  processen, så varje referens i en programkörning är unik.
 - En handtagsreferens (en magisk referens i OTP) är en referenscell som också
   innehåller en buffert utanför heapen; den är samma referens för varje tjänst
   och delar sin buffert med varje kopia
@@ -250,8 +257,9 @@ sinsemellan).
 Atomer jämförs efter UTF-8-stavning (kodpunktsordning); tupler efter aritet och
 sedan fält; maps efter storlek, sedan nycklar, sedan värden; bitstrings efter
 logiska bitar. Två små heltal, två flyttal eller två binaries med hela byte
-ordnas direkt från sina ord eller celler (`detail::word_order`), utan admission
-av termer.
+ordnas direkt från sina ord eller celler (`detail::word_order`), och två
+atomer från sina stavningar i atomtabellen (`AtomStorage::spelling`, via det
+låsfria nummerindexet), utan admission av termer.
 
 ## Utskrift
 

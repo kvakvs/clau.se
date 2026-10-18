@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: a8c3f8f6
-sourceSha256: 0717f1e1336ae5419c5ef646d39a5488fd45468113ecbf7eb15897e3370b69c4
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
+translatedAt: 2026-10-18
 ---
 # ABI des erzeugten Codes (Revision 21)
 
@@ -328,6 +328,15 @@ ist. Ein exportiertes `<symbol>` behält die Signatur
   geschrieben, die Schlüssel zur Kompilierzeit in exakter Termordnung sortiert,
   bei wiederholtem Schlüssel der letzte Wert behalten; andernfalls baut
   `CLAUSE_map_v1` sie.
+- Map-Muster (`#{K := V}`, `#{}`), `map_get/2`, `is_map_key/2`, `map_size/1`
+  und Aktualisierungen (`M#{K := V}`, `M#{K => V}`, höchstens 8 Felder) lesen
+  eine klassische Map-Zelle inline, wenn jeder Schlüssel ein Atom oder eine
+  kleine Ganzzahl ist, deren Termgleichheit Wortgleichheit ist: zuerst die
+  Schlüsselwörter durchsuchen, dann das Wertwort lesen oder die Zelle mit den
+  neuen Werten kopieren, wenn sie bereits jeden Schlüssel enthält und der Heap
+  Platz hat. Ein fehlender Schlüssel lässt ein Muster sofort scheitern;
+  Map-Bäume, andere Schlüssel, ein andernorts fehlender Schlüssel und Fehler
+  verwenden `CLAUSE_map_v1` (Abfragen kleiner Maps).
 - Tupel und Listen von höchstens 64 Wörtern werden inline in
   `[heap_top, heap_limit)` per Bump-Allokation angelegt (Header oder Cons-Zellen
   an Ort und Stelle geschrieben, `heap_top` vorgerückt), sonst von
@@ -411,7 +420,8 @@ Inline-Formen (`codegen/lowering_inline.cpp`): Typtests (`is_atom`,
 lesen Tags und nach einem Box-Tag-Test die Header-Art (`abi::v1::HeaderKind`);
 sie rufen nie einen Service auf. Vergleiche zweier Immediates (`==`, `/=`) oder
 zweier kleiner Ganzzahlen (`<`, `=<`, `>`, `>=`), `element/2`,
-`tuple_size/1`, `hd/1`, `tl/1`, die booleschen Operatoren, `band`, `bor`,
+`tuple_size/1`, `bit_size/1` und `byte_size/1`
+(aus dem Bitlängenwort, solange die Größe eine kleine Ganzzahl ist), `hd/1`, `tl/1`, die booleschen Operatoren, `band`, `bor`,
 `bxor`, `bsr`, `bsl` (solange das Ergebnis klein bleibt) und kleines
 `div`/`rem` laufen inline; `self/0` liest `FrameState::self`. Sie laufen
 inline, wo ihre Operanden es erlauben, und rufen sonst `CLAUSE_immediate_v1`
@@ -431,14 +441,19 @@ aus und kehrt zum Aufrufer zurück oder suspendiert den Prozess an der
 Fortsetzung des Builtins, wenn es getrappt hat
 ([Portionen](builtins.md#portions)).
 
-Ein direktes Builtin (`BuiltinName::direct`: reine Umwandlungen wie
+Ein direktes Builtin (`BuiltinCall::direct`: reine Umwandlungen wie
 `integer_to_list/1`, `atom_to_list/1`, `list_to_tuple/1`, `setelement/3`,
 `phash2/1`) trappt nie, wartet nie und wirkt nie auf einen anderen Prozess.
 Erzeugter Code ruft es mit `CLAUSE_builtin_call_v1(context, builtin, arguments)`
 auf, das seinen Rumpf sofort ausführt und das Ergebnis zurückgibt, ohne
 Frame-Übergabe, ohne Fortsetzungspunkt und ohne Safepoint beim Eintritt; es
 verbraucht eine Reduktion, und ein Fehlschlag geht wie bei einem Service an den
-geprüften Kanal.
+geprüften Kanal. Ein schnelles Builtin (`BuiltinCall::quick`: `length/1`,
+`binary_to_list/1`, `list_to_binary/1`, `iolist_to_binary/1`) wird zunächst
+ebenso aufgerufen; sein begrenzter Schnellpfad gibt bei Ablehnung 0 zurück
+(längere Eingaben, andere Formen, jeder Fehler und immer bei aufgezeichneten
+Aufrufen), und der erzeugte Code betritt dann wie bei jedem Bridge-Builtin
+dessen Frame.
 
 `abi::v1::dispatch_builtin` ruft vom Host registrierte Builtins über
 Modul-/Funktionsbytes, Argumentarray und Stelligkeit auf und liefert einen
@@ -487,3 +502,4 @@ Modul-/Funktionsbytes, Argumentarray und Stelligkeit auf und liefert einen
 | 20 | `MapOperation::entries` und Inline-Map-Generatoren |
 | 21 | `ModuleDescriptor::fun_cache` und Inline-Closures |
 | 22 | Direkte Builtins: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
+| 23 | Schnelle Builtins: `BuiltinName::call` (`BuiltinCall`), 0 von `CLAUSE_builtin_call_v1` lehnt ab |

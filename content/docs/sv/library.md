@@ -1,8 +1,8 @@
 ---
 source: docs/library.md
-sourceCommit: a8c3f8f6
-sourceSha256: f657ad1632b57e9c9b11ad04f870350112a7cac942b10e5483e1aa26d1c79fc7
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 0fc98265c5256c76cd34c89f89a48993e3452732ca40c3a295860a34bee27186
+translatedAt: 2026-10-18
 ---
 # Biblioteksmoduler
 
@@ -19,13 +19,25 @@ funktioner som är implementerade och vilka som är stubbar.
 
 | Modul | Innehåll |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | De vanliga funktionerna; datafunktioner som `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3` är inbyggda funktioner i runtimen ([modulen lists](builtins.md#lists-module)) |
-| [`maps`](../library/stdlib/maps.erl) | De vanliga funktionerna och iteratorer; `get/3`, `merge/2`, `update/3`, `with/2`, ... är inbyggda funktioner i runtimen ([modulen maps](builtins.md#maps-module)) |
+| [`lists`](../library/stdlib/lists.erl) | De vanliga funktionerna; datafunktioner som `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3`, `zip/2,3`, `merge/2` är inbyggda funktioner i runtime; varje dokumenterad funktion är implementerad ([modulen lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | Varje dokumenterad funktion; `get/3`, `merge/2`, `intersect/2`, `with/2`, ... är inbyggda funktioner i runtime, funktionerna som tar funs är Erlang ([modulen maps](builtins.md#maps-module)) |
+| [`ordsets`](../library/stdlib/ordsets.erl), [`orddict`](../library/stdlib/orddict.erl), [`proplists`](../library/stdlib/proplists.erl) | Varje dokumenterad funktion; listgenomgångarna är inbyggda funktioner i runtime, funktionerna som tar funs är Erlang ([samlingar](builtins.md#collections)) |
+| [`calendar`](../library/stdlib/calendar.erl) | Varje dokumenterad funktion; den gregorianska aritmetiken som inbyggda funktioner i runtime, lokal tid och RFC 3339 i Erlang ([calendar](builtins.md#calendar)) |
+| [`filename`](../library/stdlib/filename.erl) | Varje dokumenterad funktion enligt OTP:s Unix- och Windows-regler för värden; namngenomgångarna är inbyggda funktioner i runtime, `absname/1,2` och `basedir/2,3` (från `HOME`, XDG-variablerna och `APPDATA`) är Erlang ([filename](builtins.md#filename)) |
+| [`uri_string`](../library/stdlib/uri_string.erl) | Varje dokumenterad funktion som inbyggd funktion i runtime: RFC 3986-tolkning med OTP:s felfragment, återsammansättning, normalisering, upplösning, procentkodning och form-urlencoded-frågor ([uri_string](builtins.md#uri-string)) |
+| [`json`](../library/stdlib/json.erl) | Varje dokumenterad funktion med OTP:s iodata, fel och återanropsordning; `decode/1`, `encode/1`, `format/1,2` och binary-escape-funktionerna är inbyggda funktioner i runtime, kodarna och formaterarna som tar funs och avkodarna med återanrop är Erlang ([kodningar](builtins.md#encodings)) |
+| [`rand`](../library/stdlib/rand.erl), [`random`](../library/stdlib/random.erl) | Varje dokumenterad funktion med OTP:s tillstånd och sekvenser; OTP:s algoritmer körs som inbyggda funktioner i runtime, insticksgeneratorer i Erlang ([slumptal](builtins.md#random-numbers)) |
+| [`string`](../library/stdlib/string.erl) | Varje dokumenterad funktion som inbyggd funktion i runtime, går igenom chardata som OTP:s `string.erl` så att resultaten behåller OTP:s former ([string](builtins.md#string)) |
+| [`base64`](../library/stdlib/base64.erl) | Varje dokumenterad funktion som inbyggd funktion i runtime ([kodningar](builtins.md#encodings)) |
+| [`array`](../library/stdlib/array.erl) | Varje dokumenterad funktion över OTP 29:s record; record-operationerna är inbyggda funktioner i runtime, fold- och mapfold-funktionerna är Erlang ([samlingar](builtins.md#collections)) |
+| [`gb_trees`](../library/stdlib/gb_trees.erl), [`gb_sets`](../library/stdlib/gb_sets.erl), [`queue`](../library/stdlib/queue.erl) | Varje dokumenterad funktion över OTP:s träd- och köformer; operationerna utan funs är inbyggda funktioner i runtime ([samlingar](builtins.md#collections)) |
+| [`dict`](../library/stdlib/dict.erl), [`sets`](../library/stdlib/sets.erl) | Varje dokumenterad funktion över OTP:s records (mängder av version 1) och maps (version 2); operationer utan funs är inbyggda funktioner i runtime ([samlingar](builtins.md#collections)) |
 | [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (server för standard-indata eller en öppen fil), `request/1,2`, `requests/1,2` (OTP:s I/O-protokoll, [filer](ports.md#standard-io-and-files)); `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` och `nl/0,1` är inbyggda funktioner i runtimen ([io](io.md)) |
+| [`io_lib`](../library/stdlib/io_lib.erl) | Skrivare, kontroller, insamlingsfunktioner, formatmotorn och pretty printer (`print/1,4`, `~p`, `chars_limit`) som inbyggda funktioner i runtime med OTP:s djupa listformer; `get_until`, `format_prompt` och `write/3` är Erlang; `fread/2,3` är stubbar ([io_lib](builtins.md#io_lib)) |
 | [`binary`](../library/stdlib/binary.erl) | Varje funktion; `replace/3,4` och `list_to_bin/1` i Erlang, de övriga inbyggda funktioner i runtimen ([modulen binary](builtins.md#binary-module)) |
 | [`math`](../library/stdlib/math.erl) | Varje funktion som inbyggd funktion i runtimen ([modulen math](builtins.md#math-module)) |
-| [`unicode`](../library/stdlib/unicode.erl) | Konverteringar, `bin_is_7bit/1` och byteordningsmarkeringar som inbyggda funktioner i runtimen ([modulen unicode](builtins.md#unicode-module)); normalisering och egenskaper är stubbar |
-| [`unicode_util`](../library/stdlib/unicode_util.erl) | Varje funktion ovanpå genererade tabeller ([unicode_util](builtins.md#unicode-util)) |
+| [`unicode`](../library/stdlib/unicode.erl) | Varje funktion som inbyggd funktion i runtime: konverteringar, `bin_is_7bit/1`, byteordningsmärken, normalformer, kategorier och identifieraregenskaper ([modulen unicode](builtins.md#unicode-module)) |
+| [`unicode_util`](../library/stdlib/unicode_util.erl) | Varje funktion över genererade tabeller, chardata-genomgångarna som inbyggda funktioner i runtime ([unicode_util](builtins.md#unicode-util)) |
 | [`re`](../library/stdlib/re.erl) | Varje funktion utom `import/1`, ovanpå PCRE2 ([modulen re](builtins.md#re-module)) |
 | [`file`](../library/kernel/file.erl) | Öppna, läsa, skriva, positionera och stänga filer, läsning och skrivning av hela filer, filinformation och katalogoperationer ovanpå fildrivrutinen ([filer](ports.md#standard-io-and-files)) |
 | [`gen_tcp`](../library/kernel/gen_tcp.erl), [`gen_udp`](../library/kernel/gen_udp.erl), [`inet`](../library/kernel/inet.erl) | Socketar ovanpå socketportar ([socketar](ports.md#sockets)) |
@@ -33,7 +45,7 @@ funktioner som är implementerade och vilka som är stubbar.
 | [`os`](../library/kernel/os.erl) | `cmd/1` ovanpå en port, frågor om miljö, tid och version ([modulen maps](builtins.md#maps-module)) |
 | [`code`](../library/kernel/code.erl) | Frågor om laddade moduler utan kodserver ([modulen code](builtins.md#code-module)); sökvägar och laddning är stubbar |
 | [`application_controller`](../library/kernel/application_controller.erl) | Endast stubbar; skuggar OTP:s, som anropar `prim_file` (luerl når den genom OTP:s `application`) |
-| [`erlang`](../library/erts/erlang.erl) | Genererade stubbar för varje export i OTP 29:s `erlang`; inbyggda funktioner ersätter sina, `nif_error/1,2` har kroppar, andra kastar `{not_implemented, F, A}` när de anropas ([modulen erlang](builtins.md#erlang-module)) |
+| [`erlang`](../library/erts/erlang.erl) | Genererade stubbar för varje export i OTP 29:s `erlang`; katalogens inbyggda funktioner har platshållarkroppar, `nif_error/1,2` har kroppar, andra kastar `{not_implemented, F, A}` när de anropas ([modulen erlang](builtins.md#erlang-module)) |
 | [`init`](../library/erts/init.erl) | Ett startat systems svar; `boot/1`, `restart/0,1` och `make_permanent/2` avvisas ([modulen init](builtins.md#init-module)) |
 | [`persistent_term`](../library/erts/persistent_term.erl) | Varje funktion som inbyggd funktion i runtimen ([persistenta termer](builtins.md#persistent-terms)) |
 | [`atomics`](../library/erts/atomics.erl), [`counters`](../library/erts/counters.erl) | Varje funktion ([atomics och counters](builtins.md#atomics-and-counters)) |
@@ -103,6 +115,16 @@ modul, och per grupp av funktioner där en modul blandar ansvarsområden:
   kodladdning). En ny modul börjar med varje funktion som stubbe, så att den
   kan hittas och dess anropare kompileras; grupper flyttas sedan till sin
   beslutade status.
+- **Platshållare för inbyggda funktioner:** en funktion som implementeras av
+  en inbyggd funktion i katalogen behåller sin export och kroppen
+  `F(_, ...) -> clause_builtin_placeholder.`, som aldrig körs: registreringen
+  binder den inbyggda funktionen i dess ställe, och ett kvalificerat anrop
+  `M:F(...)` kompileras till bryggan. Endast ett okvalificerat anrop inuti
+  modulen skulle nå platshållaren, så modulen anropar sina egna inbyggda
+  funktioner kvalificerat; `library_inventory` avvisar en platshållare som
+  inte namnger någon inbyggd katalogfunktion, en inbyggd katalogfunktion som
+  lämnats som `not_implemented`-stubbe och ett okvalificerat anrop till en
+  platshållare.
 - **Saknad:** Clause levererar ingen modul alls, möjligen för alltid, och
   registrerar varför och vilka Clause-moduler på högre nivå som tar dess
   anropares plats (`library/modules.terms`). Lågnivålagren för filer och
@@ -145,7 +167,7 @@ eftersom inget ersätts.
   OTP-applikation som äger modulen i OTP: `erts` (förladdade motsvarigheter
   och `erlang`), `kernel`, `stdlib`. Clauses privata hjälpmoduler
   (`clause_socket`, `clause_re`, `clause_unicode`, `clause_zlib`,
-  `clause_receive`, `clause_maps`) ligger bredvid de moduler de betjänar.
+  `clause_receive`, `clause_maps`, `clause_hashed`, `clause_array`) ligger bredvid de moduler de betjänar.
   Biblioteksuppslagningen söker i varje applikationskatalog; ett modulnamn
   finns i högst en av dem.
 - `library/modules.terms` listar varje modul som Clause fattar beslut om:
@@ -161,6 +183,22 @@ eftersom inget ersätts.
   (`M:module_info(exports)`); ingen OTP-källkod kopieras. Resultat och
   feltermer för implementerade funktioner stämmer med OTP 29; avsiktliga
   skillnader förs till [skillnader](differences.md).
+
+### Dokumenterade funktioner
+
+`library/documented.terms` listar de publika funktioner som OTP 29 dokumenterar
+för `erts`, `kernel` och `stdlib`: `{Module, Application, Name, Arity}.` per
+funktion vars modul- och funktionsdokumentation inte är dold och som inte är
+föråldrad, observerade från värd-OTP:s dokumentationsblock av
+`tests/compiler/library/observe_docs.escript` (körs uttryckligen).
+Odokumenterade exporter stannar i inventeringarna men får förbli stubbar.
+
+- `library_inventory` kontrollerar att varje dokumenterad funktion i en
+  tillhandahållen modul finns i dess inventering och inte är en stubbe, utom
+  i modulerna som `library_modules.py` listar som partiella med det plan step
+  som färdigställer dem.
+- `python tests/compiler/library/library_modules.py coverage .` skriver ut
+  varje dokumenterad moduls antal implementerade och dokumenterade funktioner.
 
 ### Typer
 
@@ -195,8 +233,8 @@ utan den servern (`noproc`). OTP-kod som loggar genom `logger` eller anropar
 
 ### Liggare
 
-Verkliga program driver detta arbete; projektet luerl är den nuvarande
-drivkraften ([21-lib](../.agents/21-lib.md)). Kompilera och kör det,
+Projektplanen schemalägger varje dokumenterad modul i `erts`, `kernel` och
+`stdlib`; verkliga program (luerl först) sätter prioriteringarna. Kompilera och kör det,
 klassificera varje fel (`unknown module`, `undefined function M:F/A`, syntax
 eller funktion som inte stöds, annat) och tilldela vart och ett ett plan step,
 en annan post i eftersläpningen eller ett registrerat avböjande. Med

@@ -1,8 +1,8 @@
 ---
 source: docs/building.md
-sourceCommit: a8c3f8f6
-sourceSha256: 94c0fac180752b278facfe18589c191a0a15ee95e55d9dbf7d4d049c4774e079
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 86d39780700856574257fd2d598102b8e551505085c42a0a8175f9c2c7b2330c
+translatedAt: 2026-10-18
 ---
 # Compilar o compilador
 
@@ -102,8 +102,9 @@ cmake --build build/debug --target check-quality-all   # whole tree
 ```
 
 `check-quality` verifica os ficheiros alterados desde `HEAD` (ou
-`CLAUSE_QUALITY_BASE`) mais as unidades de tradução que incluem um cabeçalho
-alterado, e precisa de uma compilação com o compilador e o runtime ativados;
+`CLAUSE_QUALITY_BASE`) mais uma unidade de tradução por cabeçalho alterado
+(`check-quality-all` cobre todos os dependentes, na verificação completa), e
+precisa de uma compilação com o compilador e o runtime ativados;
 `check-complexity-all` e `check-clang-tidy-all` correm uma só ferramenta.
 `cmake/CheckClangTidy.cmake` aceita `QUALITY_SHARD=K/N` para dividir uma
 execução longa.

@@ -1,8 +1,8 @@
 ---
 source: docs/library.md
-sourceCommit: a8c3f8f6
-sourceSha256: f657ad1632b57e9c9b11ad04f870350112a7cac942b10e5483e1aa26d1c79fc7
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 0fc98265c5256c76cd34c89f89a48993e3452732ca40c3a295860a34bee27186
+translatedAt: 2026-10-18
 ---
 # Modules de bibliothèque
 
@@ -19,13 +19,25 @@ sont implémentées et lesquelles sont des bouchons (stubs).
 
 | Module | Contenu |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | Les fonctions courantes ; les fonctions sur les données comme `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3` sont des builtins du runtime ([module lists](builtins.md#lists-module)) |
-| [`maps`](../library/stdlib/maps.erl) | Les fonctions courantes et les itérateurs ; `get/3`, `merge/2`, `update/3`, `with/2`, ... sont des builtins du runtime ([module maps](builtins.md#maps-module)) |
+| [`lists`](../library/stdlib/lists.erl) | Les fonctions courantes ; les fonctions sur les données comme `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3`, `zip/2,3`, `merge/2` sont des builtins du runtime ; chaque fonction documentée est implémentée ([module lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | Chaque fonction documentée ; `get/3`, `merge/2`, `intersect/2`, `with/2`, ... sont des builtins du runtime, les fonctions prenant des funs sont en Erlang ([module maps](builtins.md#maps-module)) |
+| [`ordsets`](../library/stdlib/ordsets.erl), [`orddict`](../library/stdlib/orddict.erl), [`proplists`](../library/stdlib/proplists.erl) | Chaque fonction documentée ; les parcours de listes sont des builtins du runtime, les fonctions prenant des funs sont en Erlang ([collections](builtins.md#collections)) |
+| [`calendar`](../library/stdlib/calendar.erl) | Chaque fonction documentée ; l'arithmétique grégorienne sous forme de builtins du runtime, l'heure locale et RFC 3339 en Erlang ([calendar](builtins.md#calendar)) |
+| [`filename`](../library/stdlib/filename.erl) | Chaque fonction documentée selon les règles Unix et Windows d'OTP pour l'hôte ; les parcours de noms sont des builtins du runtime, `absname/1,2` et `basedir/2,3` (à partir de `HOME`, des variables XDG et d'`APPDATA`) en Erlang ([filename](builtins.md#filename)) |
+| [`uri_string`](../library/stdlib/uri_string.erl) | Chaque fonction documentée sous forme de builtin du runtime : analyse RFC 3986 avec les fragments d'erreur d'OTP, recomposition, normalisation, résolution, codage pourcent et requêtes form-urlencoded ([uri_string](builtins.md#uri-string)) |
+| [`json`](../library/stdlib/json.erl) | Chaque fonction documentée avec les iodata, les erreurs et l'ordre des rappels d'OTP ; `decode/1`, `encode/1`, `format/1,2` et les fonctions d'échappement de binaries sont des builtins du runtime, les encodeurs et formateurs prenant des funs et les décodeurs à rappels sont en Erlang ([encodages](builtins.md#encodings)) |
+| [`rand`](../library/stdlib/rand.erl), [`random`](../library/stdlib/random.erl) | Chaque fonction documentée avec les états et séquences d'OTP ; les algorithmes d'OTP s'exécutent sous forme de builtins du runtime, les générateurs greffons en Erlang ([nombres aléatoires](builtins.md#random-numbers)) |
+| [`string`](../library/stdlib/string.erl) | Chaque fonction documentée sous forme de builtin du runtime, parcourant chardata comme `string.erl` d'OTP pour conserver les formes de résultats d'OTP ([string](builtins.md#string)) |
+| [`base64`](../library/stdlib/base64.erl) | Chaque fonction documentée sous forme de builtin du runtime ([encodages](builtins.md#encodings)) |
+| [`array`](../library/stdlib/array.erl) | Chaque fonction documentée au-dessus du record d'OTP 29 ; les opérations sur le record sont des builtins du runtime, les folds et mapfolds sont en Erlang ([collections](builtins.md#collections)) |
+| [`gb_trees`](../library/stdlib/gb_trees.erl), [`gb_sets`](../library/stdlib/gb_sets.erl), [`queue`](../library/stdlib/queue.erl) | Chaque fonction documentée au-dessus des formes d'arbres et de files d'OTP ; les opérations sans funs sont des builtins du runtime ([collections](builtins.md#collections)) |
+| [`dict`](../library/stdlib/dict.erl), [`sets`](../library/stdlib/sets.erl) | Chaque fonction documentée au-dessus des records d'OTP (ensembles de version 1) et des maps (version 2) ; les opérations sans funs sont des builtins du runtime ([collections](builtins.md#collections)) |
 | [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (serveur d'entrée standard ou fichier ouvert), `request/1,2`, `requests/1,2` (protocole d'E/S d'OTP, [fichiers](ports.md#standard-io-and-files)) ; `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` et `nl/0,1` sont des builtins du runtime ([io](io.md)) |
+| [`io_lib`](../library/stdlib/io_lib.erl) | Fonctions d'écriture, vérifications, fonctions de collecte, moteur de formatage et affichage formaté (`print/1,4`, `~p`, `chars_limit`) sous forme de builtins du runtime avec les formes de listes imbriquées d'OTP ; `get_until`, `format_prompt` et `write/3` en Erlang ; `fread/2,3` en bouchons ([io_lib](builtins.md#io_lib)) |
 | [`binary`](../library/stdlib/binary.erl) | Chaque fonction ; `replace/3,4` et `list_to_bin/1` en Erlang, les autres builtins du runtime ([module binary](builtins.md#binary-module)) |
 | [`math`](../library/stdlib/math.erl) | Chaque fonction sous forme de builtin du runtime ([module math](builtins.md#math-module)) |
-| [`unicode`](../library/stdlib/unicode.erl) | Conversions, `bin_is_7bit/1` et marques d'ordre des octets sous forme de builtins du runtime ([module unicode](builtins.md#unicode-module)) ; la normalisation et les propriétés sont des bouchons |
-| [`unicode_util`](../library/stdlib/unicode_util.erl) | Chaque fonction au-dessus de tables générées ([unicode_util](builtins.md#unicode-util)) |
+| [`unicode`](../library/stdlib/unicode.erl) | Chaque fonction sous forme de builtin du runtime : conversions, `bin_is_7bit/1`, marques d'ordre des octets, formes de normalisation, catégories et propriétés d'identifiants ([module unicode](builtins.md#unicode-module)) |
+| [`unicode_util`](../library/stdlib/unicode_util.erl) | Chaque fonction au-dessus de tables générées, les parcours de chardata sous forme de builtins du runtime ([unicode_util](builtins.md#unicode-util)) |
 | [`re`](../library/stdlib/re.erl) | Chaque fonction sauf `import/1`, au-dessus de PCRE2 ([module re](builtins.md#re-module)) |
 | [`file`](../library/kernel/file.erl) | Ouvrir, lire, écrire, positionner et fermer des fichiers, lectures et écritures de fichiers entiers, informations sur les fichiers et opérations sur les répertoires au-dessus du pilote de fichiers ([fichiers](ports.md#standard-io-and-files)) |
 | [`gen_tcp`](../library/kernel/gen_tcp.erl), [`gen_udp`](../library/kernel/gen_udp.erl), [`inet`](../library/kernel/inet.erl) | Sockets au-dessus des ports socket ([sockets](ports.md#sockets)) |
@@ -33,7 +45,7 @@ sont implémentées et lesquelles sont des bouchons (stubs).
 | [`os`](../library/kernel/os.erl) | `cmd/1` au-dessus d'un port, requêtes d'environnement, d'heure et de version ([module maps](builtins.md#maps-module)) |
 | [`code`](../library/kernel/code.erl) | Requêtes sur les modules chargés sans serveur de code ([module code](builtins.md#code-module)) ; les chemins et le chargement sont des bouchons |
 | [`application_controller`](../library/kernel/application_controller.erl) | Uniquement des bouchons ; masque celui d'OTP, qui appelle `prim_file` (luerl l'atteint via `application` d'OTP) |
-| [`erlang`](../library/erts/erlang.erl) | Bouchons générés de chaque export `erlang` d'OTP 29 ; les builtins remplacent les leurs, `nif_error/1,2` ont un corps, les autres lèvent `{not_implemented, F, A}` lorsqu'ils sont appelés ([module erlang](builtins.md#erlang-module)) |
+| [`erlang`](../library/erts/erlang.erl) | Bouchons générés de chaque export `erlang` d'OTP 29 ; les builtins du catalogue ont des corps de substitution, `nif_error/1,2` ont un corps, les autres lèvent `{not_implemented, F, A}` lorsqu'ils sont appelés ([module erlang](builtins.md#erlang-module)) |
 | [`init`](../library/erts/init.erl) | Les réponses d'un système démarré ; `boot/1`, `restart/0,1` et `make_permanent/2` refusés ([module init](builtins.md#init-module)) |
 | [`persistent_term`](../library/erts/persistent_term.erl) | Chaque fonction sous forme de builtin du runtime ([termes persistants](builtins.md#persistent-terms)) |
 | [`atomics`](../library/erts/atomics.erl), [`counters`](../library/erts/counters.erl) | Chaque fonction ([atomics et counters](builtins.md#atomics-and-counters)) |
@@ -105,6 +117,15 @@ plusieurs préoccupations :
   distribution ou le chargement de code). Un module commence avec toutes ses
   fonctions en bouchons, de sorte qu'il est découvrable et que ses appelants
   compilent ; les groupes passent ensuite à leur statut décidé.
+- **Corps de substitution des builtins :** une fonction implémentée par un
+  builtin du catalogue conserve son export et le corps
+  `F(_, ...) -> clause_builtin_placeholder.`, qui ne s'exécute jamais :
+  l'enregistrement lie le builtin à sa place, et un appel qualifié `M:F(...)`
+  est compilé vers le pont. Seul un appel non qualifié dans le module
+  atteindrait ce corps, donc le module qualifie les appels à ses propres
+  builtins ; `library_inventory` rejette un corps de substitution qui ne
+  désigne aucun builtin du catalogue, un builtin du catalogue laissé en
+  bouchon `not_implemented` et un appel non qualifié d'un corps de substitution.
 - **Absent :** Clause ne livre aucun module, peut-être pour toujours, et
   consigne pourquoi et quels modules Clause de plus haut niveau prennent la
   place de ses appelants (`library/modules.terms`). Les couches bas niveau
@@ -151,7 +172,7 @@ avertissement, puisque rien n'est remplacé.
   d'après l'application OTP qui possède le module dans OTP : `erts`
   (équivalents des modules préchargés et `erlang`), `kernel`, `stdlib`. Les
   modules auxiliaires privés de Clause (`clause_socket`, `clause_re`,
-  `clause_unicode`, `clause_zlib`, `clause_receive`, `clause_maps`) se
+  `clause_unicode`, `clause_zlib`, `clause_receive`, `clause_maps`, `clause_hashed`, `clause_array`) se
   trouvent à côté des modules qu'ils servent. La recherche dans la
   bibliothèque parcourt chaque répertoire d'application ; un nom de module
   existe dans au plus l'un d'eux.
@@ -168,6 +189,22 @@ avertissement, puisque rien n'est remplacé.
   (`M:module_info(exports)`) ; aucune source d'OTP n'est copiée. Les résultats
   et les termes d'erreur des fonctions implémentées correspondent à OTP 29 ;
   les différences délibérées vont dans [différences](differences.md).
+
+### Fonctions documentées
+
+`library/documented.terms` liste les fonctions publiques qu'OTP 29 documente
+pour `erts`, `kernel` et `stdlib` : `{Module, Application, Name, Arity}.` par
+fonction dont les documentations de module et de fonction ne sont pas masquées
+et qui n'est pas obsolète, observée dans les blocs de documentation de l'OTP
+de l'hôte par `tests/compiler/library/observe_docs.escript` (exécuté
+explicitement). Les exports non documentés restent dans les inventaires mais
+peuvent rester des bouchons.
+
+- `library_inventory` vérifie que chaque fonction documentée d'un module fourni
+  figure dans son inventaire et n'est pas un bouchon, sauf dans les modules que
+  `library_modules.py` liste comme partiels avec l'étape du plan qui les achève.
+- `python tests/compiler/library/library_modules.py coverage .` affiche les
+  nombres de fonctions implémentées et documentées de chaque module documenté.
 
 ### Types
 
@@ -203,8 +240,8 @@ n'est pas prévu.
 
 ### Registre
 
-Des programmes réels pilotent ce travail ; le projet luerl est le pilote
-actuel ([21-lib](../.agents/21-lib.md)). Le compiler et l'exécuter, classer
+Le plan du projet programme chaque module documenté de `erts`, `kernel` et
+`stdlib` ; les programmes réels (luerl en premier) fixent les priorités. Le compiler et l'exécuter, classer
 chaque erreur (`unknown module`, `undefined function M:F/A`, syntaxe ou
 fonctionnalité non prise en charge, autre), et affecter chacune à une étape du
 plan, à un autre élément du backlog ou à un refus consigné. Avec la sortie

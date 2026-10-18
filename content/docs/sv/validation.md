@@ -1,8 +1,8 @@
 ---
 source: docs/validation.md
-sourceCommit: a8c3f8f6
-sourceSha256: 54f5af0873d1220b42924fb4323bb6d19263b4e6301ffc0aa412ca04dcd9e835
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: b00092bc767953e496774561feaef35ac500b4db73b4344eafd6dda372c90e24
+translatedAt: 2026-10-18
 ---
 # Validering
 
@@ -29,30 +29,34 @@ cmake --preset debug --fresh -DBUILD_TESTING=ON -G Ninja -DCMAKE_C_COMPILER=clan
 cmake --build build/debug
 ctest --preset debug-fast                  # during development
 ctest --preset debug -j 16                 # full mode, at feature completion
-cmake --build build/debug --target check-quality      # changed files + dependents
+cmake --build build/debug --target check-quality      # changed files, one unit per header
 cmake --build build/debug --target check-quality-all  # whole tree
 ```
 
-- `CLAUSE_TEST_MODE=fast` kör golden-korpusar vid O0 positionellt plus
-  O2-projekt utan specialisering, kör mutationer en gång och hoppar över
+- `CLAUSE_TEST_MODE=fast` kör golden-korpusar med O0 positional plus O2
+  specialization-off project, kör mutationer en gång och hoppar över
   `full_only`-tester (separata konsumentprojekt som `runtime_generated_link`,
-  mätningar, granskningen `library_freshness` mot värdens OTP). Fullt läge
-  (standard) kör alla kombinationer av drivrutin/policy.
+  mätningar, värd-OTP-granskningen `library_freshness` och de långsamma
+  arbetsflödena `linking_lto`, `linking_exports`, `linking_compile_cache`,
+  `programs_compile` och `transforms_cache`). Fullständigt läge (standard)
+  kör alla kombinationer av drivrutin och policy.
 - Långa tester som drivs av ett Python- eller CMake-skript har en fast
   CTest-`COST`: CTest lär sig ett omslags kostnad från dess egen lilla CPU-tid
   och skulle starta dem sist.
 - `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplicerar gränserna per körning för
   golden-köraren (60 s) och köraren för semantiska fall (15 s) för
   instrumenterade byggen.
-- `check-quality`, `make format` och `make-format.bat` omfattar filer som
-  ändrats sedan `HEAD` plus ospårade filer; `cmake/quality_scope.py` lägger till
-  översättningsenheter som inkluderar en ändrad header (från Ninjas
-  beroendedata för valfri konfiguration) och, för clang-tidy, enheter vars
-  kompileringskommando skiljer sig från det som den senaste godkända körningen
-  registrerade (`build/debug/quality/tidy-commands.json`), så att en ändring av
-  en byggregel bara kontrollerar om de enheter den ändrar. Ändringar i
-  `.clang-tidy` eller tidy-skripten väljer allt, liksom ändringar av byggregler
-  före den första registrerade körningen.
+- `check-quality`, `make format` och `make-format.bat` täcker filer ändrade
+  sedan `HEAD` plus ospårade filer; `cmake/quality_scope.py` lägger för varje
+  ändrad header till en översättningsenhet som inkluderar den (dess egen
+  källfil, annars dess första användare, från Ninjas beroendedata för valfri
+  konfiguration; headerns övriga beroende enheter lämnas till
+  `check-quality-all` i den fullständiga kontrollen) och, för clang-tidy,
+  enheter vars kompileringskommando skiljer sig från det som den senaste
+  godkända körningen registrerade (`build/debug/quality/tidy-commands.json`),
+  så att en ändrad byggregel bara kontrollerar de enheter den ändrar igen.
+  Ändringar av `.clang-tidy` eller tidy-skripten väljer allt, liksom ändrade
+  byggregler före den första registrerade körningen.
 - `CLAUSE_OPTIMIZED_COMPILER` (standard ON) kompilerar `clau` och
   kompilatorbiblioteken optimerade även i Debug-byggen, med bibehållen
   felsökningsinformation och Debug-budgetarna för inferens; testerna tillbringar
@@ -222,13 +226,20 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   O2 mot varje system (`+N%`: Clause snabbare, det andra tar N % längre tid;
   `-N%`: Clause tar N % längre tid; `(Fx)` tidskvoten) med ett geometriskt
   medelvärde, `--lto` mot OTP och O2, programmens totala tider inklusive
-  uppstart, fel och tidsgränser (`--timeout`, 600 s per körning).
+  uppstart, körbara filers storlekar, fel och tidsgränser (`--timeout`, 600 s per körning).
   Iterationsantalen håller en standardkörning under 10 minuter; Clause, det
   långsammaste systemet, bestämmer storlekarna, så vissa OTP-kärnor varar bara
   några millisekunder.
+- Körbara filers storlekar i byte: varje program vid `-O2`, med `--lto` och
+  vid `-O0` (ett extra bygge som bara mäts, aldrig körs; båda hoppas över av
+  `--no-lto`) och baslinjen vid `-O2`, med en totalrad och ändringarna O2 mot
+  O0, `--lto` mot O2, `--lto` mot O0 och O2 mot baslinjen (`-N%` mindre);
+  samt `clau` vid HEAD och baslinjen. Historiken behåller dem som
+  `sizes_bytes` (`programs`: program → kolumn → byte, `clau`:
+  `head`/`baseline` → byte; `null` där ett bygge misslyckades).
 - Historik: `benchmarks/history/<host>.json` behåller en post per kördag
   (kördatum, HEAD-hash och commitdatum, medianer för Clause, OTP och
-  baslinjen), `benchmarks/history/reports/<host>/<day>-<hash>.txt`
+  baslinjen, storlekar), `benchmarks/history/reports/<host>/<day>-<hash>.txt`
   textrapporterna; en ny körning samma dag ersätter båda. Poster och rapporter
   som körts mer än 183 dagar före den nyaste rensas bort; en körning med
   ändringar i källkoden som inte har checkats in rapporteras men registreras
@@ -276,6 +287,7 @@ CTest-körningar utan överhoppningar.
 | 2026-10-12 | Steps 62D1–62E byggkatalog och cachar | 263/264 | alla | Fullständig CTest, känt fel i `codegen_resource_cli`; `check-quality-all` rent |
 | 2026-10-13 | Steps 58U–58W inferenscache | 278/279 | alla | Fullständig CTest, känt fel i `codegen_measurements`; `check-quality-all` rent |
 | 2026-10-14 | Step 41S `prim_eval` och den nya luerl-körningen (H3 stängd) | 299/300 | alla | Se nuvarande baslinje |
+| 2026-10-17 | Plan 20 OPTM.2 (enords-Term, persistenta termer på plats och återvunna) och OPTM.3 (okontrollerade åtkomstfunktioner) | 330/332 | all | Fullständig CTest: känt fel i `codegen_measurements`, och `library_freshness` (värdens OTP) väntar sig ännu de `not_implemented`-stubbkroppar som `b0e62a38` ersatte; `check-quality-all` utan anmärkningar |
 
 PG = steg i mönster-/guard-planen; posterna för plan 11-stegen är arkiverade i
 `.agents/00-finished.md`.

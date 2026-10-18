@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: a8c3f8f6
-sourceSha256: 0717f1e1336ae5419c5ef646d39a5488fd45468113ecbf7eb15897e3370b69c4
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
+translatedAt: 2026-10-18
 ---
 # ABI del código generado (revisión 21)
 
@@ -330,6 +330,15 @@ runtime. Un `<symbol>` exportado conserva la firma
   map clásico, con las claves ordenadas en tiempo de compilación en el orden
   exacto de términos y conservando el último valor de una clave repetida; en
   otro caso las construye `CLAUSE_map_v1`.
+- Los patrones de map (`#{K := V}`, `#{}`), `map_get/2`, `is_map_key/2`,
+  `map_size/1` y las actualizaciones (`M#{K := V}`, `M#{K => V}`, como máximo
+  8 campos) leen en línea una celda de map clásico cuando cada clave es un
+  átomo o un entero pequeño, cuya igualdad de términos es igualdad de palabras:
+  se recorren las palabras de clave y después la palabra de valor, o se copia
+  la celda con los nuevos valores cuando ya contiene todas las claves y hay
+  espacio en el heap. Una clave ausente hace fallar un patrón de inmediato;
+  los árboles de map, otras claves, una clave ausente en otros casos y los
+  errores usan `CLAUSE_map_v1` (búsquedas en maps pequeños).
 - Las tuplas y listas de como máximo 64 palabras se asignan en línea por
   incremento de puntero en `[heap_top, heap_limit)` (cabecera o celdas cons
   escritas en el sitio, `heap_top` avanzado); si no, las construye
@@ -414,7 +423,9 @@ Formas en línea (`codegen/lowering_inline.cpp`): las pruebas de tipo
 longitud en bits) leen las etiquetas y, tras una prueba de etiqueta boxed, el
 tipo de cabecera (`abi::v1::HeaderKind`); nunca llaman a un servicio. Las
 comparaciones de dos inmediatos (`==`, `/=`) o de dos enteros pequeños (`<`,
-`=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `hd/1`, `tl/1`, los operadores
+`=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `bit_size/1` y `byte_size/1`
+(a partir de la palabra de longitud en bits, mientras el tamaño sea un entero
+pequeño), `hd/1`, `tl/1`, los operadores
 booleanos, `band`, `bor`, `bxor`, `bsr`, `bsl` (mientras el resultado siga
 siendo pequeño) y `div`/`rem` pequeños se ejecutan en línea; `self/0` lee
 `FrameState::self`. Se ejecutan en línea donde sus operandos lo permiten y, en
@@ -433,13 +444,18 @@ con cuerpo nulo es un builtin: entrar en él ejecuta el builtin sobre los
 registros y vuelve al llamador, o suspende el proceso en la continuación del
 builtin cuando este hizo un trap ([porciones](builtins.md#portions)).
 
-Un builtin directo (`BuiltinName::direct`: conversiones puras como
+Un builtin directo (`BuiltinCall::direct`: conversiones puras como
 `integer_to_list/1`, `atom_to_list/1`, `list_to_tuple/1`, `setelement/3`,
 `phash2/1`) nunca hace un trap, ni espera, ni actúa sobre otro proceso. El
 código generado lo llama con `CLAUSE_builtin_call_v1(context, builtin, arguments)`,
 que ejecuta su cuerpo de inmediato y devuelve el resultado, sin transferencia de
 marco, sin punto de reanudación y sin safepoint de entrada; gasta una reducción,
-y un fallo va al canal comprobado como el de un servicio.
+y un fallo va al canal comprobado como el de un servicio. Un builtin rápido
+(`BuiltinCall::quick`: `length/1`, `binary_to_list/1`, `list_to_binary/1`,
+`iolist_to_binary/1`) se llama primero del mismo modo; su vía rápida acotada
+devuelve 0 cuando rechaza la operación (entradas más largas, otras formas,
+cualquier error y siempre que se tracen las llamadas), y el código generado
+entra entonces en el marco del builtin como para cualquier builtin puente.
 
 `abi::v1::dispatch_builtin` llama a builtins registrados por el host mediante
 los bytes de módulo/función, el array de argumentos y la aridad, y devuelve un
@@ -488,3 +504,4 @@ los bytes de módulo/función, el array de argumentos y la aridad, y devuelve un
 | 20 | `MapOperation::entries` y generadores de map en línea |
 | 21 | `ModuleDescriptor::fun_cache` y clausuras en línea |
 | 22 | Builtins directos: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
+| 23 | Builtins rápidos: `BuiltinName::call` (`BuiltinCall`), 0 de `CLAUSE_builtin_call_v1` rechaza la operación |

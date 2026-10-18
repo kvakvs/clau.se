@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: a8c3f8f6
-sourceSha256: cc0485350969c6f992d4987c8f893772eef2f3b1d7b9f3315e20c63541a45bc8
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
+translatedAt: 2026-10-18
 ---
 # Vertrag des Prozess-Heaps
 
@@ -182,9 +182,9 @@ wie OTP seine HAMT-Knoten auf dem Heap hält. Kleinere Maps bleiben
   in einer schreibgeschützten globalen Variablen
   (`ModuleDescriptor::literals`) angelegt und bei der Registrierung des Moduls
   runtime-weit registriert (`detail::LiteralAreas`, ein sperrfreier sortierter
-  Schnappschuss). Terme jedes Prozesses dürfen darauf zeigen: Die Zulassung und
-  `TermAccess::object` lesen Zellen über `HeapStorage::readable` (Heap,
-  Fragmente, dann Literale); die Speicherbereinigung lässt Literalwörter, wie
+  Schnappschuss). Terme jedes Prozesses dürfen darauf zeigen: Die Zulassung prüft
+  `HeapStorage::readable` (Heap, Fragmente, dann Literale), während
+  `TermAccess::object` vertrauenswürdige Zeiger liest; die Speicherbereinigung lässt Literalwörter, wie
   sie sind (`owned` bleibt nur für den Heap); Kopien zwischen Heaps und in
   Nachrichtenpuffer zeigen weiter darauf (eine Literalwurzel braucht keine
   Kopie); der Verifizierer akzeptiert sie. Literale halten nur Immediates (nur
@@ -303,20 +303,37 @@ wenn er endet.
 Zeiger in einen Prozess-Heap werden nur vom Compiler und von der Runtime
 innerhalb dieses Prozesses erzeugt und benennen immer einen Objektanfang; es
 gibt keine inneren Zeiger zu erkennen. Die Zulassung (admission) ist eine
-Besitzprüfung für Wörter, die an einen Prozess zurückgegeben werden:
+Besitzprüfung für Wörter, die an einen Prozess zurückgegeben werden.
+`Term::from_word(word, context)` / `TermAccess::admit` prüfen zuerst, ob der
+Speicher noch lebt (`expired_context`); Atome und Pids/Ports müssen dieser
+Runtime gehören (feste Atome werden geteilt). Für zusammengesetzte Wörter:
 
 1. Die Adresse ist wortausgerichtet innerhalb eines der Bereiche des Prozesses,
    unterhalb seines `top`: Zuerst wird der Heap-Block geprüft, dann die nach
    Adresse sortierten Fragmente, dann die Literalbereiche
-   ([Bereiche](#areas)). Fremde und veraltete Wörter scheitern hier ohne jeden
-   Ladezugriff.
+   ([Bereiche](#areas)). Adressen außerhalb dieser Bereiche scheitern ohne
+   Ladezugriff; alte Wörter an wiederverwendeten Adressen werden nicht erkannt.
 2. Ein geboxtes Wort benennt einen Header einer zugelassenen Art (keine
    Füllzelle); ein Listenwort benennt eine Cons-Zelle (ein Wort, das kein
    Header ist).
 
-Zugriffsfunktionen dekodieren Art, Anzahl und Nutzdaten aus dem Header selbst.
-`verify()` bleibt für Tests die vollständige Prüfung, dass jeder Platz einen
-Objektanfang benennt.
+Nach der Zulassung dekodiert `TermAccess::object` Art, Anzahl und Nutzdaten
+über `trusted_cell` ohne Heap-Abfrage; `child` umschließt das gespeicherte
+Wort und `validate` prüft nur die Darstellung. Fabriken lassen Eingaben
+weiterhin über `ProcessHeap::retain` erneut zu und weisen fremde
+zusammengesetzte Eingaben mit `wrong_owner` zurück.
+
+Diese Prüfungen laufen nur in Debug-Builds (`CHECKED_ADMISSION`, OPTM.2C).
+Ein Release-Build vertraut jedem zusammengesetzten Wort, Atom-, Pid- und
+Port-Wort, das einem Builtin, Service oder einer Fabrik übergeben wird, wie
+ERTS seinen Eterms vertraut: Erzeugter Code produziert nur Wörter des eigenen
+Prozesses, von Literalbereichen und den Atomen der Runtime, sodass die
+Bereichs- und Besitzerabfragen bei jedem Argument nur Kosten verursachten.
+Andere Immediates werden weiterhin klassifiziert. Tests mit gefälschten oder
+fremden Wörtern erwarten eine Zurückweisung nur bei `CHECKED_ADMISSION`.
+`map_find` darf den Schlüssel eines anderen Prozesses ohne diese Zurückweisung
+schreibgeschützt vergleichen. `verify()` bleibt für Tests die vollständige
+Prüfung, dass jeder Platz einen Objektanfang benennt.
 
 ## Wurzeln und Safepoints
 
@@ -329,7 +346,7 @@ des Prozesses:
 | Termplätze der Frames | Die ersten `roots` Plätze jedes Frames auf dem Stack | Unterste Frames haben keine; Fortsetzungs- und Handler-Indizes sind Ganzzahlen |
 | Rohe Frame-Plätze | Keine | Ausgelagerte native Werte; erzeugter Code hält dort an einem Safepoint kein Heap-Wort ([Neuladeregel](#reload-rule)) |
 | Register | `x[0..live)` (`ProcessStack::keep_registers`) | Die Argumente eines suspendierten Eintritts; jedes Push und Pop leert `live` |
-| Fehlerkanal | Fehler-Nutzdaten (BEAM `fvalue`), Argumentliste von `erlang:error/2,3`, Stacktrace-Term | Werden an Ort und Stelle neu gebunden; erfasste Trace-Frames sind Deskriptorzeiger in den Code |
+| Fehlerkanal | Fehler-Nutzdaten (BEAM `fvalue`), Argumentliste von `erlang:error/2,3`, Stacktrace-Term | `GeneratedCallState`-Terme werden durch `Term::rebind` umgeschrieben, das nur das neue Wort speichert; erfasste Trace-Frames sind Deskriptorzeiger in den Code |
 | Trap-Zustand | Die Termwörter des `TrapState` eines trappenden Builtins ([Portionen](builtins.md#portions)) | Freigegeben, wenn das Builtin endet oder scheitert |
 | Prozess-Dictionary | Jeder Schlüssel und Wert | Bis zum Löschen oder Ende des Prozesses |
 | Mailbox | Jede Nachricht im Signal-Eingang und in der Nachrichtenwarteschlange, einschließlich `'EXIT'`- und `'DOWN'`-Nachrichten | Bis ein receive sie entnimmt; an Ort und Stelle umgeschrieben, sodass der receive-Cursor (eine Listenposition) und die Timeout-Frist gültig bleiben |
@@ -342,10 +359,15 @@ nie bereinigt. Fun-Zellen benennen Code über ihre nicht verfolgte
 entladen, daher brauchen weder Funs noch Trace-Deskriptoren einen Pin. Kleine
 Immediates sind keine Wurzeln.
 
-Wie im C-Code von ERTS ist ein Host-`Term` ein rohes getaggtes Wort, gültig bis
-zum nächsten Safepoint seines Heaps; er pinnt keinen Heap-Speicher
-([Besitz](terms.md#ownership)). Ein `Term` ist nur innerhalb seines eigenen
-Prozesses gültig; andere Prozesse dürfen ihn nur lesen.
+Wie im C-Code von ERTS ist ein Host-`Term` genau ein trivial kopierbares Wort,
+gültig bis zur nächsten Speicherbereinigung seines Heaps oder zum Prozessende;
+er hat weder Pin noch Heap-Zeiger, Lebensdauer-Token oder Bereinigungsepoche
+([Besitz](terms.md#ownership)). Ein Zugriff nach einer dieser Grenzen liest
+verschobenen oder freigegebenen Speicher und ist undefiniert, ohne
+`stale_term`-Prüfung. Registrierte Wurzeln werden umgeschrieben; ein nicht
+registrierter Host-Term muss aus seinem umgeschriebenen Wurzelwort neu
+aufgebaut werden. Ein Term gehört seinem Prozess; andere Prozesse dürfen ihn
+nur lesen, solange die Quelle stabil bleibt.
 
 Der Heap bewegt sich nur an einem Safepoint und nie, während eine Reservierung
 offen ist:
@@ -365,21 +387,27 @@ Heap nie: Eine Anforderung, die nicht passt, erzeugt ein Fragment.
 
 Ein `MessageBuffer`
 ([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) hält einen
-Term außerhalb jedes Prozesses: `copy_of` kopiert den Graphen aus seinem
-Prozess-Heap in einen eigenen `HeapStorage` (eigenes Lebensdauer-Token, die
-Atome und das Speicherkonto der Runtime, Off-Heap-Binaries geteilt und
-gehalten), mit derselben `GraphCopy`, die ein Senden verwendet; `copy_to`
-kopiert ihn in den Heap eines Empfängers. Immediates brauchen keinen Speicher.
+Term außerhalb jedes Prozesses: `copy_of(value, sender)` kopiert den Graphen
+aus dem Prozess-Heap des Senders in einen eigenen `HeapStorage`. Der
+`ProcessContext` des Senders liefert Heap-Optionen, Literalbereiche, Atome,
+Identitäten und das Speicherkonto der Runtime; der Puffer behält sein eigenes
+Lebensdauer-Token und teilt Off-Heap-Binaries. Er verwendet dieselbe
+`GraphCopy` wie ein Senden; `copy_to` kopiert ihn in den Heap eines Empfängers.
+Immediates und Literalwurzeln brauchen keinen Speicher. Fabriken,
+Reservierungen und Nachrichtenpuffer behalten ihre Lebensdauerprüfungen
+(`expired_context`); ein aus einem Puffer gelesener Term pinnt nichts und
+darf seinen zugrunde liegenden Speicher nicht überleben.
 Der Puffer wird nie bereinigt und mit seinem letzten Besitzer freigegeben; sein
 Block umfasst genau die Wörter des Terms, unabhängig vom Mindest-Heap des
 Senders. Nachrichten an einen Prozess, der auf einem anderen Worker läuft
-([Worker](processes.md#workers)), Timer-Nachrichten, Monitor-Tags und
-[persistente Terme](runtime.md#persistent-terms) verwenden ihn, sodass sie nie
-neu kodiert werden.
+([Worker](processes.md#workers)), Timer-Nachrichten und Monitor-Tags verwenden
+ihn, sodass sie nie neu kodiert werden;
+[persistente Terme](runtime.md#persistent-terms) leben in ihrem eigenen
+Adressbereich und werden in Puffer kopiert, nicht mit ihnen geteilt.
 
 **Nachrichtenübergabe.** Ein Senden, dessen Nachricht mindestens
-`MessageBuffer::ADOPTED_WORDS` (512) Wörter umfasst, gezählt durch einen
-begrenzten Durchlauf, der dort stoppt, baut den Puffer, bevor es die Sperre des
+`MessageBuffer::ADOPTED_WORDS` (512) Wörter umfasst, gezählt durch
+`MessageBuffer::large(value, sender, minimum)` mit einem begrenzten Durchlauf, der dort stoppt, baut den Puffer, bevor es die Sperre des
 Executors nimmt, sodass der Sender beim Kopieren keine Sperre hält. Der
 Empfänger übernimmt den Puffer dann, statt ihn zu kopieren
 (`MessageBuffer::take`, `HeapStorage::adopt`), wenn der Puffer keinen anderen
@@ -565,8 +593,7 @@ Optimierer nie das Register wiederverwendet, das `Y` enthielt.
 Eine Cheney-Kopie (`memory/heap_collect`), ein vollständiger Durchlauf oder eine
 kleine Bereinigung ([Generationen](#generations)): Zuerst wird der neue Block
 alloziert (ein Fehlschlag ist `out_of_memory` und lässt den Heap unberührt),
-dann werden Host-`Term`s als veraltet markiert, das Objekt hinter jedem
-Wurzelwort kopiert und der neue Block von links nach rechts durchsucht, wobei
+dann wird das Objekt hinter jedem Wurzelwort kopiert und der neue Block von links nach rechts durchsucht, wobei
 die Kinder jeder Kopie kopiert werden. Der Header eines verschobenen geboxten
 Objekts wird durch einen geboxten Zeiger auf seine Kopie ersetzt; eine
 verschobene Cons-Zelle bekommt einen Null-Kopf und einen Rest, der auf ihre
@@ -627,17 +654,21 @@ Generationelle Bereinigung, wie ERTS sie durchführt, ohne deren Schreibbarriere
 ## Kopieren zwischen Heaps
 
 `ProcessHeap::add(value)`, gleichbedeutend `value.copy_to(heap)`, liefert einen
-Term des Ziel-Heaps (BEAM `size_object` und `copy_struct`). Jede Quellzelle
-wird zuerst im Bereich der vorherigen gesucht, und eine Cons-Zelle muss nicht
-geparst werden:
+Term des Ziel-Heaps (BEAM `size_object` und `copy_struct`). Quellzellen werden
+über vertrauenswürdige Zeiger gelesen, und eine Cons-Zelle muss nicht geparst
+werden:
 
-- Immediates und Atome derselben Runtime brauchen keinen Speicher, und ein Term
-  des Ziel-Heaps behält seine Identität. Ein Graph eines anderen Prozesses
-  derselben Runtime wird kopiert; der Graph einer anderen Runtime ist
-  `wrong_owner`, eine abgelaufene Quelle `expired_context`, ein Quell-Handle,
-  das älter als die letzte Bereinigung seines Heaps ist, `stale_term`.
-  Fabriken weisen fremde Eingaben weiterhin zurück (`ProcessHeap::retain`),
-  sodass nur eine explizite Kopie einen Graphen bewegt.
+- Ein Term, den das Ziel lesen kann (sein eigener Heap oder ein Literalbereich,
+  geprüft durch `storage_->readable(address)`), behält seine Identität;
+  andere Graphen werden kopiert. Vom Register der Ziel-Runtime erkannte
+  Literalbereiche bleiben geteilt. Beide Heaps müssen leben und einer Runtime
+  gehören: ein Vertrag mit dem Aufrufer, ohne Runtime-übergreifende Prüfung
+  zusammengesetzter Kopien oder Prüfung der Quelllebensdauer pro Handle.
+  Ein Lesen der Quelle nach Bereinigung oder Prozessende ist undefiniert.
+  Wurzelatome, Pids und Ports durchlaufen weiterhin die Zulassung am Ziel;
+  ein abgelaufenes Ziel meldet `expired_context`. Fabriken weisen fremde
+  zusammengesetzte Eingaben weiterhin zurück (`ProcessHeap::retain`), sodass
+  nur eine explizite Kopie einen Graphen bewegt.
 - Kopien sind flach, wie das standardmäßige `copy_struct` von ERTS (ohne seine
   optionale Variante, die Teilung erhält): Ein Teilterm wird pro Erreichen
   einmal kopiert, sodass `{T, T}` `T` zweimal kopiert, und ein Term, dessen

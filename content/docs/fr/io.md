@@ -1,18 +1,18 @@
 ---
 source: docs/io.md
-sourceCommit: a8c3f8f6
-sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
+translatedAt: 2026-10-18
 ---
 # Sortie console (`io`)
 
 `io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` et `io:nl/0,1` sont
 des builtins du runtime du module `io` dans le catalogue du pont
-([builtins](builtins.md)) ; le runtime implémente en C++ les règles
-`io_lib_format` et `io_lib_pretty` d'OTP
-([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Les fonctions d'entrée
-de `io` sont écrites en Erlang dans la [bibliothèque](library.md#contents).
+([builtins](builtins.md)) ; le texte est celui de `io_lib:format/2`, construit
+par le [moteur d'io_lib](builtins.md#io_lib) puis aplati, avec `~p` mis en
+page selon les règles d'`io_lib_pretty` d'OTP
+([io_lib/pretty.cpp](../runtime/src/builtins/io_lib/pretty.cpp)). Les fonctions
+d'entrée d'`io` sont en Erlang dans la [bibliothèque](library.md#contents).
 
 ## Appels
 
@@ -48,32 +48,35 @@ de `io` sont écrites en Erlang dans la [bibliothèque](library.md#contents).
   caractère est un chardata écrit tel quel, sans séquences de contrôle, et
   avance la colonne d'une unité (une bizarrerie d'OTP).
 - Séquences de contrôle `~F.P.PadModC` : largeur de champ `F` (négative ou
-  `-` : alignée à gauche), précision `P`, caractère de remplissage, `*` prenant
-  un entier (ou le remplissage) dans les arguments, modificateurs `t`
-  (Unicode), `l` (pas de détection de chaînes) et `k` (maps ordonnées ; Clause
-  affiche toujours les maps dans l'ordre des clés).
-- `C` pris en charge : `~w`, `~p`, `~s`, `~c`, `~b`, `~B`, `~i`, `~n`, `~~`,
-  avec les règles de champ d'OTP : `~s` tronque ou complète jusqu'à `P` dans
-  `F` ; `~w` et `~b` affichent des caractères `*` lorsque le texte ne tient pas
-  dans `F` ; `~c` répète le caractère ; `~b`/`~B` prennent la base dans `P`
-  (2..36) ; `~n` avec `F` écrit `F` sauts de ligne.
+  `-` : alignement à gauche), précision `P`, caractère de remplissage, `*`
+  prenant un entier (ou le remplissage) dans les arguments, modificateurs `t`
+  (Unicode), `l` (pas de détection de chaînes), `k` (maps ordonnées) et `K`
+  (ordre fourni par les arguments : `ordered`, `reversed` ; les funs de
+  comparaison donnent `badarg`). Les maps s'affichent dans l'ordre des clés.
+- Tous les contrôles d'OTP 29 avec leurs règles de champ : `~w ~W ~p ~P ~s ~e ~f ~g ~b
+  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` tronque ou complète jusqu'à `P` dans
+  `F` ; `~w`, les entiers et les flottants affichent des caractères `*`
+  lorsque le texte ne tient pas dans `F` ; `~c` répète le caractère ; les bases
+  des entiers viennent de `P` (2..36) ; `~n` avec `F` écrit `F` sauts de ligne ;
+  les largeurs sont comptées comme par `io_lib:chars_length/1`.
 - Sans `t`, `~s` n'accepte que des caractères Latin-1 et `~c` écrit l'octet de
   poids faible de son entier ; `~w`/`~p` échappent les caractères d'atome
   au-delà de Latin-1 sous la forme `\x{...}`. Avec `t`, `~s` lit les binaries
   en UTF-8 (avec repli sur Latin-1) et `~p` écrit `<<"..."/utf8>>` pour les
   binaries UTF-8 imprimables.
-- `badarg` : un caractère de contrôle inconnu, des arguments manquants ou en
-  trop, un argument du mauvais type, `F` inférieur à `P` pour `~s`/`~c`, un
-  `~p` ou `~n` aligné à gauche, une base hors de 2..36, une sortie qui n'est
-  pas de l'Unicode.
-- Non implémentés (`badarg`, voir [différences](differences.md#io)) : `~e`,
-  `~f`, `~g`, `~x`, `~X`, `~+`, `~#`, `~W`, `~P` et le modificateur `K`.
+- `badarg` : tout ce qui fait échouer `io_lib:format/2` (un caractère de
+  contrôle inconnu, des arguments manquants ou en trop, un argument du mauvais
+  type, `F` inférieur à `P`, un `~p` ou `~n` aligné à gauche, une base hors
+  de 2..36), et une sortie qui n'est pas de l'Unicode.
 
 ## Affichage formaté (`~p`)
 
 - La longueur de ligne est `F` (80 par défaut, 0 écrit une seule ligne) ; la
   première colonne est `P`, sinon la colonne que la sortie a atteinte sur sa
   ligne (tabulations aux multiples de 8).
+- `~P` coupe le terme à la profondeur passée en argument et `chars_limit`
+  (options de `io:format/3` et `io_lib:format/3`) à la part des caractères
+  attribuée au contrôle, en affichant `...` aux endroits omis, comme OTP.
 - Le terme devient la forme intermédiaire d'OTP : chaque valeur avec sa
   longueur sur une ligne ; les chaînes (listes plates de caractères Latin-1
   imprimables, l'`io:printable_range()` par défaut), les binaries

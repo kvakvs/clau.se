@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: a8c3f8f6
-sourceSha256: 0717f1e1336ae5419c5ef646d39a5488fd45468113ecbf7eb15897e3370b69c4
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
+translatedAt: 2026-10-18
 ---
 # ABI du code généré (révision 21)
 
@@ -340,6 +340,15 @@ entrée hôte appelant `CLAUSE_invoke_v1(context, frame, arguments)`.
   de map classique, clés triées à la compilation dans l'ordre exact des
   termes, la dernière valeur d'une clé répétée étant conservée ; sinon
   `CLAUSE_map_v1` les construit.
+- Les motifs de map (`#{K := V}`, `#{}`), `map_get/2`, `is_map_key/2`,
+  `map_size/1` et les mises à jour (`M#{K := V}`, `M#{K => V}`, au plus
+  8 champs) lisent une cellule de map classique en ligne lorsque chaque clé
+  est un atome ou un petit entier, dont l'égalité des termes est celle des
+  mots : parcours des mots de clé, puis du mot de valeur, ou copie de la
+  cellule avec les nouvelles valeurs si elle contient déjà toutes les clés
+  et que le tas a de la place. Une clé absente fait échouer un motif aussitôt ;
+  les arbres de map, les autres clés, une clé absente ailleurs et les erreurs
+  passent par `CLAUSE_map_v1` (recherches dans les petites maps).
 - Les tuples et les listes d'au plus 64 mots sont alloués en ligne par
   incrément de pointeur dans `[heap_top, heap_limit)` (en-tête ou cellules
   cons écrits sur place, `heap_top` avancé), sinon construits par
@@ -429,7 +438,9 @@ Formes en ligne (`codegen/lowering_inline.cpp`) : les tests de type
 bits) lisent les étiquettes et, après un test d'étiquette boxed, le genre de
 l'en-tête (`abi::v1::HeaderKind`) ; ils n'appellent jamais de service. Les
 comparaisons de deux immédiats (`==`, `/=`) ou de deux petits entiers (`<`,
-`=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `hd/1`, `tl/1`, les opérateurs
+`=<`, `>`, `>=`), `element/2`, `tuple_size/1`, `bit_size/1` et `byte_size/1`
+(depuis le mot de longueur en bits, tant que la taille est un petit entier),
+`hd/1`, `tl/1`, les opérateurs
 booléens, `band`, `bor`, `bxor`, `bsr`, `bsl` (tant que le résultat reste
 petit) et `div`/`rem` sur petits entiers s'exécutent en ligne ; `self/0` lit
 `FrameState::self`. Ils s'exécutent en ligne là où leurs opérandes le
@@ -450,14 +461,19 @@ registres et retourne dans l'appelant, ou suspend le processus à la
 continuation du builtin lorsque celui-ci a été intercepté (trapped)
 ([portions](builtins.md#portions)).
 
-Un builtin direct (`BuiltinName::direct` : conversions pures comme
+Un builtin direct (`BuiltinCall::direct` : conversions pures comme
 `integer_to_list/1`, `atom_to_list/1`, `list_to_tuple/1`, `setelement/3`,
 `phash2/1`) n'est jamais intercepté, n'attend jamais et n'agit jamais sur un
 autre processus. Le code généré l'appelle avec
 `CLAUSE_builtin_call_v1(context, builtin, arguments)`, qui exécute son corps
 immédiatement et retourne le résultat, sans transfert de cadre, sans point de
 reprise et sans point sûr d'entrée ; il dépense une réduction, et un échec va
-au canal vérifié comme pour un service.
+au canal vérifié comme pour un service. Un builtin rapide (`BuiltinCall::quick` :
+`length/1`, `binary_to_list/1`, `list_to_binary/1`, `iolist_to_binary/1`)
+est d'abord appelé de la même façon ; son chemin rapide borné renvoie 0
+lorsqu'il refuse (entrées plus longues, autres formes, toute erreur, et
+systématiquement lorsque les appels sont tracés), et le code généré entre
+alors dans le cadre du builtin comme pour tout builtin de pont.
 
 `abi::v1::dispatch_builtin` appelle les builtins enregistrés par l'hôte
 d'après les octets du module et de la fonction, le tableau d'arguments et
@@ -507,3 +523,4 @@ succès.
 | 20 | `MapOperation::entries` et générateurs de maps en ligne |
 | 21 | `ModuleDescriptor::fun_cache` et fermetures en ligne |
 | 22 | Builtins directs : `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
+| 23 | Builtins rapides : `BuiltinName::call` (`BuiltinCall`), 0 de `CLAUSE_builtin_call_v1` signifie un refus |

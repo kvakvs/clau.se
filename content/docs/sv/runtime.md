@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: a8c3f8f6
-sourceSha256: 191e95cc2bea15e016f69e98aca4ce93be2fa8f47a09d9d1977607eceaf69fc2
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
+translatedAt: 2026-10-18
 ---
 # Runtime
 
@@ -56,10 +56,12 @@ livscykel.
 - Livscykelanrop kastar aldrig undantag och är tysta. Statusvärden:
   [abi.md](abi.md#runtime-services).
 
-Ordning vid nedrivning: stäng schemaläggarposter → förstör kontexter → släpp
+Nedrivningsordning: stäng schemaläggarposter → förstör kontexter → släpp
 kodregistreringar → förstör schemaläggartjänsten → atomtabellen sist.
-Upplösta funktionshandtag håller kod och atomstavningar vid liv efter att
-runtimen rivits, men aldrig en process.
+Upplösta funktionshandtag håller kod vid liv efter runtimens nedrivning, men
+deras atomplatsord fäster inga stavningar. Atomlagringen tar sina globala platser
+ur bruk innan poster frigörs; stavningsåtkomst genom en överlevande icke-fast
+atom-Term rapporterar `expired_context`.
 
 ## Processminne
 
@@ -92,6 +94,10 @@ områden, dimensionering, admission, rötter och skräpsamling specificeras i
   ([rötter och safepoints](runtime-heap.md#roots-and-safe-points)); genererad
   kod samlar skräp vid sina egna safepoints
   ([skräpsamling i genererad kod](runtime-heap.md#collection-in-generated-code)).
+  Värd-Terms är orotade enordsvärden; bygg om dem från omskrivna rötter efter
+  skräpsamling. De saknar livstids- och inaktualitetskontroller och får inte
+  läsas efter skräpsamling eller processens slut. Fabriker och reservationer
+  behåller egna livstidstoken och rapporterar ännu `expired_context`.
 
 ## Kodserver och inbyggda funktioner
 
@@ -145,24 +151,34 @@ En tabell per runtime (`memory/persistent_terms`), som ägs av `Runtime::Impl`
 och nås genom `ProcessContext::persistent_terms()`, håller termerna för
 `persistent_term` ([inbyggda funktioner](builtins.md#persistent-terms)).
 
-- En nyckel och dess värde kopieras var för sig till en `MessageBuffer`
-  ([meddelandebuffertar](runtime-heap.md#message-buffers)) utanför varje
-  process, så att de överlever processen som lagrade dem och ingen
-  skräpsamling flyttar dem.
-- Poster hittas genom en hash av nyckeln (de inbyggda funktionerna använder
-  termhashen från `phash2`) och exakt likhet, jämförd på plats i bufferten
-  (`MessageBuffer::value`).
-- En läsning kopierar värdet till läsarens heap, där OTP delar ut en referens
-  in i ett literalområde och betalar med en global skräpsamling vid ersättning
-  eller borttagning ([skillnader](differences.md)). Varje processheap förblir
-  självständig: ett ersatt eller borttaget värde frigörs när den sista läsare
-  som fortfarande kopierar det släpper sin buffertreferens, och ingen global
-  skräpsamling behövs.
-- Ett delat lås betjänar läsare på valfritt antal arbetstrådar; put och erase
-  tar det ensamma och kopierar aldrig medan de håller det. CTest
-  `runtime_persistent_terms` täcker värden som överlever sin skrivare, ersatta
-  värden som hålls av läsare, samtidiga läsare och skrivare samt frigjorda
-  debiteringar.
+- Varje nyckel och värde kopieras till ett eget område i runtimens intervall
+  för persistenta termer (`memory/persistent_region`): en adressreservation
+  (64 GiB adressrymd på 64-bitarsvärdar, 256 MiB på 32-bitarsvärdar) vars sidor
+  tilldelas när områden allokeras, så att det bara krävs en intervalljämförelse
+  för att avgöra om ett ord betecknar en persistent term. Kopior delar endast
+  modulliteraler, så varje område är fristående; dess binaries delar buffertar.
+- Poster är rotord som hittas via en hash av nyckeln (de inbyggda funktionerna
+  använder termhashen från `phash2`) och exakt likhet, jämförd på plats.
+- En läsning returnerar det lagrade ordet på plats, som OTP:s literala
+  persistenta termer: varje process får hålla det och skicka det (en kopia
+  till en annan process behåller ordet); skräpsamlingar lämnar det orört och
+  admissionen godtar det som en literal. Meddelandebuffertar och nya
+  persistenta termer kopierar persistenta ord.
+- **Återvinning.** Ett ersatt eller raderat värdes område tas ur bruk under en
+  ny epok. Därefter kopierar varje kopia dess ord, och varje process som var
+  registrerad då kopierar de objekt den håller från området till sin egen heap
+  vid en evakuerande fullständig skräpsamling (`Copier` med regionen, varje
+  objekt en gång, binary-buffertar hålls före samlingen): en körande eller
+  köad process i början av nästa tidskvantum, en parkerad direkt, genom den
+  put eller erase som tog området ur bruk (`Executor::evacuate_parked`, under
+  exekverarlåset). När varje sådan process gjort detta eller avslutats frigörs
+  området. `info/0` räknar bara aktuella poster.
+- Ett delat lås betjänar läsare på valfritt antal arbetare; put och erase tar
+  det exklusivt (kopior görs innan). CTest `runtime_persistent_terms` täcker
+  värden som överlever sin skrivare, läsningar på plats över skräpsamlingar
+  och mellan processer, ersatta och raderade värden som läsare håller,
+  samtidiga läsare och skrivare samt återvinning (kopior från områden som tas
+  ur bruk, evakuering, frigjorda områden och minnesdebiteringar).
 
 ## Schemaläggarens bokföring
 
@@ -189,13 +205,15 @@ processer på flera trådar i en runtime. Tjänster som de delar är
 synkroniserade; allt annat förblir begränsat till tråden som kör dess process
 eller skyddas av exekutorns mutex.
 
-- Atomer: `AtomStorage` skyddar båda indexen med en delad mutex.
-  Uppslagningar (`lookup`, `boolean`, `size`) delar den; `intern` slår upp
-  under det delade låset och endast en ny stavning tar det exklusiva låset,
-  kontrollerar igen och publicerar posten, så att kapplöpande internering av
-  samma stavning får ett och samma ord. Orden förblir stabila: en post ändras
-  eller tas aldrig bort före nedrivningen. Admission av atomord läser ett
-  låsfritt index ([atomer](terms.md#atoms)).
+- Atomer: `AtomStorage` skyddar sin stavnings-map och ägda poster med ett delat
+  mutex. `existing` och `size` delar det; `intern` slår först upp under det
+  delade låset, tar sedan det exklusiva låset för en ny stavning och
+  kontrollerar igen, så samtidiga interneringar får ett ord. Publicering
+  använder processens gemensamma `detail::atom_table`; admission och
+  stavningsläsningar använder dess låsfria nummerindex (`lookup` kontrollerar
+  även postens ägare). Fasta atomer behöver inget lås. Poster förblir
+  oförändrade tills nedrivningen tar deras platser ur bruk
+  ([atomer](terms.md#atoms)).
 - Kod: `CodeServer` skyddar sina moduler och definitioner av externa funs med
   en delad mutex. Uppslagningar (`find_module`, `resolve`, `atom_word`,
   `record_definition`, `fun_definition`, `export_frame`, `function_frame`,
@@ -209,7 +227,8 @@ eller skyddas av exekutorns mutex.
   efter varje kontext, så definitioner, ramar och atomplatser som den
   returnerat förblir giltiga för varje anrop och varje fun-cell. Handtag från
   `ResolvedFunction` och `find_module` behåller också sin modul efter att
-  runtimen är borta.
+  runtimen är borta; deras atomplatser behåller ord, inte fästen för
+  stavningar.
 - Pid- och portnummer: `IdentityNumbers` utfärdar nummer under ett exklusivt
   lås och godtar pid- och portord under ett delat.
 - Minne: redovisningen för hela runtimen (`RuntimeMemory`) debiterar och

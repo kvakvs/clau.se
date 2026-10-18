@@ -1,17 +1,17 @@
 ---
 source: docs/io.md
-sourceCommit: a8c3f8f6
-sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
+translatedAt: 2026-10-18
 ---
 # Konsolenausgabe (`io`)
 
 `io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` und `io:nl/0,1` sind
 Runtime-Builtins des Moduls `io` im Brückenkatalog
-([Builtins](builtins.md)); die Runtime implementiert die Regeln von
-`io_lib_format` und `io_lib_pretty` aus OTP in C++
-([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Die
+([Builtins](builtins.md)); der Text entspricht `io_lib:format/2`, wird von
+[der Engine von io_lib](builtins.md#io_lib) aufgebaut und abgeflacht, wobei
+`~p` nach den Regeln von `io_lib_pretty` aus OTP angeordnet wird
+([io_lib/pretty.cpp](../runtime/src/builtins/io_lib/pretty.cpp)). Die
 Eingabefunktionen von `io` sind Erlang in der
 [Bibliothek](library.md#contents).
 
@@ -50,29 +50,32 @@ Eingabefunktionen von `io` sind Erlang in der
 - Steuersequenzen `~F.P.PadModC`: Feldbreite `F` (negativ oder `-`:
   linksbündig), Genauigkeit `P`, Füllzeichen, `*` entnimmt eine Ganzzahl (oder
   das Füllzeichen) den Argumenten, Modifikatoren `t` (Unicode), `l` (keine
-  String-Erkennung) und `k` (geordnete Maps; Clause gibt Maps immer in
-  Schlüsselreihenfolge aus).
-- Unterstützte `C`: `~w`, `~p`, `~s`, `~c`, `~b`, `~B`, `~i`, `~n`, `~~`, mit
-  den Feldregeln von OTP: `~s` kürzt oder füllt auf `P` innerhalb von `F`; `~w`
-  und `~b` geben `*`-Zeichen aus, wenn der Text nicht in `F` passt; `~c`
-  wiederholt das Zeichen; `~b`/`~B` nehmen die Basis aus `P` (2..36); `~n` mit
-  `F` schreibt `F` Zeilenumbrüche.
+  String-Erkennung), `k` (geordnete Maps) und `K` (Reihenfolge aus den
+  Argumenten: `ordered`, `reversed`; Vergleichs-funs ergeben `badarg`).
+  Maps werden in Schlüsselreihenfolge ausgegeben.
+- Alle Steuersequenzen von OTP 29 mit ihren Feldregeln: `~w ~W ~p ~P ~s ~e ~f ~g ~b
+  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` kürzt oder füllt auf `P` innerhalb von
+  `F`; `~w`, Ganzzahlen und Gleitkommazahlen geben `*`-Zeichen aus, wenn der
+  Text nicht in `F` passt; `~c` wiederholt das Zeichen; Ganzzahlbasen kommen
+  aus `P` (2..36); `~n` mit `F` schreibt `F` Zeilenumbrüche; Breiten werden
+  wie bei `io_lib:chars_length/1` gezählt.
 - Ohne `t` nimmt `~s` nur Latin-1-Zeichen, und `~c` schreibt das niedrige Byte
   seiner Ganzzahl; `~w`/`~p` maskieren Atomzeichen jenseits von Latin-1 als
   `\x{...}`. Mit `t` liest `~s` Binaries als UTF-8 (mit Rückfall auf Latin-1),
   und `~p` schreibt `<<"..."/utf8>>` für druckbare UTF-8-Binaries.
-- `badarg`: ein unbekanntes Steuerzeichen, fehlende oder überzählige
-  Argumente, ein Argument falschen Typs, `F` kleiner als `P` für `~s`/`~c`, ein
-  linksbündiges `~p` oder `~n`, eine Basis außerhalb von 2..36, Ausgabe, die
-  kein Unicode ist.
-- Nicht implementiert (`badarg`, siehe [Unterschiede](differences.md#io)):
-  `~e`, `~f`, `~g`, `~x`, `~X`, `~+`, `~#`, `~W`, `~P` und der Modifikator `K`.
+- `badarg`: alles, woran `io_lib:format/2` scheitert (ein unbekanntes
+  Steuerzeichen, fehlende oder überzählige Argumente, ein Argument falschen
+  Typs, `F` kleiner als `P`, ein linksbündiges `~p` oder `~n`, eine Basis
+  außerhalb von 2..36), sowie Ausgabe, die kein Unicode ist.
 
 ## Formatierte Ausgabe (`~p`)
 
 - Die Zeilenlänge ist `F` (Standard 80, 0 schreibt eine Zeile); die erste
   Spalte ist `P`, sonst die Spalte, die die Ausgabe in ihrer Zeile erreicht hat
   (Tabs auf Vielfache von 8).
+- `~P` beschneidet den Term am Tiefenargument und `chars_limit` (Optionen von
+  `io:format/3` und `io_lib:format/3`) am Zeichenanteil der Steuersequenz,
+  wobei wie in OTP `...` anstelle ausgelassener Teile ausgegeben wird.
 - Der Term wird zur Zwischenform von OTP: jeder Wert mit seiner einzeiligen
   Länge; Strings (flache Listen druckbarer Latin-1-Zeichen, das standardmäßige
   `io:printable_range()`), druckbare Binaries, Atome und Zahlen sind Text.

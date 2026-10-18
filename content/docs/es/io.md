@@ -1,18 +1,18 @@
 ---
 source: docs/io.md
-sourceCommit: a8c3f8f6
-sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
+translatedAt: 2026-10-18
 ---
 # Salida por consola (`io`)
 
 `io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` e `io:nl/0,1` son
 builtins del runtime del módulo `io` en el catálogo del puente
-([builtins](builtins.md)); el runtime implementa en C++ las reglas de
-`io_lib_format` e `io_lib_pretty` de OTP
-([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Las funciones de
-entrada de `io` están escritas en Erlang en la [biblioteca](library.md#contents).
+([builtins](builtins.md)); el texto es el de `io_lib:format/2`, construido por
+[el motor de io_lib](builtins.md#io_lib) y aplanado, con `~p` dispuesto según
+las reglas de `io_lib_pretty` de OTP
+([io_lib/pretty.cpp](../runtime/src/builtins/io_lib/pretty.cpp)). Las funciones
+de entrada de `io` están escritas en Erlang en la [biblioteca](library.md#contents).
 
 ## Llamadas
 
@@ -50,29 +50,32 @@ entrada de `io` están escritas en Erlang en la [biblioteca](library.md#contents
 - Secuencias de control `~F.P.PadModC`: ancho de campo `F` (negativo o `-`:
   alineado a la izquierda), precisión `P`, carácter de relleno, `*` que toma un
   entero (o el relleno) de los argumentos, modificadores `t` (Unicode), `l` (sin
-  detección de cadenas) y `k` (maps ordenados; Clause siempre imprime los maps
-  en orden de claves).
-- `C` admitidos: `~w`, `~p`, `~s`, `~c`, `~b`, `~B`, `~i`, `~n`, `~~`, con las
-  reglas de campo de OTP: `~s` trunca o rellena hasta `P` dentro de `F`; `~w` y
-  `~b` imprimen caracteres `*` cuando el texto no cabe en `F`; `~c` repite el
-  carácter; `~b`/`~B` toman la base de `P` (2..36); `~n` con `F` escribe `F`
-  saltos de línea.
+  detección de cadenas), `k` (maps ordenados) y `K` (el orden de los argumentos:
+  `ordered`, `reversed`; los funs de comparación son `badarg`). Los maps se
+  imprimen en orden de claves.
+- Todos los controles de OTP 29 con sus reglas de campo: `~w ~W ~p ~P ~s ~e ~f ~g ~b
+  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` trunca o rellena hasta `P` dentro de `F`;
+  `~w`, los enteros y los flotantes imprimen caracteres `*` cuando el texto no
+  cabe en `F`; `~c` repite el carácter; las bases de enteros se toman de `P`
+  (2..36); `~n` con `F` escribe `F` saltos de línea; los anchos se cuentan como
+  lo hace `io_lib:chars_length/1`.
 - Sin `t`, `~s` solo acepta caracteres Latin-1 y `~c` escribe el byte bajo de
   su entero; `~w`/`~p` escapan los caracteres de átomos fuera de Latin-1 como
   `\x{...}`. Con `t`, `~s` lee los binaries como UTF-8 (con Latin-1 como
   alternativa) y `~p` escribe `<<"..."/utf8>>` para binaries UTF-8 imprimibles.
-- `badarg`: un carácter de control desconocido, argumentos que faltan o sobran,
-  un argumento de tipo incorrecto, `F` menor que `P` para `~s`/`~c`, un `~p` o
-  `~n` alineado a la izquierda, una base fuera de 2..36, una salida que no es
-  Unicode.
-- No implementados (`badarg`, véase [diferencias](differences.md#io)): `~e`,
-  `~f`, `~g`, `~x`, `~X`, `~+`, `~#`, `~W`, `~P` y el modificador `K`.
+- `badarg`: cualquier cosa en la que falle `io_lib:format/2` (un carácter de
+  control desconocido, argumentos que faltan o sobran, un argumento de tipo
+  incorrecto, `F` menor que `P`, un `~p` o `~n` alineado a la izquierda, una
+  base fuera de 2..36) y una salida que no es Unicode.
 
 ## Impresión legible (`~p`)
 
 - La longitud de línea es `F` (80 por defecto; 0 escribe una sola línea); la
   primera columna es `P`, o si no, la columna que la salida ha alcanzado en su
   línea (los tabuladores avanzan a múltiplos de 8).
+- `~P` corta el término en su argumento de profundidad y `chars_limit`
+  (opciones de `io:format/3` e `io_lib:format/3`) en la parte de caracteres
+  asignada al control, imprimiendo `...` donde se omitieron partes, como OTP.
 - El término se convierte en la forma intermedia de OTP: cada valor con su
   longitud en una línea; las cadenas (listas planas de caracteres Latin-1
   imprimibles, el `io:printable_range()` por defecto), los binaries

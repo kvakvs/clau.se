@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: a8c3f8f6
-sourceSha256: 191e95cc2bea15e016f69e98aca4ce93be2fa8f47a09d9d1977607eceaf69fc2
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
+translatedAt: 2026-10-18
 ---
 # Runtime
 
@@ -62,8 +62,11 @@ complet.
 Ordre de destruction : fermer les enregistrements de l'ordonnanceur → détruire
 les contextes → libérer les enregistrements de code → détruire le service
 d'ordonnancement → la table des atomes en dernier. Les handles de fonction
-résolus maintiennent le code et l'orthographe des atomes en vie après la
-destruction du runtime, mais jamais un processus.
+résolus maintiennent le code en vie après la destruction du runtime, mais les
+mots de leurs emplacements d'atomes n'épinglent aucune orthographe. Le stockage
+des atomes retire ses emplacements globaux avant de libérer les enregistrements ;
+l'accès à l'orthographe par un Term d'atome non fixe survivant signale
+`expired_context`.
 
 ## Mémoire des processus
 
@@ -98,6 +101,11 @@ spécifiés dans [runtime-heap.md](runtime-heap.md). L'API de l'hôte :
   ([racines et points sûrs](runtime-heap.md#roots-and-safe-points)) ; le code
   généré effectue la collecte à ses propres points sûrs
   ([collecte dans le code généré](runtime-heap.md#collection-in-generated-code)).
+  Les Terms hôtes sont des valeurs d'un mot sans racine ; les reconstruire
+  depuis les racines réécrites après la collecte. Ils n'ont aucune vérification
+  de durée de vie ou de péremption et ne peuvent pas être lus après une collecte
+  ou la fin du processus. Les fabriques et les réservations conservent leurs
+  propres jetons de durée de vie et signalent toujours `expired_context`.
 
 ## Serveur de code et builtins
 
@@ -152,24 +160,39 @@ Une table par runtime (`memory/persistent_terms`), détenue par `Runtime::Impl`
 et atteinte via `ProcessContext::persistent_terms()`, conserve les termes de
 `persistent_term` ([builtins](builtins.md#persistent-terms)).
 
-- Une clé et sa valeur sont chacune copiées dans un `MessageBuffer`
-  ([tampons de messages](runtime-heap.md#message-buffers)) hors de tout
-  processus, de sorte qu'elles survivent au processus qui les a stockées et
-  qu'aucune collecte ne les déplace.
-- Les entrées sont trouvées par un hachage de la clé (les builtins utilisent le
-  hachage de termes de `phash2`) et une égalité exacte, comparée sur place dans
-  le tampon (`MessageBuffer::value`).
-- Une lecture copie la valeur dans le tas du lecteur, là où OTP remet une
-  référence vers une zone de littéraux et le paie par une collecte globale au
-  remplacement ou à l'effacement ([différences](differences.md)). Chaque tas de
-  processus reste autonome : une valeur remplacée ou effacée est libérée
-  lorsque le dernier lecteur qui la copie encore abandonne sa référence au
-  tampon, et aucune collecte globale n'est nécessaire.
-- Un verrou partagé sert les lecteurs sur un nombre quelconque de workers ;
-  `put` et l'effacement le prennent en exclusif et ne copient jamais en le
-  détenant. Le test CTest `runtime_persistent_terms` couvre les valeurs qui
-  survivent à leur auteur, les valeurs remplacées détenues par des lecteurs,
-  les lecteurs et auteurs concurrents, et les imputations libérées.
+- Chaque clé et valeur est copiée dans sa propre zone de la plage des termes
+  persistants du runtime (`memory/persistent_region`) : une réservation
+  d'adresses (64 GiB d'espace d'adressage sur les hôtes 64 bits, 256 MiB sur
+  ceux à 32 bits) dont les pages sont engagées à mesure que les zones sont
+  allouées ; une seule comparaison de plage suffit donc à déterminer si un
+  mot désigne un terme persistant. Les copies ne partagent que les littéraux
+  des modules, donc chaque zone est autonome ; ses binaries partagent leurs
+  tampons.
+- Les entrées sont des mots racines trouvés par un hachage de la clé (les
+  builtins utilisent le hachage de termes de `phash2`) et une égalité exacte,
+  comparée sur place.
+- Une lecture renvoie le mot stocké sur place, comme les termes persistants
+  littéraux d'OTP : tout processus peut le détenir et l'envoyer (une copie
+  dans un autre processus conserve le mot) ; les collectes le laissent intact,
+  et l'admission l'accepte comme un littéral. Les tampons de messages et les
+  nouveaux termes persistants copient les mots persistants.
+- **Récupération.** La zone d'une valeur remplacée ou effacée est retirée sous
+  une nouvelle époque. Dès lors, toute copie copie ses mots, et chaque
+  processus enregistré lors du retrait copie les objets retirés qu'il détient
+  dans son propre tas lors d'un balayage complet d'évacuation (`Copier` avec
+  la région, chaque objet une fois, tampons de binaries détenus avant le
+  balayage) : un processus en cours d'exécution ou en file au début de sa
+  prochaine tranche, un processus en attente aussitôt, par l'opération put ou
+  erase qui l'a retirée (`Executor::evacuate_parked`, sous le verrou de
+  l'exécuteur). Une fois que tous ces processus l'ont fait ou se sont terminés,
+  la zone est libérée. `info/0` ne compte que les entrées actuelles.
+- Un verrou partagé sert les lecteurs sur un nombre quelconque de threads
+  de travail ; put et erase le prennent en exclusif (les copies sont faites
+  avant). Le test CTest `runtime_persistent_terms` couvre les valeurs qui
+  survivent à leur auteur, les lectures sur place entre collectes et entre
+  processus, les valeurs remplacées et effacées détenues par des lecteurs,
+  les lecteurs et auteurs concurrents, et la récupération (copies retirées,
+  évacuation, zones et imputations libérées).
 
 ## Gestion de l'ordonnanceur
 
@@ -198,14 +221,16 @@ processus sur plusieurs threads d'un même runtime. Les services qu'ils
 partagent sont synchronisés ; tout le reste reste confiné au thread qui
 exécute son processus ou protégé par le mutex de l'exécuteur.
 
-- Atomes : `AtomStorage` protège ses deux index par un mutex partagé. Les
-  recherches (`lookup`, `boolean`, `size`) le partagent ; `intern` cherche sous
-  le verrou partagé et seule une nouvelle orthographe prend le verrou
-  exclusif, vérifie à nouveau et publie l'entrée, de sorte que des appels
-  `intern` concurrents pour une même orthographe obtiennent un seul mot. Les
-  mots restent stables : une entrée n'est jamais modifiée ni supprimée avant
-  la destruction. L'admission des mots d'atomes lit un index sans verrou
-  ([atomes](terms.md#atoms)).
+- Atomes : `AtomStorage` protège sa map d'orthographes et ses enregistrements
+  possédés par un mutex partagé. `existing` et `size` le partagent ; `intern`
+  cherche d'abord sous le verrou partagé, puis prend le verrou exclusif pour
+  une nouvelle orthographe et vérifie à nouveau, de sorte que les internements
+  concurrents obtiennent un seul mot. La publication utilise
+  `detail::atom_table`, global au processus ; l'admission et les lectures
+  d'orthographe utilisent son index de numéros sans verrou (`lookup` vérifie
+  aussi le propriétaire de l'enregistrement). Les atomes fixes n'ont besoin
+  d'aucun verrou. Les enregistrements restent inchangés jusqu'à ce que la
+  destruction retire leurs emplacements ([atomes](terms.md#atoms)).
 - Code : `CodeServer` protège ses modules et les définitions de funs externes
   par un mutex partagé. Les recherches (`find_module`, `resolve`,
   `atom_word`, `record_definition`, `fun_definition`, `export_frame`,
@@ -220,7 +245,8 @@ exécute son processus ou protégé par le mutex de l'exécuteur.
   le serveur est détruit après chaque contexte, donc les définitions, cadres et
   emplacements d'atomes qu'il a renvoyés restent valides pour chaque invocation
   et chaque cellule de fun. Les handles `ResolvedFunction` et `find_module`
-  conservent aussi leur module après la disparition du runtime.
+  conservent aussi leur module après la disparition du runtime ; leurs
+  emplacements d'atomes conservent des mots, sans épingler les orthographes.
 - Numéros de pid et de port : `IdentityNumbers` émet les numéros sous un
   verrou exclusif et admet les mots de pid et de port sous un verrou partagé.
 - Mémoire : le compte à l'échelle du runtime (`RuntimeMemory`) impute et

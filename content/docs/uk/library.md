@@ -1,9 +1,10 @@
 ---
 source: docs/library.md
-sourceCommit: a8c3f8f6
-sourceSha256: f657ad1632b57e9c9b11ad04f870350112a7cac942b10e5483e1aa26d1c79fc7
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 0fc98265c5256c76cd34c89f89a48993e3452732ca40c3a295860a34bee27186
+translatedAt: 2026-10-18
 ---
+
 # Модулі бібліотеки
 
 Clause постачає власні версії модулів OTP, які викликають програми, написані
@@ -19,13 +20,25 @@ OTP) поверх [вбудованих функцій](builtins.md) runtime, і
 
 | Модуль | Вміст |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | Поширені функції; функції даних, як-от `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3`, є вбудованими функціями runtime ([модуль lists](builtins.md#lists-module)) |
-| [`maps`](../library/stdlib/maps.erl) | Поширені функції та ітератори; `get/3`, `merge/2`, `update/3`, `with/2`, ... є вбудованими функціями runtime ([модуль maps](builtins.md#maps-module)) |
+| [`lists`](../library/stdlib/lists.erl) | Поширені функції; функції даних, як-от `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3`, `zip/2,3`, `merge/2`, — вбудовані функції runtime; кожну документовану функцію реалізовано ([модуль lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | Кожна документована функція; `get/3`, `merge/2`, `intersect/2`, `with/2`, ... — вбудовані функції runtime, функції з fun написано Erlang ([модуль maps](builtins.md#maps-module)) |
+| [`ordsets`](../library/stdlib/ordsets.erl), [`orddict`](../library/stdlib/orddict.erl), [`proplists`](../library/stdlib/proplists.erl) | Кожна документована функція; обходи списків — вбудовані функції runtime, функції з fun написано Erlang ([колекції](builtins.md#collections)) |
+| [`calendar`](../library/stdlib/calendar.erl) | Кожна документована функція; григоріанська арифметика — вбудовані функції runtime, локальний час і RFC 3339 написано Erlang ([календар](builtins.md#calendar)) |
+| [`filename`](../library/stdlib/filename.erl) | Кожна документована функція за правилами Unix і Windows OTP для хоста; обходи імен — вбудовані функції runtime, `absname/1,2` і `basedir/2,3` (з `HOME`, змінних XDG і `APPDATA`) написано Erlang ([імена файлів](builtins.md#filename)) |
+| [`uri_string`](../library/stdlib/uri_string.erl) | Кожна документована функція — вбудована функція runtime: розбір RFC 3986 з фрагментами помилок OTP, повторне складання, нормалізація, розв’язання, відсоткове кодування й запити form-urlencoded ([uri_string](builtins.md#uri-string)) |
+| [`json`](../library/stdlib/json.erl) | Кожна документована функція з iodata, помилками й порядком зворотних викликів OTP; `decode/1`, `encode/1`, `format/1,2` і екранування binary — вбудовані функції runtime, кодувальники й форматувальники з fun та декодувальники зі зворотними викликами написано Erlang ([кодування](builtins.md#encodings)) |
+| [`rand`](../library/stdlib/rand.erl), [`random`](../library/stdlib/random.erl) | Кожна документована функція зі станами й послідовностями OTP; алгоритми OTP виконуються як вбудовані функції runtime, під’єднувані генератори — в Erlang ([випадкові числа](builtins.md#random-numbers)) |
+| [`string`](../library/stdlib/string.erl) | Кожна документована функція — вбудована функція runtime, що обходить chardata як `string.erl` OTP, зберігаючи форми результатів OTP ([рядки](builtins.md#string)) |
+| [`base64`](../library/stdlib/base64.erl) | Кожна документована функція — вбудована функція runtime ([кодування](builtins.md#encodings)) |
+| [`array`](../library/stdlib/array.erl) | Кожна документована функція над record OTP 29; операції з record — вбудовані функції runtime, згортки й mapfold написано Erlang ([колекції](builtins.md#collections)) |
+| [`gb_trees`](../library/stdlib/gb_trees.erl), [`gb_sets`](../library/stdlib/gb_sets.erl), [`queue`](../library/stdlib/queue.erl) | Кожна документована функція над формами дерев і черг OTP; операції без fun — вбудовані функції runtime ([колекції](builtins.md#collections)) |
+| [`dict`](../library/stdlib/dict.erl), [`sets`](../library/stdlib/sets.erl) | Кожна документована функція над record OTP (множини версії 1) і map (версія 2); операції без fun — вбудовані функції runtime ([колекції](builtins.md#collections)) |
 | [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (сервер стандартного вводу або відкритий файл), `request/1,2`, `requests/1,2` (протокол вводу-виводу OTP, [файли](ports.md#standard-io-and-files)); `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` і `nl/0,1` є вбудованими функціями runtime ([io](io.md)) |
+| [`io_lib`](../library/stdlib/io_lib.erl) | Функції виведення, перевірки, збирання даних, рушій форматування й форматувальник (`print/1,4`, `~p`, `chars_limit`) — вбудовані функції runtime з формами глибоких списків OTP; `get_until`, `format_prompt` і `write/3` написано Erlang; `fread/2,3` — заглушки ([io_lib](builtins.md#io_lib)) |
 | [`binary`](../library/stdlib/binary.erl) | Кожна функція; `replace/3,4` і `list_to_bin/1` на Erlang, інші — вбудовані функції runtime ([модуль binary](builtins.md#binary-module)) |
 | [`math`](../library/stdlib/math.erl) | Кожна функція як вбудована функція runtime ([модуль math](builtins.md#math-module)) |
-| [`unicode`](../library/stdlib/unicode.erl) | Перетворення, `bin_is_7bit/1` і маркери порядку байтів як вбудовані функції runtime ([модуль unicode](builtins.md#unicode-module)); нормалізація й властивості — заглушки |
-| [`unicode_util`](../library/stdlib/unicode_util.erl) | Кожна функція поверх згенерованих таблиць ([unicode_util](builtins.md#unicode-util)) |
+| [`unicode`](../library/stdlib/unicode.erl) | Кожна функція — вбудована функція runtime: перетворення, `bin_is_7bit/1`, позначки порядку байтів, форми нормалізації, категорії й властивості ідентифікаторів ([модуль unicode](builtins.md#unicode-module)) |
+| [`unicode_util`](../library/stdlib/unicode_util.erl) | Кожна функція над згенерованими таблицями, обходи chardata — вбудовані функції runtime ([unicode_util](builtins.md#unicode-util)) |
 | [`re`](../library/stdlib/re.erl) | Кожна функція, крім `import/1`, поверх PCRE2 ([модуль re](builtins.md#re-module)) |
 | [`file`](../library/kernel/file.erl) | Відкриття, читання, запис, позиціювання й закриття файлів, читання й запис цілих файлів, інформація про файли й операції з каталогами поверх файлового драйвера ([файли](ports.md#standard-io-and-files)) |
 | [`gen_tcp`](../library/kernel/gen_tcp.erl), [`gen_udp`](../library/kernel/gen_udp.erl), [`inet`](../library/kernel/inet.erl) | Сокети поверх портів-сокетів ([сокети](ports.md#sockets)) |
@@ -33,7 +46,7 @@ OTP) поверх [вбудованих функцій](builtins.md) runtime, і
 | [`os`](../library/kernel/os.erl) | `cmd/1` через порт, запити про оточення, час і версію ([модуль maps](builtins.md#maps-module)) |
 | [`code`](../library/kernel/code.erl) | Запити про завантажені модулі без сервера коду ([модуль code](builtins.md#code-module)); шляхи й завантаження — заглушки |
 | [`application_controller`](../library/kernel/application_controller.erl) | Усе заглушки; затіняє модуль OTP, який викликає `prim_file` (luerl доходить до нього через `application` з OTP) |
-| [`erlang`](../library/erts/erlang.erl) | Згенеровані заглушки кожного експорту `erlang` з OTP 29; вбудовані функції замінюють свої, `nif_error/1,2` мають тіла, інші під час виклику породжують `{not_implemented, F, A}` ([модуль erlang](builtins.md#erlang-module)) |
+| [`erlang`](../library/erts/erlang.erl) | Згенеровані заглушки кожного експорту `erlang` OTP 29; вбудовані функції каталогу мають тіла-заповнювачі, `nif_error/1,2` мають тіла, інші піднімають `{not_implemented, F, A}` під час виклику ([модуль erlang](builtins.md#erlang-module)) |
 | [`init`](../library/erts/init.erl) | Відповіді запущеної системи; `boot/1`, `restart/0,1` і `make_permanent/2` відхилено ([модуль init](builtins.md#init-module)) |
 | [`persistent_term`](../library/erts/persistent_term.erl) | Кожна функція як вбудована функція runtime ([постійні терми](builtins.md#persistent-terms)) |
 | [`atomics`](../library/erts/atomics.erl), [`counters`](../library/erts/counters.erl) | Кожна функція ([atomics і counters](builtins.md#atomics-and-counters)) |
@@ -102,6 +115,15 @@ Clause заміщує модулі OTP, які ERTS реалізує на C (NIF
   завантаження коду). Новий модуль починається з того, що кожна функція —
   заглушка, тож його можна знайти, а його викликачі компілюються; потім групи
   переходять до вирішеного статусу.
+- **Заповнювачі вбудованих функцій:** функція, яку реалізує вбудована функція
+  каталогу, зберігає експорт і тіло `F(_, ...) -> clause_builtin_placeholder.`,
+  яке ніколи не виконується: реєстрація прив’язує замість нього вбудовану
+  функцію, а кваліфікований виклик `M:F(...)` компілюється в міст. Лише
+  некваліфікований виклик усередині модуля досяг би заповнювача, тому модуль
+  викликає власні вбудовані функції кваліфіковано; `library_inventory` відхиляє
+  заповнювач без відповідної вбудованої функції каталогу, вбудовану функцію
+  каталогу, залишену заглушкою `not_implemented`, і некваліфікований виклик
+  заповнювача.
 - **Відсутні (missing):** Clause взагалі не постачає модуля, можливо, назавжди,
   і записує причину та те, які модулі Clause вищого рівня займають місце його
   викликачів (`library/modules.terms`). Низькорівневі файлові й сокетні шари
@@ -139,13 +161,13 @@ OTP на машині користувача необов'язковий; якщ
 
 ### Файли
 
-- Модулі бібліотеки лежать у `library/<application>/`, названому за
-  застосунком OTP, якому модуль належить в OTP: `erts` (відповідники
-  попередньо завантажених модулів і `erlang`), `kernel`, `stdlib`. Приватні
-  допоміжні модулі Clause (`clause_socket`, `clause_re`, `clause_unicode`,
-  `clause_zlib`, `clause_receive`, `clause_maps`) лежать поруч із модулями,
-  яким вони служать. Пошук у бібліотеці охоплює кожен каталог застосунку; ім'я
-  модуля існує щонайбільше в одному з них.
+- Бібліотечні модулі містяться в `library/<application>/` за назвою застосунку
+  OTP, якому належить модуль в OTP: `erts` (аналоги попередньо завантажених
+  модулів та `erlang`), `kernel`, `stdlib`. Приватні допоміжні модулі Clause
+  (`clause_socket`, `clause_re`, `clause_unicode`, `clause_zlib`,
+  `clause_receive`, `clause_maps`, `clause_hashed`, `clause_array`) розташовані
+  поряд із модулями, які обслуговують. Пошук бібліотеки переглядає кожен каталог
+  застосунку; назва модуля існує щонайбільше в одному з них.
 - `library/modules.terms` перелічує кожен модуль, щодо якого Clause ухвалює
   рішення: `{Module, Application, provided}.` або
   `{Module, Application, missing, "reason"}.` Компілятор читає його, щоб
@@ -159,6 +181,21 @@ OTP на машині користувача необов'язковий; якщ
   (`M:module_info(exports)`); жоден вихідний код OTP не копіюється.
   Результати й терми помилок реалізованих функцій збігаються з OTP 29;
   навмисні відмінності записуються у [відмінності](differences.md).
+
+### Документовані функції
+
+`library/documented.terms` перелічує публічні функції, документовані OTP 29
+для `erts`, `kernel` і `stdlib`: `{Module, Application, Name, Arity}.` на
+функцію, документація модуля й функції якої не прихована та яка не застаріла.
+Дані отримано з блоків документації хостової OTP через
+`tests/compiler/library/observe_docs.escript` (запускається явно).
+Недокументовані експорти залишаються в переліках, але можуть бути заглушками.
+
+- `library_inventory` перевіряє, що кожна документована функція наданого модуля
+  є в його переліку й не є заглушкою, крім модулів, які `library_modules.py`
+  позначає як часткові з кроком плану, що їх завершує.
+- `python tests/compiler/library/library_modules.py coverage .` виводить
+  кількість реалізованих і документованих функцій кожного документованого модуля.
 
 ### Типи
 
@@ -193,15 +230,15 @@ Clause не запускає жодного з них: власним `file` і 
 
 ### Реєстр
 
-Цю роботу спрямовують реальні програми; нинішній рушій — проєкт luerl
-([21-lib](../.agents/21-lib.md)). Його слід скомпілювати й запустити,
-класифікувати кожну помилку (`unknown module`, `undefined function M:F/A`,
-непідтримуваний синтаксис чи можливість, інше) і призначити кожну кроку
-плану, іншому пункту backlog або записаній відмові. Якщо stderr запуску
-збережено у файл, `python tests/compiler/library/library_modules.py report FILE`
-друкує класифікацію як таблиці: кожен невідомий модуль із кількістю помилок,
-модулями, що викликають, і викликаними функціями з арностями; невизначені
-функції за модулями; інші повідомлення з їхньою кількістю.
+План проєкту охоплює кожен документований модуль `erts`, `kernel` і `stdlib`;
+реальні програми (першою luerl) визначають пріоритети. Скомпілювати й запустити
+її, класифікувати кожну помилку (`unknown module`, `undefined function M:F/A`,
+непідтримуваний синтаксис або можливість, інше) та призначити кожну кроку плану,
+іншому пункту черги чи задокументованій відмові. Коли stderr запуску збережено
+у файл, `python tests/compiler/library/library_modules.py report FILE`
+виводить класифікацію таблицями: кожен невідомий модуль із кількістю помилок,
+модулями-викликачами й викликаними функціями з арностями; невизначені функції
+за модулями; інші повідомлення з кількостями.
 
 ### Інструменти
 

@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: a8c3f8f6
-sourceSha256: cc0485350969c6f992d4987c8f893772eef2f3b1d7b9f3315e20c63541a45bc8
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
+translatedAt: 2026-10-18
 ---
 # Contrat du tas de processus
 
@@ -182,8 +182,9 @@ restent des cellules `map`.
   (`ModuleDescriptor::literals`), enregistrée pour tout le runtime
   (`detail::LiteralAreas`, un instantané trié sans verrou) lors de
   l'enregistrement du module. Les termes de tous les processus peuvent y
-  pointer : l'admission et `TermAccess::object` lisent les cellules via
-  `HeapStorage::readable` (tas, fragments, puis littéraux) ; le ramasse-miettes
+  pointer : l'admission vérifie `HeapStorage::readable` (tas, fragments,
+  puis littéraux), tandis que `TermAccess::object` lit des pointeurs de
+  confiance. Le ramasse-miettes
   laisse les mots littéraux tels quels (`owned` reste limité au tas) ; les
   copies entre tas et vers les tampons de messages continuent d'y pointer (une
   racine littérale n'a pas besoin de copie) ; le vérificateur les accepte. Les
@@ -300,18 +301,38 @@ thread libère son cache lorsqu'il se termine.
 Les pointeurs vers un tas de processus ne sont créés que par le compilateur et
 le runtime à l'intérieur de ce processus, et désignent toujours un début
 d'objet ; il n'y a pas de pointeurs intérieurs à détecter. L'admission est une
-vérification de propriété pour les mots rendus à un processus :
+vérification de propriété pour les mots rendus à un processus.
+`Term::from_word(word, context)` / `TermAccess::admit` vérifient d'abord que
+le stockage est vivant (`expired_context`) ; les atomes et les pids/ports
+doivent appartenir à ce runtime (les atomes fixes sont partagés). Pour les mots
+composés :
 
 1. L'adresse est alignée sur un mot à l'intérieur de l'une des zones du
    processus, sous son `top` : le bloc de tas est vérifié en premier, puis les
    fragments triés par adresse, puis les zones de littéraux ([zones](#areas)).
-   Les mots étrangers ou périmés échouent ici sans aucun chargement.
+   Les adresses hors de ces plages échouent sans chargement ; cela ne détecte
+   pas les anciens mots aux adresses réutilisées.
 2. Un mot boxed désigne un en-tête d'un type admis (pas un remplissage) ; un mot
    de liste désigne une cellule cons (un mot qui n'est pas un en-tête).
 
-Les accesseurs décodent le type, le compte et la charge utile à partir de
-l'en-tête lui-même. `verify()` reste la vérification complète, pour les tests,
-que chaque emplacement désigne un début d'objet.
+Après admission, `TermAccess::object` décode le type, le compte et la charge
+utile via `trusted_cell`, sans recherche dans le tas ; `child` enveloppe le
+mot stocké et `validate` ne vérifie que la représentation. Les fabriques
+réadmettent toujours les entrées via `ProcessHeap::retain`, en rejetant les
+entrées composées étrangères avec `wrong_owner`.
+
+Ces vérifications ne s'exécutent qu'en compilation Debug (`CHECKED_ADMISSION`,
+OPTM.2C). Une compilation Release fait confiance à tous les mots composés,
+d'atomes, de pids et de ports transmis à un builtin, un service ou une fabrique,
+comme ERTS fait confiance à ses Eterms : le code généré ne produit que des mots
+de son propre processus, des zones de littéraux et des atomes du runtime ; les
+recherches de plage et de propriétaire ne faisaient donc qu'ajouter un coût à
+chaque argument. Les autres immédiats sont toujours classés. Les tests qui
+fournissent des mots falsifiés ou étrangers n'attendent un rejet que lorsque
+`CHECKED_ADMISSION` est actif.
+`map_find` peut comparer en lecture seule la clé d'un autre processus sans ce
+rejet. `verify()` reste la vérification complète, pour les tests, que chaque
+emplacement désigne un début d'objet.
 
 ## Racines et points sûrs
 
@@ -323,7 +344,7 @@ que chaque emplacement désigne un début d'objet.
 | Emplacements de termes des cadres | Les `roots` premiers emplacements de chaque cadre de la pile | Les cadres du fond n'en ont aucun ; les indices de reprise et de gestionnaire sont des entiers |
 | Emplacements bruts des cadres | Aucun | Valeurs natives déversées ; le code généré n'y garde aucun mot du tas à un point sûr ([règle de rechargement](#reload-rule)) |
 | Registres | `x[0..live)` (`ProcessStack::keep_registers`) | Les arguments d'une entrée suspendue ; chaque empilement et dépilement efface `live` |
-| Canal d'échec | Charge utile d'erreur (`fvalue` de BEAM), liste d'arguments de `erlang:error/2,3`, terme de trace de pile | Reliés sur place ; les cadres de trace capturés sont des pointeurs de descripteurs vers le code |
+| Canal d'échec | Charge utile d'erreur (`fvalue` de BEAM), liste d'arguments de `erlang:error/2,3`, terme de trace de pile | Terms de `GeneratedCallState` réécrits par `Term::rebind`, qui ne stocke que le nouveau mot ; les cadres de trace capturés sont des pointeurs de descripteurs vers le code |
 | État d'interception (trap) | Les mots de terme du `TrapState` d'un builtin qui intercepte ([portions](builtins.md#portions)) | Libérés lorsque le builtin se termine ou échoue |
 | Dictionnaire de processus | Chaque clé et chaque valeur | Jusqu'à leur effacement ou la fin du processus |
 | Boîte aux lettres | Chaque message dans la boîte de réception des signaux et la file de messages, y compris les messages `'EXIT'` et `'DOWN'` | Jusqu'à ce qu'un receive le prenne ; réécrits sur place, donc le curseur de receive (une position dans la liste) et l'échéance du timeout restent valides |
@@ -337,10 +358,15 @@ les modules chargés ne sont jamais déchargés, donc ni les funs ni les
 descripteurs de trace n'ont besoin d'épingle. Les petits immédiats ne sont pas
 des racines.
 
-Comme dans le code C d'ERTS, un `Term` hôte est un mot étiqueté brut valide
-jusqu'au prochain point sûr de son tas ; il n'épingle pas le stockage du tas
-([propriété](terms.md#ownership)). Un `Term` n'est valide qu'à l'intérieur de
-son propre processus ; les autres processus peuvent seulement le lire.
+Comme dans le code C d'ERTS, un `Term` hôte est exactement un mot trivialement
+copiable, valide jusqu'au prochain ramassage de son tas ou à la fin du
+processus ; il n'a ni épinglage, ni pointeur de tas, ni jeton de durée de vie,
+ni époque de ramassage ([propriété](terms.md#ownership)). Un accès après l'une
+de ces limites lit de la mémoire déplacée ou libérée et est indéfini, sans
+vérification `stale_term`. Les racines enregistrées sont réécrites ; un Term
+hôte non enregistré doit être reconstruit depuis son mot racine réécrit. Un
+Term appartient à son processus ; les autres processus ne peuvent le lire que
+tant que la source reste stable.
 
 Le tas ne se déplace qu'à un point sûr, et jamais tant qu'une réservation est
 ouverte :
@@ -360,20 +386,27 @@ une requête qui ne tient pas crée un fragment.
 
 Un `MessageBuffer`
 ([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) garde un terme
-en dehors de tout processus : `copy_of` copie le graphe depuis le tas de son
-processus dans un `HeapStorage` qui lui est propre (son propre jeton de durée de
-vie, les atomes et le compte mémoire du runtime, les binaries hors tas partagés
-et détenus), avec le même `GraphCopy` qu'un envoi ; `copy_to` le copie dans le
-tas d'un destinataire. Les immédiats n'ont besoin d'aucun stockage. Le tampon
-n'est jamais collecté et est libéré avec son dernier propriétaire ; son bloc
-fait exactement les mots du terme, quel que soit le tas minimal de
-l'expéditeur. Les messages vers un processus s'exécutant sur un autre worker
-([workers](processes.md#workers)), les messages des timers, les étiquettes de
-moniteurs et les [termes persistants](runtime.md#persistent-terms)
-l'utilisent, si bien qu'ils ne sont jamais réencodés.
+en dehors de tout processus : `copy_of(value, sender)` copie le graphe depuis
+le tas du processus expéditeur dans son propre `HeapStorage`. Le
+`ProcessContext` de l'expéditeur fournit les options de tas, les zones de
+littéraux, les atomes, les identités et le compte mémoire du runtime ; le tampon
+conserve son propre jeton de durée de vie et partage les binaries hors tas.
+Il utilise le même `GraphCopy` qu'un envoi ; `copy_to` le copie dans le tas
+d'un destinataire. Les immédiats et les racines littérales n'ont besoin
+d'aucun stockage. Les fabriques, les réservations et les tampons de messages
+conservent leurs vérifications de durée de vie (`expired_context`) ; un Term
+lu dans un tampon n'épingle rien et ne doit pas survivre à son stockage.
+Le tampon n'est jamais collecté et est libéré avec son dernier propriétaire ;
+son bloc fait exactement les mots du terme, quel que soit le tas minimal de
+l'expéditeur. Les messages vers un processus s'exécutant sur un autre thread
+de travail ([workers](processes.md#workers)), les messages des timers et les
+étiquettes de moniteurs l'utilisent, si bien qu'ils ne sont jamais réencodés ;
+les [termes persistants](runtime.md#persistent-terms) vivent dans leur propre
+plage d'adresses et sont copiés, sans partage, dans les tampons.
 
 **Remise des messages.** Un envoi dont le message occupe au moins
-`MessageBuffer::ADOPTED_WORDS` (512) mots, comptés par un parcours borné qui
+`MessageBuffer::ADOPTED_WORDS` (512) mots, comptés par
+`MessageBuffer::large(value, sender, minimum)` avec un parcours borné qui
 s'arrête à cette valeur, construit le tampon avant de prendre le verrou de
 l'exécuteur, si bien que l'expéditeur ne détient aucun verrou pendant la copie.
 Le destinataire reprend ensuite le tampon au lieu de le copier
@@ -557,8 +590,8 @@ bien que l'optimiseur ne réutilise jamais le registre qui contenait `Y`.
 
 Une copie de Cheney (`memory/heap_collect`), en balayage complet ou en collecte
 mineure ([générations](#generations)) : allouer d'abord le nouveau bloc (un
-échec donne `out_of_memory` et laisse le tas intact), puis marquer comme
-périmés les `Term` hôtes, copier l'objet derrière chaque mot racine et parcourir
+échec donne `out_of_memory` et laisse le tas intact), puis copier
+l'objet derrière chaque mot racine et parcourir
 le nouveau bloc de gauche à droite en copiant les enfants de chaque copie.
 L'en-tête d'un objet boxed déplacé est remplacé par un pointeur boxed vers sa
 copie ; une cellule cons déplacée reçoit une tête nulle et une queue pointant
@@ -618,16 +651,21 @@ Collecte générationnelle, comme la fait ERTS, sans sa barrière d'écriture :
 
 `ProcessHeap::add(value)`, ou de manière équivalente `value.copy_to(heap)`,
 retourne un terme du tas de destination (`size_object` et `copy_struct` de
-BEAM). Chaque cellule source est d'abord recherchée dans la zone de la
-précédente, et une cellule cons n'a pas besoin d'être analysée :
+BEAM). Les cellules sources sont lues via des pointeurs de
+confiance, et une cellule cons n'a pas besoin d'être analysée :
 
-- Les immédiats et les atomes du même runtime n'ont besoin d'aucun stockage, et
-  un terme du tas de destination conserve son identité. Un graphe d'un autre
-  processus du même runtime est copié ; le graphe d'un autre runtime donne
-  `wrong_owner`, une source expirée `expired_context`, un handle source plus
-  ancien que la dernière collecte de son tas `stale_term`. Les fabriques
-  refusent toujours les entrées étrangères (`ProcessHeap::retain`), donc seule
-  une copie explicite déplace un graphe.
+- Un terme que la destination peut lire (son propre tas ou une zone de
+  littéraux, vérifié par `storage_->readable(address)`) conserve son identité ;
+  les autres graphes sont copiés. Les zones de littéraux reconnues par le
+  registre du runtime de destination restent partagées. Les deux tas doivent
+  être vivants et appartenir au même runtime : un contrat pour l'appelant,
+  sans vérification entre runtimes sur les copies composées ni vérification
+  de durée de vie de la source par handle. Lire une source après un ramassage
+  ou sa fin est indéfini. Les atomes, pids et ports racines passent toujours
+  par l'admission de destination ; une destination expirée signale
+  `expired_context`. Les fabriques refusent toujours les entrées composées
+  étrangères (`ProcessHeap::retain`), donc seule une copie explicite déplace
+  un graphe.
 - Les copies sont plates, comme le `copy_struct` par défaut d'ERTS (sans sa
   variante optionnelle qui préserve le partage) : un sous-terme est copié une
   fois par chemin qui l'atteint, donc `{T, T}` copie `T` deux fois, et un terme

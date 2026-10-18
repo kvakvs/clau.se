@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: a8c3f8f6
-sourceSha256: cc0485350969c6f992d4987c8f893772eef2f3b1d7b9f3315e20c63541a45bc8
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
+translatedAt: 2026-10-18
 ---
 # Contrato del heap de proceso
 
@@ -178,9 +178,10 @@ siendo celdas `map`.
   única variable global de solo lectura (`ModuleDescriptor::literals`),
   registrada para todo el runtime (`detail::LiteralAreas`, una instantánea
   ordenada sin bloqueos) cuando se registra el módulo. Los términos de
-  cualquier proceso pueden apuntar a ellas: la admisión y `TermAccess::object`
-  leen las celdas mediante `HeapStorage::readable` (heap, fragmentos y después
-  literales); el recolector deja las palabras de literales tal como están
+  cualquier proceso pueden apuntar a ellas: la admisión comprueba
+  `HeapStorage::readable` (heap, fragmentos y después literales), mientras que
+  `TermAccess::object` lee punteros de confianza. El recolector deja las
+  palabras de literales tal como están
   (`owned` sigue siendo solo del heap); las copias entre heaps y hacia búferes
   de mensajes siguen apuntando a ellas (una raíz literal no necesita copia); el
   verificador las acepta. Los literales contienen solo inmediatos (solo átomos
@@ -294,19 +295,37 @@ todo el runtime; un hilo libera su caché cuando termina.
 Los punteros a un heap de proceso solo los crean el compilador y el runtime
 dentro de ese proceso, y siempre nombran el inicio de un objeto; no hay
 punteros interiores que detectar. La admisión es una comprobación de propiedad
-para las palabras que se devuelven a un proceso:
+para las palabras que se devuelven a un proceso.
+`Term::from_word(word, context)` / `TermAccess::admit` comprueban primero que
+el almacenamiento siga vivo (`expired_context`); los átomos y los
+pids/puertos deben pertenecer a ese runtime (los átomos fijos se comparten).
+Para las palabras compuestas:
 
 1. La dirección está alineada a palabra dentro de una de las áreas del proceso,
    por debajo de su `top`: primero se comprueba el bloque de heap, después los
    fragmentos ordenados por dirección y después las áreas de literales
-   ([áreas](#areas)). Las palabras ajenas y obsoletas fallan aquí sin ninguna
-   carga.
+   ([áreas](#areas)). Las direcciones fuera de estos rangos fallan sin ninguna
+   carga; esto no detecta palabras antiguas en direcciones reutilizadas.
 2. Una palabra boxed nombra una cabecera de un tipo admitido (no relleno); una
    palabra de lista nombra una celda cons (una palabra que no es una cabecera).
 
-Los accesores decodifican el tipo, el recuento y la carga útil a partir de la
-propia cabecera. `verify()` sigue siendo la comprobación completa de que cada
-slot nombra el inicio de un objeto, para las pruebas.
+Tras la admisión, `TermAccess::object` decodifica el tipo, el recuento y la
+carga útil mediante `trusted_cell`, sin buscar en el heap; `child` envuelve
+la palabra almacenada y `validate` comprueba solo la representación. Las
+factorías siguen readmitiendo las entradas mediante `ProcessHeap::retain`,
+rechazando entradas compuestas ajenas con `wrong_owner`.
+
+Estas comprobaciones se ejecutan solo en compilaciones Debug
+(`CHECKED_ADMISSION`, OPTM.2C). Una compilación Release confía en toda palabra
+compuesta, de átomo, pid o puerto entregada a un builtin, servicio o factoría,
+como ERTS confía en sus Eterms: el código generado solo produce palabras de su
+propio proceso, de áreas de literales y de átomos del runtime, por lo que las
+búsquedas de rango y propietario solo añadían coste en cada argumento. Los
+demás inmediatos se siguen clasificando. Las pruebas que suministran palabras
+falsificadas o ajenas solo esperan su rechazo cuando se cumple
+`CHECKED_ADMISSION`. `map_find` puede comparar en solo lectura una clave de
+otro proceso sin ese rechazo. `verify()` sigue siendo la comprobación completa
+de que cada slot nombra el inicio de un objeto, para las pruebas.
 
 ## Raíces y puntos seguros
 
@@ -318,7 +337,7 @@ un punto seguro, nada más retiene palabras del heap del proceso:
 | Slots de términos del marco | Los primeros `roots` slots de cada marco de la pila | Los marcos inferiores no tienen ninguno; los índices de reanudación y de manejador son enteros |
 | Slots en bruto del marco | Ninguna | Valores nativos volcados; el código generado no guarda ahí ninguna palabra del heap en un punto seguro ([regla de recarga](#reload-rule)) |
 | Registros | `x[0..live)` (`ProcessStack::keep_registers`) | Los argumentos de una entrada suspendida; cada push y pop limpia `live` |
-| Canal de fallos | Carga útil de error (`fvalue` de BEAM), lista de argumentos de `erlang:error/2,3`, término de la traza de pila | Se revinculan en el sitio; los marcos de traza capturados son punteros a descriptores en el código |
+| Canal de fallos | Carga útil de error (`fvalue` de BEAM), lista de argumentos de `erlang:error/2,3`, término de la traza de pila | Terms de `GeneratedCallState` reescritos por `Term::rebind`, que almacena solo la nueva palabra; los marcos de traza capturados son punteros a descriptores en el código |
 | Estado de trap | Las palabras de término del `TrapState` de un builtin que hace trap ([porciones](builtins.md#portions)) | Se liberan cuando el builtin termina o falla |
 | Diccionario del proceso | Cada clave y cada valor | Hasta que se borran o el proceso termina |
 | Buzón | Cada mensaje en la bandeja de señales y en la cola de mensajes, incluidos los mensajes `'EXIT'` y `'DOWN'` | Hasta que un receive lo toma; se reescriben en el sitio, por lo que el cursor del receive (una posición en la lista) y el plazo del timeout siguen siendo válidos |
@@ -331,10 +350,15 @@ través de su `FunDefinition` no trazado, que vive tanto como el runtime; los
 módulos cargados nunca se descargan, por lo que ni los funs ni los descriptores
 de traza necesitan una fijación. Los inmediatos pequeños no son raíces.
 
-Como en el código C de ERTS, un `Term` del host es una palabra etiquetada en
-bruto válida hasta el siguiente punto seguro de su heap; no fija el
-almacenamiento del heap ([propiedad](terms.md#ownership)). Un `Term` solo es
-válido dentro de su propio proceso; los demás procesos solo pueden leerlo.
+Como en el código C de ERTS, un `Term` del host es exactamente una palabra
+trivialmente copiable, válida hasta la siguiente recolección de su heap o la
+salida del proceso; no tiene fijación, puntero al heap, testigo de vida ni
+época de recolección ([propiedad](terms.md#ownership)). El acceso después de
+cualquiera de esos límites lee memoria movida o liberada y es indefinido, sin
+comprobación `stale_term`. Las raíces registradas se reescriben; un Term del
+host no registrado debe reconstruirse a partir de su palabra raíz reescrita.
+Un Term pertenece a su proceso; los demás procesos solo pueden leerlo mientras
+el origen permanezca estable.
 
 El heap solo se mueve en un punto seguro, y nunca mientras haya una reserva
 abierta:
@@ -354,22 +378,28 @@ mueve el heap: una solicitud que no cabe crea un fragmento.
 
 Un `MessageBuffer`
 ([message_buffer.hpp](../runtime/src/memory/message_buffer.hpp)) mantiene un
-término fuera de todo proceso: `copy_of` copia el grafo desde el heap de su
-proceso a un `HeapStorage` propio (con su propio testigo de vida, los átomos y
-la cuenta de memoria del runtime, y los binaries fuera del heap compartidos y
-retenidos), con la misma `GraphCopy` que usa un envío; `copy_to` lo copia al
-heap de un receptor. Los inmediatos no necesitan almacenamiento. El búfer nunca
-se recolecta y se libera con su último propietario; su bloque tiene
-exactamente las palabras del término, sea cual sea el heap mínimo del emisor.
-Lo usan los mensajes a un proceso que se ejecuta en otro hilo de trabajo
-([hilos de trabajo](processes.md#workers)), los mensajes de los
-temporizadores, las etiquetas de monitores y los
-[términos persistentes](runtime.md#persistent-terms), por lo que nunca se
-vuelven a codificar.
+término fuera de todo proceso: `copy_of(value, sender)` copia el grafo desde el
+heap del proceso emisor a un `HeapStorage` propio. El `ProcessContext` del
+emisor proporciona las opciones del heap, las áreas de literales, los átomos,
+las identidades y la cuenta de memoria del runtime; el búfer conserva su propio
+testigo de vida y comparte los binaries fuera del heap. Usa la misma
+`GraphCopy` que un envío; `copy_to` lo copia al heap de un receptor. Los
+inmediatos y las raíces literales no necesitan almacenamiento. Las factorías,
+las reservas y los búferes de mensajes conservan sus comprobaciones de vida
+(`expired_context`); un Term leído de un búfer no fija nada y no debe
+sobrevivir a su almacenamiento. El búfer nunca se recolecta y se libera con
+su último propietario; su bloque tiene exactamente las palabras del término,
+sea cual sea el heap mínimo del emisor. Lo usan los mensajes a un proceso que
+se ejecuta en otro hilo de trabajo ([hilos de trabajo](processes.md#workers)),
+los mensajes de los temporizadores y las etiquetas de monitores, por lo que
+nunca se vuelven a codificar; los
+[términos persistentes](runtime.md#persistent-terms) viven en su propio rango
+de direcciones y se copian, sin compartirse, a los búferes.
 
 **Traspaso de mensajes.** Un envío cuyo mensaje ocupa al menos
-`MessageBuffer::ADOPTED_WORDS` (512) palabras, contadas por un recorrido
-acotado que se detiene ahí, construye el búfer antes de tomar el bloqueo del
+`MessageBuffer::ADOPTED_WORDS` (512) palabras, contadas por
+`MessageBuffer::large(value, sender, minimum)` mediante un recorrido acotado
+que se detiene ahí, construye el búfer antes de tomar el bloqueo del
 ejecutor, de modo que el emisor no retiene ningún bloqueo mientras copia.
 Después, el receptor asume el búfer en lugar de copiarlo
 (`MessageBuffer::take`, `HeapStorage::adopt`), cuando el búfer no tiene otro
@@ -551,8 +581,8 @@ optimizador nunca reutiliza el registro que contenía `Y`.
 
 Una copia de Cheney (`memory/heap_collect`), de barrido completo o una
 recolección menor ([generaciones](#generations)): primero se asigna el nuevo
-bloque (un fallo es `out_of_memory` y deja el heap intacto), después se marcan
-como obsoletos los `Term`s del host, se copia el objeto detrás de cada palabra
+bloque (un fallo es `out_of_memory` y deja el heap intacto), después se copia
+el objeto detrás de cada palabra
 raíz y se recorre el nuevo bloque de izquierda a derecha, copiando los hijos de
 cada copia. La cabecera de un objeto boxed movido se sustituye por un puntero
 boxed a su copia; una celda cons movida recibe una cabeza a cero y una cola que
@@ -612,17 +642,21 @@ Recolección generacional, como la hace ERTS, sin su barrera de escritura:
 ## Copia entre heaps
 
 `ProcessHeap::add(value)`, o equivalentemente `value.copy_to(heap)`, devuelve un
-término del heap de destino (`size_object` y `copy_struct` de BEAM). Cada celda
-de origen se busca primero en el área de la anterior, y una celda cons no
-necesita análisis:
+término del heap de destino (`size_object` y `copy_struct` de BEAM). Las celdas
+de origen se leen mediante punteros de confianza, y una celda cons no necesita
+análisis:
 
-- Los inmediatos y los átomos del mismo runtime no necesitan almacenamiento, y
-  un término del heap de destino conserva su identidad. Un grafo de otro
-  proceso del mismo runtime se copia; el grafo de otro runtime es
-  `wrong_owner`, un origen caducado es `expired_context`, y un handle de origen
-  anterior a la última recolección de su heap es `stale_term`. Las factorías
-  siguen rechazando entradas ajenas (`ProcessHeap::retain`), por lo que solo
-  una copia explícita mueve un grafo.
+- Un término que el destino puede leer (su propio heap o un área de literales,
+  comprobado por `storage_->readable(address)`) conserva su identidad; los
+  demás grafos se copian. Las áreas de literales reconocidas por el registro
+  del runtime de destino siguen compartidas. Ambos heaps deben estar vivos y
+  pertenecer a un mismo runtime: es un contrato del llamante, sin comprobación
+  entre runtimes en las copias compuestas ni comprobación de vida del origen
+  por handle. Leer un origen tras la recolección o la salida es indefinido.
+  Los átomos, pids y puertos raíz siguen pasando por la admisión del destino;
+  un destino caducado informa de `expired_context`. Las factorías siguen
+  rechazando entradas compuestas ajenas (`ProcessHeap::retain`), por lo que
+  solo una copia explícita mueve un grafo.
 - Las copias son planas, como el `copy_struct` por defecto de ERTS (sin su
   variante opcional que conserva la compartición): un subtérmino se copia una
   vez por cada camino que lo alcanza, así que `{T, T}` copia `T` dos veces, y

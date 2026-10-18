@@ -1,9 +1,10 @@
 ---
 source: docs/building.md
-sourceCommit: a8c3f8f6
-sourceSha256: 94c0fac180752b278facfe18589c191a0a15ee95e55d9dbf7d4d049c4774e079
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 86d39780700856574257fd2d598102b8e551505085c42a0a8175f9c2c7b2330c
+translatedAt: 2026-10-18
 ---
+
 # Збирання компілятора
 
 Налаштуйте й зберіть з кореня репозиторію:
@@ -99,9 +100,9 @@ cmake --build build/debug --target check-quality       # changed files
 cmake --build build/debug --target check-quality-all   # whole tree
 ```
 
-`check-quality` перевіряє файли, змінені відносно `HEAD` (або
-`CLAUSE_QUALITY_BASE`), а також одиниці трансляції, що включають змінений
-заголовок, і потребує збирання з увімкненими компілятором і runtime;
-`check-complexity-all` і `check-clang-tidy-all` запускають один інструмент.
-`cmake/CheckClangTidy.cmake` приймає `QUALITY_SHARD=K/N`, щоб розбити довгий
-запуск.
+`check-quality` перевіряє файли, змінені від `HEAD` (або `CLAUSE_QUALITY_BASE`),
+і по одній одиниці трансляції на змінений заголовок (`check-quality-all` охоплює
+всі залежні одиниці в повній перевірці) та потребує збірки з увімкненими
+компілятором і runtime; `check-complexity-all` та `check-clang-tidy-all`
+запускають один інструмент. `cmake/CheckClangTidy.cmake` приймає
+`QUALITY_SHARD=K/N`, щоб розділити тривалий запуск.

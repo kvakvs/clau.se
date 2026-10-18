@@ -1,8 +1,8 @@
 ---
 source: docs/library.md
-sourceCommit: a8c3f8f6
-sourceSha256: f657ad1632b57e9c9b11ad04f870350112a7cac942b10e5483e1aa26d1c79fc7
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 0fc98265c5256c76cd34c89f89a48993e3452732ca40c3a295860a34bee27186
+translatedAt: 2026-10-18
 ---
 # Bibliotheksmodule
 
@@ -19,13 +19,25 @@ welche Funktionen implementiert und welche Stubs sind.
 
 | Modul | Inhalt |
 | --- | --- |
-| [`lists`](../library/stdlib/lists.erl) | Die gängigen Funktionen; Datenfunktionen wie `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3` sind Runtime-Builtins ([Modul lists](builtins.md#lists-module)) |
-| [`maps`](../library/stdlib/maps.erl) | Die gängigen Funktionen und Iteratoren; `get/3`, `merge/2`, `update/3`, `with/2`, ... sind Runtime-Builtins ([Modul maps](builtins.md#maps-module)) |
+| [`lists`](../library/stdlib/lists.erl) | Die gängigen Funktionen; Datenfunktionen wie `sublist/2,3`, `flatten/1,2`, `usort/1`, `keymember/3`, `zip/2,3`, `merge/2` sind Runtime-Builtins; jede dokumentierte Funktion ist implementiert ([Modul lists](builtins.md#lists-module)) |
+| [`maps`](../library/stdlib/maps.erl) | Jede dokumentierte Funktion; `get/3`, `merge/2`, `intersect/2`, `with/2`, ... sind Runtime-Builtins, Funktionen mit funs sind Erlang ([Modul maps](builtins.md#maps-module)) |
+| [`ordsets`](../library/stdlib/ordsets.erl), [`orddict`](../library/stdlib/orddict.erl), [`proplists`](../library/stdlib/proplists.erl) | Jede dokumentierte Funktion; Listendurchläufe sind Runtime-Builtins, Funktionen mit funs sind Erlang ([Sammlungen](builtins.md#collections)) |
+| [`calendar`](../library/stdlib/calendar.erl) | Jede dokumentierte Funktion; gregorianische Arithmetik als Runtime-Builtins, lokale Zeit und RFC 3339 in Erlang ([calendar](builtins.md#calendar)) |
+| [`filename`](../library/stdlib/filename.erl) | Jede dokumentierte Funktion nach den Unix- und Windows-Regeln von OTP für den Host; Namensdurchläufe sind Runtime-Builtins, `absname/1,2` und `basedir/2,3` (aus `HOME`, den XDG-Variablen und `APPDATA`) sind Erlang ([filename](builtins.md#filename)) |
+| [`uri_string`](../library/stdlib/uri_string.erl) | Jede dokumentierte Funktion als Runtime-Builtin: Parsen nach RFC 3986 mit den Fehlerfragmenten von OTP, erneutes Zusammensetzen, Normalisierung, Auflösung, Prozentkodierung und form-urlencoded-Abfragen ([uri_string](builtins.md#uri-string)) |
+| [`json`](../library/stdlib/json.erl) | Jede dokumentierte Funktion mit iodata, Fehlern und Callback-Reihenfolge von OTP; `decode/1`, `encode/1`, `format/1,2` und die Binary-Escape-Funktionen sind Runtime-Builtins, Encoder und Formatierer mit funs sowie Callback-Decoder sind Erlang ([Kodierungen](builtins.md#encodings)) |
+| [`rand`](../library/stdlib/rand.erl), [`random`](../library/stdlib/random.erl) | Jede dokumentierte Funktion mit Zuständen und Folgen von OTP; die Algorithmen von OTP laufen als Runtime-Builtins, Plug-in-Generatoren in Erlang ([Zufallszahlen](builtins.md#random-numbers)) |
+| [`string`](../library/stdlib/string.erl) | Jede dokumentierte Funktion als Runtime-Builtin, das chardata wie `string.erl` von OTP durchläuft, sodass Ergebnisse die Formen von OTP behalten ([string](builtins.md#string)) |
+| [`base64`](../library/stdlib/base64.erl) | Jede dokumentierte Funktion als Runtime-Builtin ([Kodierungen](builtins.md#encodings)) |
+| [`array`](../library/stdlib/array.erl) | Jede dokumentierte Funktion über dem record von OTP 29; record-Operationen sind Runtime-Builtins, Folds und Mapfolds sind Erlang ([Sammlungen](builtins.md#collections)) |
+| [`gb_trees`](../library/stdlib/gb_trees.erl), [`gb_sets`](../library/stdlib/gb_sets.erl), [`queue`](../library/stdlib/queue.erl) | Jede dokumentierte Funktion über den Baum- und Warteschlangenformen von OTP; Operationen ohne funs sind Runtime-Builtins ([Sammlungen](builtins.md#collections)) |
+| [`dict`](../library/stdlib/dict.erl), [`sets`](../library/stdlib/sets.erl) | Jede dokumentierte Funktion über den records (Mengen der Version 1) und Maps (Version 2) von OTP; Operationen ohne funs sind Runtime-Builtins ([Sammlungen](builtins.md#collections)) |
 | [`io`](../library/stdlib/io.erl) | `get_line/1,2`, `get_chars/2,3` (Server der Standardeingabe oder eine geöffnete Datei), `request/1,2`, `requests/1,2` (das I/O-Protokoll von OTP, [Dateien](ports.md#standard-io-and-files)); `format/1,2,3`, `fwrite/1,2,3`, `put_chars/1,2` und `nl/0,1` sind Runtime-Builtins ([io](io.md)) |
+| [`io_lib`](../library/stdlib/io_lib.erl) | Schreib-, Prüf- und Sammelfunktionen, Format-Engine und Pretty Printer (`print/1,4`, `~p`, `chars_limit`) als Runtime-Builtins in den tiefen Listenformen von OTP; `get_until`, `format_prompt` und `write/3` sind Erlang; `fread/2,3` sind Stubs ([io_lib](builtins.md#io_lib)) |
 | [`binary`](../library/stdlib/binary.erl) | Jede Funktion; `replace/3,4` und `list_to_bin/1` in Erlang, die anderen Runtime-Builtins ([Modul binary](builtins.md#binary-module)) |
 | [`math`](../library/stdlib/math.erl) | Jede Funktion als Runtime-Builtin ([Modul math](builtins.md#math-module)) |
-| [`unicode`](../library/stdlib/unicode.erl) | Konvertierungen, `bin_is_7bit/1` und Byte Order Marks als Runtime-Builtins ([Modul unicode](builtins.md#unicode-module)); Normalisierung und Eigenschaften sind Stubs |
-| [`unicode_util`](../library/stdlib/unicode_util.erl) | Jede Funktion über erzeugten Tabellen ([unicode_util](builtins.md#unicode-util)) |
+| [`unicode`](../library/stdlib/unicode.erl) | Jede Funktion als Runtime-Builtin: Konvertierungen, `bin_is_7bit/1`, Byte Order Marks, Normalisierungsformen, Kategorien und Bezeichnereigenschaften ([Modul unicode](builtins.md#unicode-module)) |
+| [`unicode_util`](../library/stdlib/unicode_util.erl) | Jede Funktion über erzeugten Tabellen, die chardata-Durchläufe als Runtime-Builtins ([unicode_util](builtins.md#unicode-util)) |
 | [`re`](../library/stdlib/re.erl) | Jede Funktion außer `import/1`, über PCRE2 ([Modul re](builtins.md#re-module)) |
 | [`file`](../library/kernel/file.erl) | Dateien öffnen, lesen, schreiben, positionieren und schließen, ganze Dateien lesen und schreiben, Dateiinformationen und Verzeichnisoperationen über den Dateitreiber ([Dateien](ports.md#standard-io-and-files)) |
 | [`gen_tcp`](../library/kernel/gen_tcp.erl), [`gen_udp`](../library/kernel/gen_udp.erl), [`inet`](../library/kernel/inet.erl) | Sockets über Socket-Ports ([Sockets](ports.md#sockets)) |
@@ -33,7 +45,7 @@ welche Funktionen implementiert und welche Stubs sind.
 | [`os`](../library/kernel/os.erl) | `cmd/1` über einen Port, Abfragen zu Umgebung, Zeit und Version ([Modul maps](builtins.md#maps-module)) |
 | [`code`](../library/kernel/code.erl) | Abfragen geladener Module ohne Code-Server ([Modul code](builtins.md#code-module)); Pfade und Laden sind Stubs |
 | [`application_controller`](../library/kernel/application_controller.erl) | Alles Stubs; verdeckt das von OTP, das `prim_file` aufruft (luerl erreicht es über `application` von OTP) |
-| [`erlang`](../library/erts/erlang.erl) | Erzeugte Stubs jedes `erlang`-Exports von OTP 29; Builtins ersetzen ihre, `nif_error/1,2` haben Rümpfe, die anderen lösen beim Aufruf `{not_implemented, F, A}` aus ([Modul erlang](builtins.md#erlang-module)) |
+| [`erlang`](../library/erts/erlang.erl) | Erzeugte Stubs jedes `erlang`-Exports von OTP 29; Katalog-Builtins haben Platzhalterrümpfe, `nif_error/1,2` haben Rümpfe, die anderen lösen beim Aufruf `{not_implemented, F, A}` aus ([Modul erlang](builtins.md#erlang-module)) |
 | [`init`](../library/erts/init.erl) | Die Antworten eines gestarteten Systems; `boot/1`, `restart/0,1` und `make_permanent/2` abgelehnt ([Modul init](builtins.md#init-module)) |
 | [`persistent_term`](../library/erts/persistent_term.erl) | Jede Funktion als Runtime-Builtin ([persistente Terme](builtins.md#persistent-terms)) |
 | [`atomics`](../library/erts/atomics.erl), [`counters`](../library/erts/counters.erl) | Jede Funktion ([atomics und counters](builtins.md#atomics-and-counters)) |
@@ -105,6 +117,15 @@ mischt:
   Distribution oder Laden von Code). Ein neues Modul beginnt mit jeder Funktion
   als Stub, sodass es auffindbar ist und seine Aufrufer kompilieren; Gruppen
   wechseln dann in ihren entschiedenen Status.
+- **Builtin-Platzhalter:** Eine von einem Katalog-Builtin implementierte
+  Funktion behält ihren Export und den Rumpf
+  `F(_, ...) -> clause_builtin_placeholder.`, der nie ausgeführt wird: Die
+  Registrierung bindet stattdessen das Builtin, und ein qualifizierter Aufruf
+  `M:F(...)` wird zur Brücke kompiliert. Nur ein unqualifizierter Aufruf im
+  Modul würde den Platzhalter erreichen, daher ruft das Modul seine eigenen
+  Builtins qualifiziert auf; `library_inventory` weist Platzhalter ohne
+  zugehöriges Katalog-Builtin, als `not_implemented`-Stub verbliebene
+  Katalog-Builtins und unqualifizierte Aufrufe eines Platzhalters zurück.
 - **Fehlend (missing):** Clause liefert gar kein Modul, womöglich für immer,
   und hält fest, warum und welche höheren Clause-Module den Platz seiner
   Aufrufer einnehmen (`library/modules.terms`). Die niedrigen Datei- und
@@ -150,7 +171,7 @@ bereitstellen, da nichts ersetzt wird.
   OTP-Anwendung, der das Modul in OTP gehört: `erts` (Gegenstücke der
   vorgeladenen Module und `erlang`), `kernel`, `stdlib`. Die privaten
   Hilfsmodule von Clause (`clause_socket`, `clause_re`, `clause_unicode`,
-  `clause_zlib`, `clause_receive`, `clause_maps`) liegen neben den Modulen,
+  `clause_zlib`, `clause_receive`, `clause_maps`, `clause_hashed`, `clause_array`) liegen neben den Modulen,
   denen sie dienen. Die Suche in der Bibliothek durchsucht jedes
   Anwendungsverzeichnis; ein Modulname existiert in höchstens einem davon.
 - `library/modules.terms` listet jedes Modul auf, über das Clause entscheidet:
@@ -166,6 +187,24 @@ bereitstellen, da nichts ersetzt wird.
   (`M:module_info(exports)`); kein OTP-Quelltext wird kopiert. Ergebnisse und
   Fehlerterme implementierter Funktionen entsprechen OTP 29; bewusste
   Abweichungen stehen unter [Unterschiede](differences.md).
+
+### Dokumentierte Funktionen
+
+`library/documented.terms` listet die öffentlichen Funktionen auf, die OTP 29
+für `erts`, `kernel` und `stdlib` dokumentiert:
+`{Module, Application, Name, Arity}.` pro Funktion, deren Modul- und
+Funktionsdokumentation nicht verborgen ist und die nicht veraltet ist,
+beobachtet aus den Doc-Chunks des Host-OTP durch
+`tests/compiler/library/observe_docs.escript` (explizit auszuführen).
+Undokumentierte Exporte bleiben in den Inventaren, dürfen aber Stubs bleiben.
+
+- `library_inventory` prüft, dass jede dokumentierte Funktion eines
+  bereitgestellten Moduls in dessen Inventar steht und kein Stub ist,
+  ausgenommen Module, die `library_modules.py` als teilweise implementiert
+  mit dem abschließenden Plan-Step aufführt.
+- `python tests/compiler/library/library_modules.py coverage .` gibt für
+  jedes dokumentierte Modul die Anzahl implementierter und dokumentierter
+  Funktionen aus.
 
 ### Typen
 
@@ -202,8 +241,8 @@ Booten der ganzen Anwendung `kernel` ist nicht geplant.
 
 ### Ledger
 
-Echte Programme treiben diese Arbeit an; das Projekt luerl ist der aktuelle
-Treiber ([21-lib](../.agents/21-lib.md)). Es kompilieren und ausführen, jeden
+Der Projektplan sieht jedes dokumentierte Modul von `erts`, `kernel` und
+`stdlib` vor; echte Programme (zuerst luerl) setzen die Prioritäten. Es kompilieren und ausführen, jeden
 Fehler klassifizieren (`unknown module`, `undefined function M:F/A`, nicht
 unterstützte Syntax oder Features, anderes) und jeden einem Plan-Step, einem
 anderen Backlog-Eintrag oder einer festgehaltenen Ablehnung zuordnen. Ist das

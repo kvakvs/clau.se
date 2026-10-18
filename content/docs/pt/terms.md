@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: a8c3f8f6
-sourceSha256: ceb9d797b2321fa19ef5f072328d39fd9fca241aa41e24f7a8fceea9ff69a78b
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
+translatedAt: 2026-10-18
 ---
 # Representação dos termos
 
@@ -18,24 +18,26 @@ em palavras estão em [abi.md](abi.md#terms).
 - Os valores compostos vivem no heap do seu processo
   ([contrato do heap](runtime-heap.md)) ou na área de literais só de leitura de
   um módulo ([áreas](runtime-heap.md#areas)). Os ponteiros de processo designam
-  sempre o início de objetos. A admissão verifica o intervalo possuído e a forma
-  do cabeçalho, rejeitando palavras alheias e obsoletas
+  sempre o início de objetos. A admissão (apenas em compilações Debug; Release
+  confia nas palavras, `CHECKED_ADMISSION`) verifica o intervalo possuído e a
+  forma do cabeçalho, rejeitando endereços alheios e formas inválidas
   ([admissão](runtime-heap.md#admission)); o tipo e a extensão são
   descodificados do cabeçalho.
-- Um `Term` do anfitrião para um valor no heap é uma palavra etiquetada em
-  bruto, válida até à próxima recolha do seu heap
-  ([raízes](runtime-heap.md#roots-and-safe-points)); não fixa o armazenamento do
-  heap. Após a destruição do contexto, o acesso devolve `expired_context`; após
-  uma recolha posterior, `stale_term`. Destruir termos é sempre seguro. A
-  verificação de destruição lê o token de tempo de vida do contexto sem o
-  bloquear: um contexto e os seus termos são usados por uma thread de cada vez.
+- Um `Term` do anfitrião é exatamente uma `Word`, trivialmente copiável, apenas
+  com `value_`. Um Term de heap é válido até à próxima recolha do seu heap ou à
+  saída do processo ([raízes](runtime-heap.md#roots-and-safe-points)); não fixa
+  nada nem transporta heap, token de tempo de vida ou contagem de recolhas. O
+  acesso após esse momento lê memória movida ou libertada e é indefinido; não
+  existe erro `stale_term`. A destruição é segura. As fábricas, reservas e
+  buffers de mensagens mantêm as suas próprias verificações de tempo de vida
+  e continuam a indicar `expired_context`.
 - A construção valida os filhos, reserva, inicializa e depois publica num só
   passo; uma falha reverte o armazenamento e os contadores.
 - `Term::from_word(word)` admite apenas imediatos independentes do dono;
   `Term::from_word(word, context)` admite também átomos e termos de heap desse
   contexto. A passagem dentro do mesmo heap mantém a identidade.
-  `copy_to`/`ProcessHeap::add` copiam um grafo de outro processo do mesmo
-  runtime com a sua partilha; as fábricas de termos recusam entradas alheias com
+  `copy_to`/`ProcessHeap::add` copiam um grafo de outro processo sob um contrato
+  do chamador que exige o mesmo runtime; as fábricas de termos recusam entradas alheias com
   `wrong_owner`
   ([cópia entre heaps](runtime-heap.md#copying-between-heaps)).
 - As células vivem até que uma recolha as encontre inalcançáveis, ou até à
@@ -49,20 +51,25 @@ em palavras estão em [abi.md](abi.md#terms).
   continuam a ser aceites quando a capacidade está esgotada.
 - Até 255 escalares Unicode; vazio, NUL e caracteres suplementares permitidos;
   UTF-8 malformado/sobrelongo/com surrogates é rejeitado.
-- Os conteúdos vêm de um contador global do processo, para que a palavra de
-  átomo de um runtime alheio seja detetável. Os processos de 32 bits têm 2^26
-  identidades no total durante a sua vida.
-- Admitir uma palavra de átomo lê um índice sem bloqueios pelo número do átomo
-  (os átomos fixos diretamente, depois blocos de 4 096 entradas publicados uma
-  vez sob o bloqueio de internamento); os números acima de 2^24 recorrem à
-  tabela com bloqueio.
-- Os `Term` de átomo do anfitrião fixam a grafia e sobrevivem à destruição do
-  runtime. Mover um átomo entre runtimes significa internar `atom_utf8()` no
-  destino.
+- Os conteúdos vêm de um contador global do processo e nunca são reutilizados,
+  mesmo entre runtimes. O índice global contém 2^28 números, limitados pela
+  carga útil de átomo da palavra em alvos de 32 bits (2^26 identidades durante
+  a vida do processo). Os limites por runtime mantêm-se. Os números de átomo
+  nunca saem de um nó: ETF e os formatos em disco usam grafias.
+- `detail::atom_table` fornece leituras sem bloqueios por número de átomo:
+  registos fixos diretamente, depois blocos de 4 096 slots mantidos durante a
+  vida do processo. Cada `AtomStorage` possui os seus registos por grafia,
+  publica-os neste índice e admite apenas registos seus ou fixos. A desmontagem
+  retira os seus slots.
+- Os Terms de átomo não fixam nada. `atom_spelling()` empresta a grafia até à
+  desmontagem do runtime; tanto esta função como `atom_utf8()` indicam
+  `expired_context` após a desmontagem do runtime de um átomo não fixo. Mover
+  um átomo entre runtimes significa internar a sua grafia no destino enquanto
+  o runtime de origem está vivo.
 - Os booleanos são os átomos `true`/`false`. Os átomos fixos `false`, `true`,
   `undefined`, `ok` e `error` (`abi::v1::fixed_atom_spellings`) têm as palavras
-  dos números de átomo 0–4 em todos os runtimes, introduzidos com o
-  armazenamento, encontrados sem o bloqueio e não contados nem por `size()` nem
+  dos números de átomo 0–4 em todos os runtimes, com registos estáticos imortais,
+  encontrados sem o bloqueio e não contados nem por `size()` nem
   para `max_atoms`; o código gerado usa-os como constantes. Todas as outras
   palavras de átomo são privadas do runtime.
 - Os literais compostos de constantes (strings, listas e tuplos de imediatos e
@@ -241,8 +248,8 @@ em palavras estão em [abi.md](abi.md#terms).
   ([ports](ports.md#identity)).
 - Uma referência é uma célula de heap (`reference`: cabeçalho mais um número de
   64 bits não rastreado) admitida como qualquer termo de heap: apenas no seu
-  próprio processo, obsoleta após uma recolha para um `Term` do anfitrião,
-  copiada por valor entre processos. Os números vêm de um único contador global
+  próprio processo, copiada por valor entre processos. Um `Term` do anfitrião
+  sem raiz não pode ser acedido após a recolha ou a saída do processo. Os números vêm de um único contador global
   do processo, pelo que cada referência de uma execução do programa é única.
 - Uma referência handle (uma magic reference do OTP) é uma célula de referência
   que também contém um buffer fora do heap; é a mesma referência para todos os
@@ -267,8 +274,9 @@ Os átomos comparam-se pela grafia UTF-8 (ordem dos pontos de código); os tuplo
 pela aridade e depois pelos campos; os maps pelo tamanho, depois pelas chaves e
 depois pelos valores; os bitstrings pelos bits lógicos. Dois inteiros pequenos,
 dois floats ou dois binaries de bytes inteiros são ordenados diretamente a
-partir das suas palavras ou células (`detail::word_order`), sem admissão de
-termos.
+partir das suas palavras ou células (`detail::word_order`), e dois átomos a
+partir das suas grafias na tabela de átomos (`AtomStorage::spelling`, através
+do índice numérico sem bloqueios), sem admissão de termos.
 
 ## Impressão
 

@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: a8c3f8f6
-sourceSha256: 0717f1e1336ae5419c5ef646d39a5488fd45468113ecbf7eb15897e3370b69c4
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
+translatedAt: 2026-10-18
 ---
 # ABI för genererad kod (revision 21)
 
@@ -305,6 +305,14 @@ signaturen `TermWord(Context *, const TermWord *)` som värdingång som anropar
   (högst 32 olika) skrivs inline som klassiska map-celler, med nycklarna
   sorterade vid kompileringstid i exakt termordning och det sista värdet för
   en upprepad nyckel behållet; annars bygger `CLAUSE_map_v1` dem.
+- Map-mönster (`#{K := V}`, `#{}`), `map_get/2`, `is_map_key/2`,
+  `map_size/1` och uppdateringar (`M#{K := V}`, `M#{K => V}`, högst 8 fält)
+  läser en klassisk map-cell inline när varje nyckel är en atom eller ett
+  litet heltal, vars termlikhet är ordlikhet: en sökning genom nyckelorden,
+  sedan värdeordet, eller en kopia av cellen med de nya värdena när den redan
+  har varje nyckel och heapen har plats. En saknad nyckel får ett mönster att
+  misslyckas direkt; map-träd, andra nycklar, en saknad nyckel i andra fall
+  och fel går via `CLAUSE_map_v1` (uppslag i små maps).
 - Tupler och listor på högst 64 ord bump-allokeras inline i
   `[heap_top, heap_limit)` (huvud eller cons-celler skrivs på plats,
   `heap_top` flyttas fram), annars byggs de av `CLAUSE_construct_v1`;
@@ -388,7 +396,8 @@ Inline-former (`codegen/lowering_inline.cpp`): typtester (`is_atom`,
 taggar och, efter ett test av boxad tagg, huvudets sort
 (`abi::v1::HeaderKind`); de anropar aldrig en tjänst. Jämförelser av två
 omedelbara värden (`==`, `/=`) eller två små heltal (`<`, `=<`, `>`, `>=`),
-`element/2`, `tuple_size/1`, `hd/1`, `tl/1`, de booleska operatorerna, `band`,
+`element/2`, `tuple_size/1`, `bit_size/1` och `byte_size/1`
+(från bitlängdsordet, så länge storleken är ett litet heltal), `hd/1`, `tl/1`, de booleska operatorerna, `band`,
 `bor`, `bxor`, `bsr`, `bsl` (så länge resultatet förblir litet) och små
 `div`/`rem` körs inline; `self/0` läser `FrameState::self`. De körs inline där
 operanderna tillåter det och anropar annars `CLAUSE_immediate_v1`, som
@@ -407,7 +416,7 @@ den inbyggda funktionen på registren och returnerar till anroparen, eller
 suspenderar processen vid den inbyggda funktionens fortsättning när den har
 trappat ([portioner](builtins.md#portions)).
 
-En direkt inbyggd funktion (`BuiltinName::direct`: rena konverteringar som
+En direkt inbyggd funktion (`BuiltinCall::direct`: rena konverteringar som
 `integer_to_list/1`, `atom_to_list/1`, `list_to_tuple/1`, `setelement/3`,
 `phash2/1`) trappar aldrig, väntar aldrig och verkar aldrig på en annan
 process. Genererad kod anropar den med
@@ -415,6 +424,12 @@ process. Genererad kod anropar den med
 direkt och returnerar resultatet, utan ramöverföring, utan
 återupptagningspunkt och utan safepoint vid ingången; den förbrukar en
 reduktion, och ett fel går till den kontrollerade kanalen som för en tjänst.
+En snabb inbyggd funktion (`BuiltinCall::quick`: `length/1`,
+`binary_to_list/1`, `list_to_binary/1`, `iolist_to_binary/1`) anropas först
+på samma sätt; dess begränsade snabba väg returnerar 0 när den avböjer
+(längre indata, andra former, varje fel och alltid när anrop spåras), och
+den genererade koden går då in i den inbyggda funktionens ram som för
+vilken inbyggd bryggfunktion som helst.
 
 `abi::v1::dispatch_builtin` anropar inbyggda funktioner som registrerats av
 värden via modul-/funktionsbyte, argumentarray och aritet, och returnerar en
@@ -463,3 +478,4 @@ värden via modul-/funktionsbyte, argumentarray och aritet, och returnerar en
 | 20 | `MapOperation::entries` och inline map-generatorer |
 | 21 | `ModuleDescriptor::fun_cache` och inline-closures |
 | 22 | Direkta inbyggda funktioner: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
+| 23 | Snabba inbyggda funktioner: `BuiltinName::call` (`BuiltinCall`), 0 från `CLAUSE_builtin_call_v1` avböjer |

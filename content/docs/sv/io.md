@@ -1,18 +1,19 @@
 ---
 source: docs/io.md
-sourceCommit: a8c3f8f6
-sourceSha256: 1a1dffbcffc7158bbd4b175979fb33aef895af149c1a3d78b4f773598432536a
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
+translatedAt: 2026-10-18
 ---
 # Konsolutdata (`io`)
 
 `io:format/1,2,3`, `io:fwrite/1,2,3`, `io:put_chars/1,2` och `io:nl/0,1` är
 inbyggda funktioner i runtimen för modulen `io` i bryggans katalog
-([inbyggda funktioner](builtins.md)); runtimen implementerar OTP:s regler för
-`io_lib_format` och `io_lib_pretty` i C++
-([io_format.cpp](../runtime/src/builtins/io_format.cpp),
-[io_pretty.cpp](../runtime/src/builtins/io_pretty.cpp)). Indatafunktionerna i
-`io` är skrivna i Erlang i [biblioteket](library.md#contents).
+([inbyggda funktioner](builtins.md)); texten är den från `io_lib:format/2`,
+byggd av [io_lib:s motor](builtins.md#io_lib) och utplattad, med `~p` utlagd
+enligt OTP:s regler för `io_lib_pretty`
+([io_lib/pretty.cpp](../runtime/src/builtins/io_lib/pretty.cpp)).
+Indatafunktionerna i `io` är skrivna i Erlang i
+[biblioteket](library.md#contents).
 
 ## Anrop
 
@@ -48,28 +49,31 @@ inbyggda funktioner i runtimen för modulen `io` i bryggans katalog
 - Styrsekvenser `~F.P.PadModC`: fältbredd `F` (negativ eller `-`:
   vänsterjusterad), precision `P`, utfyllnadstecken, `*` som tar ett heltal
   (eller utfyllnaden) från argumenten, modifierarna `t` (Unicode), `l` (ingen
-  strängdetektering) och `k` (ordnade maps; Clause skriver alltid ut maps i
-  nyckelordning).
-- `C` som stöds: `~w`, `~p`, `~s`, `~c`, `~b`, `~B`, `~i`, `~n`, `~~`, med
-  OTP:s fältregler: `~s` kortar av eller fyller ut till `P` inom `F`; `~w` och
-  `~b` skriver `*`-tecken när texten inte ryms i `F`; `~c` upprepar tecknet;
-  `~b`/`~B` tar basen från `P` (2..36); `~n` med `F` skriver `F`
-  radbrytningar.
+  strängdetektering), `k` (ordnade maps) och `K` (ordningen från argumenten:
+  `ordered`, `reversed`; jämförelse-funs ger `badarg`). Maps skrivs i
+  nyckelordning.
+- Alla styrsekvenser i OTP 29 med dess fältregler: `~w ~W ~p ~P ~s ~e ~f ~g ~b
+  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` kortar av eller fyller ut till `P` inom
+  `F`; `~w`, heltal och flyttal skriver `*`-tecken när texten inte ryms i
+  `F`; `~c` upprepar tecknet; heltalsbaser tas från `P` (2..36); `~n` med
+  `F` skriver `F` radbrytningar; bredder räknas som `io_lib:chars_length/1`.
 - Utan `t` tar `~s` endast Latin-1-tecken och `~c` skriver den låga byten av
   sitt heltal; `~w`/`~p` skriver atomtecken utanför Latin-1 som `\x{...}`.
   Med `t` läser `~s` binaries som UTF-8 (med Latin-1 som reserv) och `~p`
   skriver `<<"..."/utf8>>` för utskrivbara UTF-8-binaries.
-- `badarg`: ett okänt styrtecken, saknade eller extra argument, ett argument
-  av fel typ, `F` mindre än `P` för `~s`/`~c`, en vänsterjusterad `~p` eller
-  `~n`, en bas utanför 2..36, utdata som inte är Unicode.
-- Inte implementerat (`badarg`, se [skillnader](differences.md#io)): `~e`,
-  `~f`, `~g`, `~x`, `~X`, `~+`, `~#`, `~W`, `~P` och modifieraren `K`.
+- `badarg`: allt som får `io_lib:format/2` att misslyckas (ett okänt
+  styrtecken, saknade eller extra argument, ett argument av fel typ, `F`
+  mindre än `P`, en vänsterjusterad `~p` eller `~n`, en bas utanför 2..36),
+  och utdata som inte är Unicode.
 
 ## Snygg utskrift (`~p`)
 
 - Radlängden är `F` (standard 80, 0 skriver en rad); den första kolumnen är
   `P`, annars den kolumn som utdata har nått på sin rad (tabbar till
   multiplar av 8).
+- `~P` klipper termen vid sitt djupargument och `chars_limit` (alternativ
+  till `io:format/3` och `io_lib:format/3`) vid styrsekvensens andel av
+  tecknen, och skriver `...` där delar utelämnats, som OTP gör.
 - Termen blir OTP:s mellanform: varje värde med sin längd på en rad; strängar
   (platta listor av utskrivbara Latin-1-tecken, standardvärdet för
   `io:printable_range()`), utskrivbara binaries, atomer och tal är text.

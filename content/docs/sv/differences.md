@@ -1,8 +1,8 @@
 ---
 source: docs/differences.md
-sourceCommit: a8c3f8f6
-sourceSha256: 3ef4e2009b365f68cd20c9627686948139c57277d62690565abaab54507ac818
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 13b6b1fdfa7e9d5bd89113388e71d62567ddd4ab43cf8621051655c3f31fe56b
+translatedAt: 2026-10-18
 ---
 # Skillnader mot Erlang/OTP
 
@@ -18,9 +18,9 @@ inte här; se [features.md](features.md) och planen.
 | --- | --- | --- | --- |
 | Ordning för map-generatorer (`K := V <- M`) | Platta maps (upp till 32 nycklar) itereras i nyckelordning, men atomnycklar i atomtabellens ordning, som varierar mellan VM-körningar; större maps i hashordning | Alltid kanonisk nyckelordning (termordning) | [mönster](patterns.md#comprehensions) |
 | `bad_generators`-nyttolast för en map-generator i en zip-grupp | Dess iterator: en `{K, V, Next}`-kedja som slutar i `none`, i OTP:s ordning | Samma kedja, byggd i kanonisk nyckelordning | [mönster](patterns.md#comprehensions) |
-| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3` | Intern ordning (atomtabellens ordning för atomnycklar, hashordning över 32 nycklar); en iterator är en position eller en `{K, V, Next}`-kedja | Kanonisk nyckelordning; en iterator fortsätter över en nyckellista | [inbyggda funktioner](builtins.md#erts-internal) |
+| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3`, ordningen som `maps`-funs körs i (`intersect_with/3`, `merge_with/3`, ...), `proplists:get_keys/1`, `sets` av version 2 (`to_list/1`, `fold/3`) | Intern ordning (atomtabellordning för atomnycklar, hashordning över 32 nycklar); en iterator är en position eller en `{K, V, Next}`-kedja | Kanonisk nyckelordning; en iterator fortsätter över en nyckellista | [inbyggda funktioner](builtins.md#erts-internal) |
 | Utskrift av maps (`erlang:display/1`, `~w`, `~p`) | Intern layoutordning (atomtabellens ordning för atomnycklar, hashordning över 32 nycklar) | Map-nyckelordning, som OTP:s `~kw` | [termer](terms.md#printing) |
-| Ordningen för `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` | Mapens interna ordning (atomtabellens ordning för atomnycklar, hashordning över 32 nycklar) | Nyckelordning | [bibliotek](library.md) |
+| Ordning för `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` och medlemmarna som `json:encode/1` skriver | Map:ens interna ordning (atomtabellordning för atomnycklar, hashordning över 32 nycklar) | Nyckelordning | [bibliotek](library.md) |
 | Utskrift av native records (`erlang:display/1`) | Fält i atomtabellens indexordning | Definitionsordning, som `~w` | [native records](native-records.md#printing-and-order) |
 | `==` mellan native records vars fält skiljer sig endast som heltal/flyttal | Kompilatorn kan vika det till `=:=` (falskt) | Numerisk jämförelse (sant) | [native records](native-records.md#printing-and-order) |
 | Extern konstruktion av ett native record från en modul som inte är laddad | Misslyckas tills den definierande modulen laddas | Varje modul i batchen laddas vid uppstart; en modul utanför batchen misslyckas alltid | [native records](native-records.md#differences-kept) |
@@ -40,7 +40,7 @@ inte här; se [features.md](features.md) och planen.
 | Sista biten i resultat från `math` (`math:erfc(1)`, ...) | Det C-bibliotek som OTP byggdes med | Det C-bibliotek som Clause-program länkar (Windows: `0.15729920705028513` för `erfc(1)`, OTP `0.1572992070502851`) | [inbyggda funktioner](builtins.md#math-module) |
 | Resultatet av `binary:compile_pattern/1` | `{bm, Ref}` eller `{ac, Ref}` med en ogenomskinlig referens | `{bm, [Pattern]}` eller `{ac, Patterns}` | [inbyggda funktioner](builtins.md#binary-module) |
 | `binary:referenced_byte_size/1` för en sub-binary | Storleken på den binary den pekar in i | Dess egen storlek | [inbyggda funktioner](builtins.md#binary-module) |
-| Kostnaden för `persistent_term:get/1,2` | Konstant: värdet ligger kvar i ett literalområde; `put`/`erase` av ett ersatt värde utlöser en global skräpsamling | Kopierar värdet till läsarens heap vid varje läsning; ingen global skräpsamling | [runtime](runtime.md#persistent-terms) |
+| Minne för ersatta eller raderade persistenta termer | Återvinns av en insamlarprocess för literalområden som får varje process att kopiera ut värdet i bakgrunden | Varje process kopierar ut det vid nästa tidskvantum (parkerade direkt, av `put`/`erase`), sedan frigörs området; ingen insamlarprocess | [runtime](runtime.md#persistent-terms) |
 | `persistent_term:info/0` och `get/0` | Innefattar de termer som OTP:s `kernel` och `stdlib` lagrar vid uppstart (26 i OTP 29) | Endast programmets egna termer | [inbyggda funktioner](builtins.md#persistent-terms) |
 | `code:is_loaded/1`, `code:which/1`, `code:all_loaded/0` för en kompilerad modul | Den `.beam`-fil den laddades från | `preloaded`: varje modul är länkad in i den körbara filen | [inbyggda funktioner](builtins.md#code-module) |
 | `init:get_arguments/0`, `init:get_argument/1` | Emulatorns flaggor: `root`, `bindir`, `progname`, `home` och varje `-Flag` på kommandoraden | Endast `home`; en körbar fil har inga emulatorflaggor | [inbyggda funktioner](builtins.md#init-module) |
@@ -82,7 +82,8 @@ inte här; se [features.md](features.md) och planen.
 | `monitor(port, Item, Options)` med alternativ | Godtas | `badarg` | [processer](processes.md#aliases) |
 | `spawn_request_abandon/1` | `true` medan svaret väntar | Alltid `false`: svaret skickas innan `spawn_request` returnerar | [processer](processes.md#spawn-options) |
 | Sista biten i `math:log2/1` (Windows) | OTP:s Windows-bygge dividerar `log(X)` med `log(2)` (`math:log2(1.0e308)` är `1023.1538532253077`) | C-bibliotekets `log2` (`1023.1538532253076`) | [inbyggda funktioner](builtins.md#math-module) |
-| Värden från `phash/2`, `phash2/1,2` | OTP:s hashfunktion | Clauses egen stabila hash med samma intervall och likhetsgaranti | [inbyggda funktioner](builtins.md#hashing) |
+| `phash/2`, `phash2/1,2` för pids, portar, referenser, funs och native records | Hashar av OTP:s process-, port- och referensnummer, en funs index och unika nummer, en record-definitions hash | Hashar av Clauses nummer, en funs modul, aritet eller index och fångade värden, en records fältvärden; varje annan term hashas till OTP:s värde | [inbyggda funktioner](builtins.md#hashing) |
+| `dict:fold/3`, `map/2`, `filter/2` med något som inte är en fun | `function_clause`, eller `{badfun, F}` när den första hinken OTP besöker innehåller en post | `function_clause` | [inbyggda funktioner](builtins.md#collections) |
 | `erlang:is_builtin/3` för `lists:reverse/2` och andra biblioteksfunktioner implementerade i C | `true` | `false`: endast runtimens inbyggda funktioner och `apply/2,3` | [funs](funs.md#fun-information) |
 | `pid`, `uniq`, `new_uniq` från `fun_info/1,2` för en lokal fun | Skaparens pid, kompilatorns kontrollsummor | `undefined`, MD5 av modulnamnet | [funs](funs.md#fun-information) |
 | Kontexten från `md5_init/0` | OTP:s tillstånd på 92 byte | Clauses tillstånd på 96 byte; sammandragen är lika | [inbyggda funktioner](builtins.md#hashing) |
@@ -135,7 +136,7 @@ inte här; se [features.md](features.md) och planen.
 | `module_info(compile)` | `version` för OTP:s kompilatorapplikation, de `options` som gavs till den | Clauses version; `options` alltid `[]` | [semantik](semantic.md#predefined-functions) |
 | `module_info(functions)` | Listar även de funktioner som OTP genererar för funs (`'-f/0-fun-0-'/0`) | Endast källkodsfunktionerna och de fördefinierade | [semantik](semantic.md#predefined-functions) |
 | `-nominal` i `module_info(attributes)` | Behålls som `{nominal,[{Name,AbstractType,Params}]}` i abstrakt format | Utelämnas | [semantik](semantic.md#predefined-functions) |
-| En funktion i en Clause-biblioteksmodul som Clause inte har implementerat (en `erlang`-BIF, `lists:ukeysort/2`, ...) | Körs | Kompileras; ger `error({not_implemented, F, A})` när den anropas, med `M:F/A` överst på stacken ([statusar](../library/modules.terms)) | [bibliotek](library.md#provided-or-missing), [inbyggda funktioner](builtins.md#erlang-module) |
+| En funktion i en Clause-biblioteksmodul som Clause inte har implementerat (en `erlang`-BIF, `lists:rmerge/2`, ...) | Körs | Kompileras; ger `error({not_implemented, F, A})` när den anropas, med `M:F/A` överst på stacken ([statusar](../library/modules.terms)) | [bibliotek](library.md#provided-or-missing), [inbyggda funktioner](builtins.md#erlang-module) |
 | Import av en modul utanför batchen | Kompileras; anropet ger `undef` vid körning om modulen saknas | Kompileringsfelet `unknown module M` när importen anropas (oanvända importer behöver ingen modul) | [semantik](semantic.md#imports) |
 | Varningen `import directive overrides auto-imported BIF` | För varje automatiskt importerad BIF i `erl_internal:bif/2` | Endast för de automatiskt importerade BIF:ar som Clause implementerar | [semantik](semantic.md#imports) |
 
@@ -156,10 +157,16 @@ inte här; se [features.md](features.md) och planen.
 
 | Skillnad | OTP | Clause | Ägare |
 | --- | --- | --- | --- |
-| Styrsekvenserna `~e ~f ~g ~x ~X ~+ ~# ~W ~P`, modifieraren `K` | Formateras | `badarg` | [io](io.md#formats) |
-| `~p` av behållare nästlade djupare än 256 nivåer | Skrivs ut | `system_limit` | [io](io.md#pretty-printing-p) |
-| Fältbredder och precision för `~ts` med kombinerande tecken eller `\r\n` | Räknar grafemkluster | Räknar kodpunkter | [io](io.md#formats) |
+| Jämförelse-funs för `maps_order` (`~K` med en fun, alternativ till `io_lib:write/2`) | Maps sorteras av funen | `badarg` när en map skrivs | [io_lib](builtins.md#io_lib) |
+| `~p`, `~w` och `io_lib`-skrivare för behållare nästlade djupare än 256 nivåer | Skrivs ut | `system_limit` | [io](io.md#pretty-printing-p) |
+| `io_lib:print/4` med en kolumn eller radlängd som inte är ett heltal | Beror på termen: skrivs ut (guards misslyckas tyst), `function_clause` eller `badarith` | `badarith` för varje behållarterm | [io_lib](builtins.md#io_lib) |
 | Negativ precision eller utfyllnadsantal (`~.*c` med -1) | Loopar för evigt | `badarg` | [io](io.md#formats) |
+
+## Slumptal
+
+| Skillnad | OTP | Clause | Ansvarig |
+| --- | --- | --- | --- |
+| Remshöjder i `rand`:s normalziggurat | Tabellerade konstanter | Beräknas till närmaste double från zigguratens konstanter; en höjd kan skilja sig i sista biten, vilket ändrar ett godkännande på den långsamma vägen endast för en dragning inom den biten från gränsen (sannolikhet nära 2^-53 per dragning på den långsamma vägen). Remsbredder och gränser observeras från OTP och är lika | [inbyggda funktioner](builtins.md#random-numbers) |
 
 ## Parse transforms
 

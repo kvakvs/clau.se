@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: a8c3f8f6
-sourceSha256: 191e95cc2bea15e016f69e98aca4ce93be2fa8f47a09d9d1977607eceaf69fc2
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
+translatedAt: 2026-10-18
 ---
 # Runtime
 
@@ -58,8 +58,11 @@ vollständigen Lebenszyklus.
 
 Abbaureihenfolge: Scheduler-Einträge schließen → Kontexte zerstören →
 Code-Registrierungen freigeben → Scheduler-Dienst zerstören → Atomtabelle
-zuletzt. Aufgelöste Funktions-Handles halten Code und Atom-Schreibweisen über
-den Abbau der Runtime hinaus am Leben, aber nie einen Prozess.
+zuletzt. Aufgelöste Funktions-Handles halten Code über den Abbau der Runtime
+hinaus am Leben, aber ihre Atom-Slot-Wörter pinnen keine Schreibweisen. Der
+Atomspeicher zieht seine globalen Slots zurück, bevor er Datensätze freigibt;
+ein Zugriff auf die Schreibweise über einen überlebenden Term eines nicht
+festen Atoms meldet `expired_context`.
 
 ## Prozessspeicher
 
@@ -95,6 +98,11 @@ Bereiche, Größenbemessung, Zulassung, Wurzeln und Speicherbereinigung sind in
   ([Wurzeln und sichere Punkte](runtime-heap.md#roots-and-safe-points));
   erzeugter Code bereinigt an seinen eigenen sicheren Punkten
   ([Speicherbereinigung in erzeugtem Code](runtime-heap.md#collection-in-generated-code)).
+  Host-Terme sind unverwurzelte Ein-Wort-Werte; nach einer Bereinigung sind sie
+  aus umgeschriebenen Wurzeln neu aufzubauen. Sie haben keine Lebensdauer- oder
+  Veraltungsprüfungen und dürfen nach Bereinigung oder Prozessende nicht
+  gelesen werden. Fabriken und Reservierungen behalten eigene Lebensdauer-Tokens
+  und melden weiterhin `expired_context`.
 
 ## Code-Server und Builtins
 
@@ -150,24 +158,39 @@ Eine Tabelle pro Runtime (`memory/persistent_terms`), im Besitz von
 `Runtime::Impl` und erreichbar über `ProcessContext::persistent_terms()`, hält
 die Terme von `persistent_term` ([Builtins](builtins.md#persistent-terms)).
 
-- Ein Schlüssel und sein Wert werden jeweils in einen `MessageBuffer`
-  ([Nachrichtenpuffer](runtime-heap.md#message-buffers)) außerhalb jedes
-  Prozesses kopiert, sodass sie den Prozess überleben, der sie gespeichert hat,
-  und keine Speicherbereinigung sie verschiebt.
-- Einträge werden über einen Hash des Schlüssels (die Builtins verwenden den
-  Term-Hash von `phash2`) und exakte Gleichheit gefunden, direkt im Puffer
-  verglichen (`MessageBuffer::value`).
-- Ein Lesen kopiert den Wert in den Heap des Lesers, wo OTP eine Referenz in
-  einen Literalbereich herausgibt und dafür beim Ersetzen oder Löschen mit einer
-  globalen Speicherbereinigung bezahlt ([Unterschiede](differences.md)). Jeder
-  Prozess-Heap bleibt in sich abgeschlossen: Ein ersetzter oder gelöschter Wert
-  wird freigegeben, wenn der letzte Leser, der ihn noch kopiert, seine
-  Pufferreferenz aufgibt, und keine globale Speicherbereinigung ist nötig.
+- Jeder Schlüssel und Wert wird in einen eigenen Bereich im Bereich
+  persistenter Terme der Runtime (`memory/persistent_region`) kopiert: eine
+  Adressreservierung (64 GiB Adressraum auf 64-Bit-Hosts, 256 MiB auf
+  32-Bit-Hosts), deren Seiten bei der Bereichsallokation bereitgestellt werden,
+  sodass ein Bereichsvergleich zeigt, ob ein Wort einen persistenten Term
+  benennt. Kopien teilen nur Modulliterale, sodass jeder Bereich eigenständig
+  ist; seine Binaries teilen ihre Puffer.
+- Einträge sind Wurzelwörter, die über einen Hash des Schlüssels (die Builtins
+  verwenden den Term-Hash von `phash2`) und exakte Gleichheit gefunden und an
+  Ort und Stelle verglichen werden.
+- Ein Lesen gibt das gespeicherte Wort an Ort und Stelle zurück, wie die
+  literalen persistenten Terme von OTP: Jeder Prozess darf es halten und senden
+  (eine Kopie in einen anderen Prozess behält das Wort); Speicherbereinigungen
+  lassen es unverändert und die Zulassung akzeptiert es wie ein Literal.
+  Nachrichtenpuffer und neue persistente Terme kopieren persistente Wörter.
+- **Freigabe.** Der Bereich eines ersetzten oder gelöschten Werts wird unter
+  einer neuen Epoche zurückgezogen. Von da an kopiert jede Kopie seine Wörter,
+  und jeder beim Zurückziehen registrierte Prozess kopiert die gehaltenen
+  zurückgezogenen Objekte in einem evakuierenden vollständigen Durchlauf in
+  seinen eigenen Heap (`Copier` mit dem Bereich, jedes Objekt einmal,
+  Binary-Puffer vor dem Durchlauf gehalten): ein laufender oder eingereihter
+  Prozess am Anfang seiner nächsten Zeitscheibe, ein geparkter sofort durch
+  das zurückziehende Schreiben oder Löschen (`Executor::evacuate_parked`,
+  unter der Executor-Sperre). Sobald jeder solche Prozess dies getan hat oder
+  beendet ist, wird der Bereich freigegeben. `info/0` zählt nur aktuelle
+  Einträge.
 - Eine geteilte Sperre bedient Leser auf beliebig vielen Workern; Schreiben und
-  Löschen nehmen sie exklusiv und kopieren nie, während sie sie halten. CTest
+  Löschen nehmen sie exklusiv (Kopien entstehen davor). CTest
   `runtime_persistent_terms` deckt Werte ab, die ihren Schreiber überleben,
-  ersetzte Werte, die Leser halten, nebenläufige Leser und Schreiber sowie
-  freigegebene Belastungen.
+  Lesen an Ort und Stelle über Bereinigungen und zwischen Prozessen, ersetzte
+  und gelöschte Werte, die Leser halten, nebenläufige Leser und Schreiber sowie
+  die Freigabe (zurückgezogene Kopien, Evakuierung, freigegebene Bereiche und
+  Belastungen).
 
 ## Scheduler-Buchführung
 
@@ -195,14 +218,15 @@ Threads einer Runtime aus. Dienste, die sie gemeinsam nutzen, sind
 synchronisiert; alles andere bleibt auf den Thread beschränkt, der seinen
 Prozess ausführt, oder wird durch den Mutex des Executors geschützt.
 
-- Atome: `AtomStorage` schützt beide Indizes mit einem Shared Mutex.
-  Abfragen (`lookup`, `boolean`, `size`) teilen ihn; `intern` sucht unter der
-  geteilten Sperre, und nur eine neue Schreibweise nimmt die exklusive Sperre,
-  prüft erneut und veröffentlicht den Eintrag, sodass konkurrierende
-  Internierungen einer Schreibweise ein einziges Wort erhalten. Wörter bleiben
-  stabil: Ein Eintrag wird vor dem Abbau nie geändert oder entfernt. Die
-  Zulassung von Atomwörtern liest einen sperrfreien Index
-  ([Atome](terms.md#atoms)).
+- Atome: `AtomStorage` schützt seine Schreibweisen-Map und eigenen Datensätze
+  mit einem Shared Mutex. `existing` und `size` teilen ihn; `intern` sucht
+  zuerst unter der geteilten Sperre, nimmt dann für eine neue Schreibweise die
+  exklusive Sperre und prüft erneut, sodass konkurrierende Internierungen ein
+  Wort erhalten. Die Veröffentlichung verwendet die prozessweite
+  `detail::atom_table`; Zulassung und Lesen der Schreibweise verwenden deren
+  sperrfreien Nummernindex (`lookup` prüft auch den Besitzer des Datensatzes).
+  Feste Atome benötigen keine Sperre. Datensätze bleiben unverändert, bis der
+  Abbau ihre Slots zurückzieht ([Atome](terms.md#atoms)).
 - Code: `CodeServer` schützt seine Module und die Definitionen externer Funs
   mit einem Shared Mutex. Abfragen (`find_module`, `resolve`, `atom_word`,
   `record_definition`, `fun_definition`, `export_frame`, `function_frame`,
@@ -216,7 +240,8 @@ Prozess ausführt, oder wird durch den Mutex des Executors geschützt.
   Server wird nach jedem Kontext zerstört, sodass Definitionen, Frames und
   Atom-Slots, die er zurückgegeben hat, für jeden Aufruf und jede Fun-Zelle
   gültig bleiben. Handles von `ResolvedFunction` und `find_module` behalten ihr
-  Modul auch, nachdem die Runtime weg ist.
+  Modul auch, nachdem die Runtime weg ist; ihre Atom-Slots halten Wörter,
+  keine Pins für Schreibweisen.
 - Pid- und Port-Nummern: `IdentityNumbers` vergibt Nummern unter einer
   exklusiven Sperre und lässt Pid- und Port-Wörter unter einer geteilten zu.
 - Speicher: Das runtimeweite Konto (`RuntimeMemory`) belastet und entlastet mit

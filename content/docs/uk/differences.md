@@ -1,9 +1,10 @@
 ---
 source: docs/differences.md
-sourceCommit: a8c3f8f6
-sourceSha256: 3ef4e2009b365f68cd20c9627686948139c57277d62690565abaab54507ac818
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 13b6b1fdfa7e9d5bd89113388e71d62567ddd4ab43cf8621051655c3f31fe56b
+translatedAt: 2026-10-18
 ---
+
 # Відмінності від Erlang/OTP
 
 Поведінка, що спостерігається, у якій Clause свідомо відрізняється від
@@ -18,9 +19,9 @@ translatedAt: 2026-10-17
 | --- | --- | --- | --- |
 | Порядок генератора map (`K := V <- M`) | Пласкі map (до 32 ключів) перебираються в порядку ключів, але атомні ключі — в порядку таблиці атомів, який різниться між запусками VM; більші map — у порядку хешів | Завжди канонічний порядок ключів (порядок термів) | [зразки](patterns.md#comprehensions) |
 | Вміст `bad_generators` для генератора map у zip-групі | Його ітератор: ланцюжок `{K, V, Next}`, що закінчується `none`, у порядку OTP | Той самий ланцюжок, побудований у канонічному порядку ключів | [зразки](patterns.md#comprehensions) |
-| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3` | Внутрішній порядок (порядок таблиці атомів для атомних ключів, порядок хешів понад 32 ключі); ітератор — це позиція або ланцюжок `{K, V, Next}` | Канонічний порядок ключів; ітератор продовжує обхід списку ключів | [вбудовані функції](builtins.md#erts-internal) |
+| `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3`, порядок виконання fun у `maps` (`intersect_with/3`, `merge_with/3`, ...), `proplists:get_keys/1`, `sets` версії 2 (`to_list/1`, `fold/3`) | Внутрішній порядок (порядок таблиці атомів для ключів-атомів, порядок хешів понад 32 ключі); ітератор — позиція або ланцюжок `{K, V, Next}` | Канонічний порядок ключів; ітератор продовжує обхід списку ключів | [вбудовані функції](builtins.md#erts-internal) |
 | Друк map (`erlang:display/1`, `~w`, `~p`) | Порядок внутрішнього розміщення (порядок таблиці атомів для атомних ключів, порядок хешів понад 32 ключі) | Порядок ключів map, як `~kw` в OTP | [терми](terms.md#printing) |
-| Порядок `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` | Внутрішній порядок map (порядок таблиці атомів для атомних ключів, порядок хешів понад 32 ключі) | Порядок ключів | [бібліотека](library.md) |
+| Порядок `maps:keys/1`, `values/1`, `to_list/1`, `fold/3` та полів, які записує `json:encode/1` | Внутрішній порядок map (порядок таблиці атомів для ключів-атомів, порядок хешів понад 32 ключі) | Порядок ключів | [бібліотека](library.md) |
 | Друк native record (`erlang:display/1`) | Поля в порядку індексів таблиці атомів | Порядок визначення, як `~w` | [native records](native-records.md#printing-and-order) |
 | `==` між native record, поля яких відрізняються лише як ціле число/число з рухомою комою | Компілятор може згорнути його до `=:=` (false) | Числове порівняння (true) | [native records](native-records.md#printing-and-order) |
 | Зовнішнє конструювання native record модуля, який не завантажено | Завершується збоєм, доки модуль, що його визначає, не завантажено | Кожен модуль пакета завантажується під час запуску; модуль поза пакетом завжди дає збій | [native records](native-records.md#differences-kept) |
@@ -40,7 +41,7 @@ translatedAt: 2026-10-17
 | Останній біт результатів `math` (`math:erfc(1)`, ...) | Бібліотека C, з якою зібрано OTP | Бібліотека C, з якою компонуються програми Clause (Windows: `0.15729920705028513` для `erfc(1)`, OTP `0.1572992070502851`) | [вбудовані функції](builtins.md#math-module) |
 | Результат `binary:compile_pattern/1` | `{bm, Ref}` або `{ac, Ref}` з непрозорим посиланням | `{bm, [Pattern]}` або `{ac, Patterns}` | [вбудовані функції](builtins.md#binary-module) |
 | `binary:referenced_byte_size/1` для sub-binary | Розмір binary, на який він посилається | Його власний розмір | [вбудовані функції](builtins.md#binary-module) |
-| Вартість `persistent_term:get/1,2` | Стала: значення лежить в області літералів; `put`/`erase` заміненого значення запускають глобальне збирання | Копіює значення в купу читача при кожному читанні; без глобального збирання | [runtime](runtime.md#persistent-terms) |
+| Пам’ять замінених або видалених persistent terms | Звільняється фоновим процесом збирача областей літералів, який змушує кожен процес скопіювати значення до себе | Кожен процес копіює значення до себе під час наступного кванта (призупинені — одразу, через `put`/`erase`), потім область звільняється; окремого процесу збирача немає | [runtime](runtime.md#persistent-terms) |
 | `persistent_term:info/0` і `get/0` | Включають терми, які `kernel` і `stdlib` з OTP зберігають під час завантаження (26 в OTP 29) | Лише власні терми програми | [вбудовані функції](builtins.md#persistent-terms) |
 | `code:is_loaded/1`, `code:which/1`, `code:all_loaded/0` для скомпільованого модуля | Файл `.beam`, з якого його завантажено | `preloaded`: кожен модуль скомпоновано у виконуваний файл | [вбудовані функції](builtins.md#code-module) |
 | `init:get_arguments/0`, `init:get_argument/1` | Прапорці емулятора: `root`, `bindir`, `progname`, `home` і кожен `-Flag` командного рядка | Лише `home`; виконуваний файл не має прапорців емулятора | [вбудовані функції](builtins.md#init-module) |
@@ -82,7 +83,8 @@ translatedAt: 2026-10-17
 | `monitor(port, Item, Options)` з параметрами | Приймається | `badarg` | [процеси](processes.md#aliases) |
 | `spawn_request_abandon/1` | `true`, поки відповідь очікується | Завжди `false`: відповідь надсилається до повернення `spawn_request` | [процеси](processes.md#spawn-options) |
 | Останній біт `math:log2/1` (Windows) | Збірка OTP для Windows ділить `log(X)` на `log(2)` (`math:log2(1.0e308)` дає `1023.1538532253077`) | `log2` бібліотеки C (`1023.1538532253076`) | [вбудовані функції](builtins.md#math-module) |
-| Значення `phash/2`, `phash2/1,2` | Хеш-функція OTP | Власний стабільний хеш Clause з тими самими діапазонами і гарантією рівності | [вбудовані функції](builtins.md#hashing) |
+| `phash/2`, `phash2/1,2` для pid, портів, посилань, fun і native record | Хеші номерів процесів, портів і посилань OTP, індексу й унікального номера fun, хешу визначення record | Хеші номерів Clause, модуля, арності або індексу й захоплень fun, значень полів record; усі інші терми мають хеші OTP | [вбудовані функції](builtins.md#hashing) |
+| `dict:fold/3`, `map/2`, `filter/2` зі значенням, що не є fun | `function_clause` або `{badfun, F}`, коли перший відвіданий OTP кошик містить запис | `function_clause` | [вбудовані функції](builtins.md#collections) |
 | `erlang:is_builtin/3` для `lists:reverse/2` та інших бібліотечних функцій, реалізованих на C | `true` | `false`: лише вбудовані функції runtime і `apply/2,3` | [fun](funs.md#fun-information) |
 | `pid`, `uniq`, `new_uniq` у `fun_info/1,2` локального fun | Pid творця, контрольні суми компілятора | `undefined`, MD5 імені модуля | [fun](funs.md#fun-information) |
 | Контекст `md5_init/0` | 92-байтовий стан OTP | 96-байтовий стан Clause; дайджести однакові | [вбудовані функції](builtins.md#hashing) |
@@ -135,7 +137,7 @@ translatedAt: 2026-10-17
 | `module_info(compile)` | `version` застосунку compiler з OTP, `options`, передані йому | Версія Clause; `options` завжди `[]` | [семантика](semantic.md#predefined-functions) |
 | `module_info(functions)` | Також перелічує функції, які OTP генерує для fun (`'-f/0-fun-0-'/0`) | Лише функції з вихідного коду і попередньо визначені | [семантика](semantic.md#predefined-functions) |
 | `-nominal` у `module_info(attributes)` | Зберігається як `{nominal,[{Name,AbstractType,Params}]}` в абстрактному форматі | Пропускається | [семантика](semantic.md#predefined-functions) |
-| Функція бібліотечного модуля Clause, яку Clause не реалізував (BIF `erlang`, `lists:ukeysort/2`, ...) | Виконується | Компілюється; під час виклику викликає `error({not_implemented, F, A})` з `M:F/A` на вершині стека ([статуси](../library/modules.terms)) | [бібліотека](library.md#provided-or-missing), [вбудовані функції](builtins.md#erlang-module) |
+| Функція бібліотечного модуля Clause, яку Clause ще не реалізує (BIF `erlang`, `lists:rmerge/2`, ...) | Виконується | Компілюється; під час виклику піднімає `error({not_implemented, F, A})` з `M:F/A` на вершині стека ([статуси](../library/modules.terms)) | [бібліотека](library.md#provided-or-missing), [вбудовані функції](builtins.md#erlang-module) |
 | Імпорт модуля поза пакетом | Компілюється; виклик викликає `undef` під час виконання, якщо модуля немає | Помилка компіляції `unknown module M`, коли імпорт викликається (невикористані імпорти модуля не потребують) | [семантика](semantic.md#imports) |
 | Попередження `import directive overrides auto-imported BIF` | Для кожного автоімпортованого BIF з `erl_internal:bif/2` | Лише для автоімпортованих BIF, які реалізує Clause | [семантика](semantic.md#imports) |
 
@@ -156,10 +158,16 @@ translatedAt: 2026-10-17
 
 | Відмінність | OTP | Clause | Власник |
 | --- | --- | --- | --- |
-| Керувальні послідовності `~e ~f ~g ~x ~X ~+ ~# ~W ~P`, модифікатор `K` | Форматуються | `badarg` | [io](io.md#formats) |
-| `~p` для контейнерів із вкладеністю понад 256 рівнів | Друкуються | `system_limit` | [io](io.md#pretty-printing-p) |
-| Ширина полів і точність `~ts` з комбінованими символами або `\r\n` | Лічать кластери графем | Лічать кодові точки | [io](io.md#formats) |
+| Fun порівняння `maps_order` (`~K` з fun, параметр `io_lib:write/2`) | Map сортуються за fun | `badarg` під час виведення map | [io_lib](builtins.md#io_lib) |
+| `~p`, `~w` і функції виведення `io_lib` для контейнерів із вкладеністю понад 256 | Виводяться | `system_limit` | [введення-виведення](io.md#pretty-printing-p) |
+| `io_lib:print/4` зі стовпцем або довжиною рядка, що не є цілим числом | Залежить від терма: виведення (guard мовчки не спрацьовують), `function_clause` або `badarith` | `badarith` для будь-якого терма-контейнера | [io_lib](builtins.md#io_lib) |
 | Від'ємна точність або кількість заповнення (`~.*c` з -1) | Нескінченний цикл | `badarg` | [io](io.md#formats) |
+
+## Випадкові числа
+
+| Відмінність | OTP | Clause | Власник |
+| --- | --- | --- | --- |
+| Висоти смуг нормального зикурата `rand` | Табличні константи | Обчислюються до найближчого double з констант зикурата; висота може відрізнятися останнім бітом, що змінює прийняття на повільному шляху лише для вибірки в межах цього біта від границі (ймовірність близько 2^-53 на вибірку повільного шляху). Ширини й границі смуг отримано спостереженням за OTP, вони однакові | [вбудовані функції](builtins.md#random-numbers) |
 
 ## Parse transforms
 

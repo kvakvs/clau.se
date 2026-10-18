@@ -1,8 +1,8 @@
 ---
 source: docs/builtins.md
-sourceCommit: a8c3f8f6
-sourceSha256: c5b5b3ed022c6da6d2e2862ed0b124314e7f7a5b8cfdfcc5b3a787b4b99841fb
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: c5d99568a38fc1f7bc865c63163039a8c2acba8d978636c0b9290afdf0b9a637
+translatedAt: 2026-10-18
 ---
 # Inbyggda funktioner
 
@@ -32,6 +32,11 @@ kommentarer namnger den implementerande källfilen:
 - andra moduler: `io`-utdata ([io](io.md)), datafunktionerna i
   [`lists`](#lists-module), [`math`](#math-module),
   [`binary`](#binary-module), [`maps` och `os`](#maps-module),
+  [`ordsets`, `orddict`, `proplists`, `dict`, `sets`, `gb_trees`, `gb_sets`,
+  `queue` och `array`](#collections), [`base64` och `json`](#encodings),
+  [`calendar`](#calendar), [`filename`](#filename),
+  [`uri_string`](#uri-string), [`string`](#string),
+  [`rand` och `random`](#random-numbers),
   [`persistent_term`](#persistent-terms), [`unicode`](#unicode-module),
   [`code`](#code-module), [`init`](#init-module),
   [`atomics`](#atomics-and-counters), [`erts_internal`](#erts-internal),
@@ -56,8 +61,9 @@ kvalificerat anrop av en inbyggd funktion i katalogen i vilken modul som helst
 | Källkod | Väg |
 | --- | --- |
 | `abs(X)`, `X + Y`, `erlang:display(X)`, `halt()`, `error(R)` | Inline-kod eller en dedikerad runtime-tjänst |
-| `erlang:function_exported(M, F, A)`, `A -- B`, `length(L)` i en kropp (inbyggda funktioner i katalogen utan inline-tjänst) | Går in som en funktion: `CLAUSE_builtin_frame_v1(context, index)` ger den inbyggda funktionens ram, argumenten läggs i registren ([portioner](#portions)) |
+| `erlang:function_exported(M, F, A)`, `A -- B` i en kropp (inbyggda funktioner i katalogen utan inline-tjänst) | Går in som en funktion: `CLAUSE_builtin_frame_v1(context, index)` ger den inbyggda funktionens ram, argumenten läggs i registren ([portioner](#portions)) |
 | `integer_to_list(I)`, `atom_to_list(A)`, `setelement(I, T, V)`, ... (direkta inbyggda funktioner: trappar, väntar eller agerar aldrig på en annan process) | Anropas direkt: `CLAUSE_builtin_call_v1(context, index, arguments)` returnerar resultatet ([ABI](abi.md#runtime-services)) |
+| `length(L)`, `binary_to_list(B)`, `list_to_binary(L)`, `iolist_to_binary(L)` (snabba inbyggda funktioner) | `CLAUSE_builtin_call_v1` kör en begränsad snabb väg på argumentorden (högst 256 celler, element eller byte, 4096 resultatbyte); den returnerar 0 för längre indata, andra former och fel, och anropet går då in i den inbyggda funktionens ram |
 | `A ++ B` | En kort äkta `A` kopieras inline; annars går den in som en funktion ([ABI](abi.md#frames-and-transfers)) |
 | `fun abs/1`, `fun erlang:'+'/2` | Extern fun `erlang:F/A`; registreringen binder den till den inbyggda funktionen |
 | `M:F(Args)`, `apply(M, F, Args)`, `fun M:F/A` i runtime | Kodservern hittar först en moduls export, sedan en inbyggd funktion |
@@ -173,7 +179,10 @@ typade parametrar ([typed.hpp](../runtime/src/builtins/typed.hpp)),
   äger är det fel det är, aldrig `badarg`) och konverterar sedan vart och ett
   till dess parametertyp (`Term`, ett litet eller godtyckligt heltal, `double`,
   lista, tupel, binary, atom, map eller lokala pid-argument; se `typed.hpp`);
-  en avvikelse ger `badarg` och funktionen körs inte.
+  en avvikelse ger `badarg` och funktionen körs inte. `Named<Role>` är en godtycklig term
+  under en egen rolltyp (`collections::Key`, `Value`, `List`, ...), så att
+  två termparametrar i en inbyggd funktion inte kan förväxlas; den inbyggda
+  funktionen kontrollerar termen.
 - En funktion returnerar en term, ett `BuiltinResult` (`std::expected` med ett
   `BuiltinFailure`) eller ett rått `Word` som den själv publicerat, eller kastar
   `BuiltinFailure` (ett Erlang-fel eller ett fel vid termåtkomst);
@@ -182,7 +191,12 @@ typade parametrar ([typed.hpp](../runtime/src/builtins/typed.hpp)),
 - De flesta familjer är typade. Guard-BIF:arna och operatorerna
   (`erlang/core.cpp`), de trappande listfunktionerna och några andra är
   `BuiltinBody`-adaptrar på ordnivå, som skickar sina argumentord till de
-  inline-tjänster som genererad kod också anropar.
+  inline-tjänster som genererad kod också anropar. Vanliga konverteringar läser argumentens celler på plats
+  (`TermAccess::trusted`) i stället för att pröva tillträde för `Term`:
+  `tuple_to_list/1`, `phash2/1` (listor, tupler och små heltal) samt
+  `list_to_atom/1`, `list_to_integer/1` för korta ASCII-strängar och
+  `binary:part/2,3`, en direkt inbyggd funktion vars korta resultat skrivs
+  direkt i heapord (inbyggda funktionsargument på ordnivå).
 
 ## Registrering
 
@@ -197,8 +211,10 @@ typade parametrar ([typed.hpp](../runtime/src/builtins/typed.hpp)),
 - Inbyggda funktioner är klistriga (sticky): när en modul registreras hoppar
   kodservern över varje export som har namnet på en registrerad inbyggd
   funktion, så `M:F(Args)`, `apply/3` och externa funs binder den inbyggda
-  funktionen, aldrig en biblioteksstubbe eller en användarfunktion med samma
-  namn.
+  funktionen, aldrig en biblioteksmoduls
+  `clause_builtin_placeholder`-kropp
+  ([platshållare](library.md#provided-or-missing)) eller en användarfunktion
+  med samma namn.
 - En kropp läser exakt sin aritet av argumentord och registrerar fel i den
   kontrollerade kanalen; värdundantag blir fel av typen `out_of_memory` eller
   `internal_error`.
@@ -232,7 +248,8 @@ aldrig från runtime-kod:
   `tests/compiler/builtins/observe_erlang.escript` observerar värd-OTP:n och
   behåller statusarna, som underhålls för hand.
 - `tests/compiler/builtins/generate_erlang.py` gör om den till
-  `library/erts/erlang.erl` (Clauses egen stubbmodul) och
+  `library/erts/erlang.erl` (Clauses egen stubbmodul, med en
+  platshållarkropp för varje inbyggd katalogfunktion) och
   `compiler/src/semantic/erlang_auto_imports.inc` (OTP:s lista över
   autoimporter). CTest `builtins_erlang_inventory` kontrollerar att båda är
   aktuella och att `implemented` betyder en inbyggd funktion i katalogen, en
@@ -318,11 +335,15 @@ växande oavsett alternativen (`positive`, `monotonic`; andra ger `badarg`).
 
 `erlang/hashing.cpp`, `erlang/md5.cpp`.
 
-- `phash2/1,2` och `phash/2` hashar en terms struktur: exakt lika termer hashas
-  lika i varje programkörning (atomer efter stavning, maps i nyckelordning,
-  `1` och `1.0` åtskilda). `phash2/1` ligger i 0..2^27-1, `phash2/2` i
-  0..Range-1, `phash/2` i 1..Range; Range är 1..2^32, annars `badarg`. Värdena
-  är Clauses egna, inte OTP:s.
+- `phash2/1,2` är OTP:s `make_hash2` och `phash/2` dess `make_hash`, som går
+  igenom list- och tupelceller på plats: atomer (med OTP:s hash av deras
+  stavning), heltal, flyttal, binaries och bitstrings, listor, tupler och
+  maps (ordningsoberoende) hashas till OTP:s värden, så att `dict` och
+  `sets` av version 1 lägger ut sina hinkar som OTP gör. Pids, portar och
+  referenser hashas efter Clauses nummer, funs efter modul, aritet eller index
+  och fångade värden, native records efter fältvärden
+  ([skillnader](differences.md)). `phash2/1` ligger i 0..2^27-1, `phash2/2` i
+  0..Range-1, `phash/2` i 1..Range; Range är 1..2^32, annars `badarg`.
 - `md5/1` och `md5_init/0`, `md5_update/2`, `md5_final/1` ger sammandrag enligt
   RFC 1321 (OTP:s byte) av iodata. Kontexten är en ogenomskinlig binary på 96
   byte med Clauses egen layout; en annan binary ger `badarg`.
@@ -344,11 +365,24 @@ programmet kan ladda) och `finish_loading/1` godtar endast `[]`.
 få BIF:ar), så Clauses inbyggda funktioner ger de fel som OTP:s klausuler ger:
 
 - `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`,
-  `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2` och
-  `keydelete/3` ger `function_clause` för ett argument som ingen OTP-klausul
+  `join/2`, `flatten/1,2`, `flatlength/1`, `delete/2`, `concat/1`, `max/1`,
+  `min/1`, `usort/1`, `umerge/1,2`, `merge/1,2`, `merge3/3`, `umerge3/3`,
+  `keymerge/3`, `ukeymerge/3`, `ukeysort/2`, `keydelete/3`, `keyreplace/4`,
+  `keystore/4`, `keytake/3`, `zip/2,3`, `zip3/3,4`, `unzip/1`, `unzip3/1` och
+  `enumerate/1,2,3` ger `function_clause` för ett argument som ingen OTP-klausul
   godtar, och går igenom listor lika lat som OTP: `sublist([a | b], 1)` är
   `[a]`, `nthtail(1, [a | b])` är `b`, `flatten/2` kontrollerar inte sin svans
-  utöver `is_list`.
+  utöver `is_list`, en sammanslagning returnerar den andra listan som den är
+  när en är `[]` och ger `badarg` för en oäkta rest som den lägger till, och
+  en nyckelsammanslagning ger `badarg` för ett element som inte är en tupel
+  med nyckelns storlek, som `element/2`.
+- `zipwith/3,4` och `zipwith3/4,5` är Erlang ovanpå de inbyggda
+  `zip`-funktionerna, som parar ihop elementen först; `flatmap/2`, `keymap/3`,
+  `search/2`, `umerge/3` och `usort/2` är också Erlang. Inuti `lists.erl`
+  anropas en inbyggd funktion kvalificerat (`lists:zip(...)`): ett lokalt
+  anrop skulle nå dess platshållare. De odokumenterade `rmerge/2,3`,
+  `rmerge3/3`, `rumerge/2,3`, `rumerge3/3`, `rkeymerge/3` och
+  `rukeymerge/3` (OTP:s sorteringshjälpfunktioner) förblir stubbar.
 - `keymember/3` och `keysearch/3` är BIF:ar i OTP: `badarg` för en position som
   inte är ett positivt litet heltal eller en oäkta svans som nås före en
   matchning.
@@ -408,14 +442,22 @@ funktion är inbyggd:
 
 `runtime/src/builtins/maps.cpp`, `runtime/src/builtins/os.cpp`.
 
-- `maps:get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`,
-  `take/2`, `update/3`, `with/2`, `without/2` och `from_keys/2` är inbyggda
-  funktioner med OTP:s fel: något som inte är en map ger `{badmap, Map}`, en
-  saknad nyckel i `update/3` `{badkey, Key}`, en nyckellista som inte är en äkta
-  lista `badarg`. Nycklar matchas exakt (`1` och `1.0` är olika nycklar). De
-  andra implementerade funktionerna (`filter/2`, `map/2`, `fold/3`,
-  `iterator/1,2`, `next/1`, ...) är Erlang i `library/stdlib/maps.erl`;
-  iteratorer använder [`erts_internal:map_next/3`](#erts-internal).
+- Varje dokumenterad `maps`-funktion fungerar. `maps:get/3`, `is_key/2`,
+  `remove/2`, `new/0`, `size/1`, `merge/2`, `take/2`, `update/3`, `with/2`,
+  `without/2`, `from_keys/2`, `intersect/2` och `is_iterator_valid/1` är
+  inbyggda funktioner med OTP:s fel: något som inte är en map ger
+  `{badmap, Map}`, en saknad nyckel i `update/3` `{badkey, Key}`, en
+  nyckellista som inte är en äkta lista `badarg`. Nycklar matchas exakt
+  (`1` och `1.0` är olika nycklar).
+- Funktionerna som tar funs är Erlang i `library/stdlib/maps.erl`:
+  `filter/2`, `filtermap/2`, `map/2`, `fold/3` och `foreach/2` tar en map
+  eller en iterator (allt annat är `{badmap, MapOrIter}`),
+  `intersect_with/3` kombinerar ovanpå `intersect/2` och `merge_with/3`
+  ovanpå `merge/2`. `groups_from_list/2,3` anropar funs med sista elementet
+  först, som OTP gör, och den privata inbyggda funktionen
+  `clause_maps:groups/1` grupperar paren `{Key, Value}`.
+  Iteratorer (`iterator/1,2`, `next/1`) använder
+  [`erts_internal:map_next/3`](#erts-internal).
 - Map-markörer (`runtime/src/terms/map_cursor.hpp`) går igenom en platt
   map-cell och ett map-träd på samma sätt, som ord i nyckelordning, utan någon
   `Term` per post. Den privata inbyggda funktionen `clause_maps:entries/1`
@@ -430,6 +472,237 @@ funktion är inbyggd:
   `os:getenv/2` är Erlang ovanpå `erlang`-funktionerna för tid och `getenv/1`;
   `os:cmd/1` körs via en port ([underprocesser](ports.md#subprocesses)).
 
+## Samlingar
+
+`runtime/src/builtins/collections/`: `ordsets`, `orddict`, `proplists`,
+`dict`, `sets`, `gb_trees`, `gb_sets`, `queue` och `array`, varje
+dokumenterad funktion.
+
+- Listgenomgångarna är inbyggda funktioner: medlemskap, insättning,
+  borttagning och mängdalgebra för `ordsets` (`union/2`, `intersection/1,2`,
+  `subtract/2`, `is_subset/2`, `is_disjoint/2`, `is_set/1`); uppslag och
+  uppdateringar utan funs för `orddict` (`store/3`, `append/3`,
+  `append_list/3`, `update_counter/3`, `take/2`, `from_list/1`, ...); alla
+  `proplists`-funktioner utom `property/1,2`, `get_value/2`, `normalize/2`,
+  `to_map/2` och `from_map/1`, som är Erlang-limkod i `library/stdlib/`.
+- Funktionerna som tar funs (`ordsets:fold/3`, `filter/2`, `map/2`,
+  `filtermap/2`, `orddict:update/3,4`, `fold/3`, `map/2`, `filter/2`,
+  `merge/3`) är Erlang.
+- Varje inbyggd funktion går igenom sina listor som OTP:s klausuler, så att
+  resultat och fel stämmer för alla indata: element och nycklar jämförs med
+  `<` och `==` (av `1` och `1.0` behålls den representant OTP behåller,
+  även efter att `union/2` byter plats på sina mängder), en rest som OTP
+  returnerar okontrollerad (`ordsets:union([], X)` är `X`) returneras som den
+  är, en form som ingen klausul godtar ger `function_clause`, en
+  comprehensions indata som inte är en lista ger `{bad_generator, Rest}`,
+  `Old ++ New` med oäkta `Old` ger `badarg` och `update_counter/3` med
+  något som inte är ett tal ger `badarith`. `proplists`-nycklar matchas med
+  `=:=`.
+- `proplists:get_keys/1` listar nycklarna i ordningen för en maps nycklar,
+  som OTP:s nyckelmängd gör ([skillnader](differences.md)).
+- `dict` och `sets`: en dict och en mängd av version 1 är OTP:s records över
+  en linjär hashtabell (`collections/linear_hash.cpp`), segment om 16
+  hinklistor med platser från `erlang:phash/2`, utökade och krympta exakt
+  som i OTP, så att records, `to_list/1` och fold-ordningar är lika OTP:s.
+  En mängd av version 2 (standard) är en map med `[]`-värden; två maps
+  snittas och subtraheras med OTP:s värden (en maps egna värden när
+  tillräckligt många nycklar behålls, annars `[]`). En dicts uppslag och
+  uppdateringar, `sets`-operationer utan funs, `new/0` och `from_list/1` är
+  inbyggda funktioner; `update`, `fold`, `map`, `filter`, `merge` och
+  `sets:new/1`, `from_list/2`, `fold`, `filter`, `map`, `filtermap` är
+  Erlang, de hashade ovanpå de privata inbyggda funktionerna
+  `clause_hashed:entries/1` (lagringsordning), `with_values/2` och `keep/2`.
+  En term som inte är en dict ger `{badrecord, Term}` (`size/1`,
+  `is_empty/1` ger `function_clause`), en som inte är en mängd
+  `function_clause`.
+- `gb_trees` och `gb_sets` delar en balanserad trädmotor
+  (`collections/balanced_tree.cpp`): insättning kontrollerar Anderssons
+  viktregel på vägen tillbaka upp och bygger om ett delträd från dess
+  sorterade poster som OTP gör, borttagning lyfter den större sidans minsta
+  nod, och union, snitt och differens för `gb_sets` slår samman de sorterade
+  listorna eller sätter in och slår upp enligt OTP:s storleksregel
+  (`N2 < 10` eller `N2 < N1 * round(1.46 ln N2)`), med sammanslagna träd
+  som är högertunga som OTP:s `balance_revlist`, så att varje träd är lika
+  OTP:s. `map`, `fold`, `filter`, `filtermap` och konstanterna är Erlang.
+- `queue`: OTP:s `{Rear, Front}`; varje operation flyttar objekt mellan
+  listorna som OTP gör (en sida med ett objekt flyttas, en ensam lista delas
+  på mitten), så att köerna är lika OTP:s. En term som inte är ett par listor
+  ger `badarg`, en tom kös `get`, `drop`, `head` ger felet `empty`.
+  Funktionerna som tar funs och Okasaki-namnen är Erlang.
+- `array`: OTP 29:s `#array{}`-record, ett tupelträd med löv om 16 poster
+  (`[]` för ett tomt delträd) med ett cachat löv och nollförskjutning;
+  `set`, `append`, `shift`, `prepend`, `slice`, `reset`, `resize` och
+  byggarna (`from_list`, `from_orddict` med dess luckmarkörer, `from`)
+  ändrar recorden exakt som OTP gör. Fold- och mapfold-funktionerna är Erlang
+  ovanpå de privata inbyggda funktionerna `clause_array:values/3`,
+  `sparse/3` och `replace/4`, där den sista bygger om ett mappat intervall
+  som OTP:s mapfold-funktioner (tomma delträd vecklas ut om inte mappningen
+  är gles) och läser cachen igen.
+
+## Kodningar
+
+`runtime/src/builtins/encoding/`.
+
+- `base64`: varje dokumenterad funktion är inbyggd. Kodning tar en binary
+  eller en lista av heltal (OTP:s aritmetik på dem: `badarith` för något
+  som inte är ett heltal, `badarg` bortom alfabetstabellen); avkodning går
+  igenom indata som OTP:s tillståndsmaskiner, så att felen stämmer för alla
+  indata: blanktecken hoppas över, indata som slutar efter ett tecken i en
+  grupp ger `function_clause`, efter två eller tre `missing_padding` om
+  inte `padding => false`, ett tecken utanför alfabetet ger `badarg` när
+  dess grupp byggs (`badarith` inuti OTP:s skift), allt utom blanktecken efter
+  utfyllnaden ger `{case_clause, Symbol}`. `mime_decode` hoppar över varje
+  tecken utanför alfabetet och data efter ett felplacerat `=`.
+- `json` (`encoding/json.cpp`): `decode/1` är en inbyggd funktion som går
+  igenom OTP:s avkodartillstånd med en explicit stack av öppna behållare, så
+  att värden (ett objekt behåller en nyckels första värde), resten efter
+  värdet och felen stämmer: `unexpected_end` där mer indata skulle kunna
+  fullborda texten, `{invalid_byte, Byte}` vid den byte OTP avvisar (för en
+  avklippt literal byten efter dess första), `{unexpected_sequence, Bytes}`
+  för en felaktig `\u`-escape eller ett flyttal som `binary_to_float/1`
+  avvisar. `encode_binary/1` och `encode_binary_escape_all/1` är inbyggda
+  funktioner som bygger OTP:s nästlade iodata, liksom standardvägarna
+  `encode/1` och `format/1,2` (`encoding/json_encode.cpp`, via
+  `clause_json:encode/1` och `format/2`); bortom 256 nästlingsnivåer, eller
+  för andra formatalternativ än små icke-negativa heltal, svarar de
+  `fallback` och `json.erl` bygger samma iodata själv. Kodarna och
+  formaterarna som tar funs och avkodarna med återanrop `decode/3`,
+  `decode_start/3`, `decode_continue/2` är Erlang; avkodarna går igenom
+  OTP:s tillstånd ovanpå de privata skannrarna `clause_json:string/2` och
+  `number/2`, så återanrop körs i OTP:s ordning och fortsättningstillstånden
+  är OTP:s tupler.
+
+## Filnamn
+
+`runtime/src/builtins/filename/`.
+
+- `flatten/1`, `join/1,2`, `absname_join/2`, `append/2`, `basename/1,2`,
+  `dirname/1`, `extension/1`, `rootname/1,2`, `split/1`, `pathtype/1`,
+  `nativename/1` och `validate/1` är inbyggda funktioner som följer OTP:s
+  klausuler för värdens familj: Unix `/`, eller Windows `/` och `\`,
+  enhetsbokstäver (versaler görs till gemener av `join` och `split`) och
+  `//`-nätverksnamn. Listor gås igenom som OTP:s klausuler öppnar dem
+  (nästlade listor och atomer där en klausul öppnar dem, `List ++ Rest` ger
+  `badarg` för en oäkta lista), så resultaten behåller OTP:s former:
+  namnets element, binaries behållna som element av `flatten/1`, dellistor
+  och sub-binaries samt OTP:s `function_clause` där en klausul möter något
+  som inte är ett tecken.
+- `absname/1,2` (den aktuella katalogen och en enhets egen) och
+  `basedir/2,3` (miljön) är Erlang ovanpå dem.
+
+## Strängar
+
+`runtime/src/builtins/string/`: varje funktion i `string`.
+
+- Genomgångarna följer `string.erl` klausul för klausul ovanpå
+  `unicode_util:cp/1` och `gc/1`, som `unicode/code_points.cpp` portar till
+  termer i OTP:s former: nästlade listor öppnade så långt OTP öppnar dem
+  (upp till tre ytterligare kodpunkter plattas ut efter den första), binaries
+  behållna som delar som delar buffert, `{error, Rest}` vid ogiltig UTF-8.
+  Därför returnerar `trim`, `take`, `lexemes`, `split`, `find`, `slice`
+  och `prefix` indatasvansar, sub-binaries och de blandade listor OTP bygger
+  (`[Keep | Cont]`, `[Token, Bin]`, nästlingen från `stack/2`) och kastar
+  OTP:s fel (`{badarg, Rest}`, `function_clause`, `case_clause` och
+  `badmatch` där dess klausuler möter ett oväntat svar, `badarg` från
+  `binary:compile_pattern([])` när `nth_lexeme/3` kompilerar en tom
+  separatormängd).
+- Genomgångarna bakifrån (`trim/3`, `take/4` med `trailing`), som är
+  kroppsrekursiva i OTP, körs som loopar som registrerar en ram per steg och
+  viker ihop ramarna på slutet, så långa strängar inte kan överflöda
+  C++-stacken.
+- `uppercase/1`, `lowercase/1`, `casefold/1` returnerar själva indata när
+  inget tecken ändras, som OTP gör; `titlecase/1` mappar första kodpunkten.
+  `equal/4` normaliserar via `unicode/normalize.cpp`, portningen av
+  `unicode_util`:s `nfc/nfd/nfkc/nfkd` (dekompositionstabeller, kanonisk
+  ordning, parvis komposition, Hangul jamo), och kontrollerar identiska rester
+  igen i varje steg som OTP:s `equal_nocase(A, A)`-klausul.
+- `to_integer/1` och `to_float/1` tar talets tecken med `take/2` och tolkar
+  dem som `string:list_to_integer/1` (erts `{Int, Rest}` med `no_integer`,
+  `not_a_list`, `system_limit`) och `list_to_float/1` (Erlangs
+  flyttalssyntax, komma tillåts som punkt, exponent endast med siffror);
+  varje internt fel ger `{error, badarg}`.
+- Latin-1-API:t (`len`, `chr`, `tokens`, `strip`, `left`, `centre`, ...)
+  är portat med sina fel: `function_clause` där en klausul går till `[]`,
+  `badarg` från `erlang:length/1`, `++` och `lists:reverse/2`.
+- `jaro_similarity/2` matchar grafemkluster inom OTP:s avstånd och räknar
+  transpositioner i OTP:s ordning.
+
+## URI-strängar
+
+`runtime/src/builtins/uri/`.
+
+- `parse/1` är en enda genomgång av grammatiken i RFC 3986 styrd av en
+  avgränsartabell, som behåller OTP:s ordning så att svaren anger var OTP:s
+  parser stannade: först en URI med schema (ett misslyckande efter schemats
+  kolon är slutgiltigt), annars en relativ referens; `userinfo@host` när
+  genomgången av userinfo lyckas, annars auktoriteten som värd; en värd av
+  siffror som inte är en strikt IPv4-adress gås igenom igen som ett
+  registrerat namn; `{error,
+  invalid_uri, Fragment}` med OTP:s fragment. Värdar kontrolleras med
+  `inet`:s strikta IPv4- och IPv6-former.
+- `recompose/1`, `normalize/1,2` och `resolve/2,3` arbetar på map:ens
+  komponenter som `uri_string.erl`: varje komponents list- eller
+  binary-form avgör resultatets, OTP:s `{error, ...}`-svar returneras,
+  kastas som undantag eller med throw där OTP gör det, och `resolve`
+  slår samman en relativ sökväg efter bassökvägens sista snedstreck (en
+  grafemgenomgång, som OTP:s `string:split/3`).
+- `percent_decode/1`, `quote/1,2`, `unquote/1`, `transcode/2`,
+  `compose_query/1,2`, `dissect_query/1` och teckenklasserna följer OTP:s
+  bytegenomgångar, inklusive att en binarys fel kastas och en listas
+  returneras, numeriska HTML-referenser och `+` i formulärfrågor.
+- `unicode/graphemes.cpp` delar upp kodpunkter i grafemkluster enligt
+  reglerna för `unicode_util:gc/1` för inbyggda funktioner som behöver
+  klustergränser.
+
+## Slumptal
+
+`runtime/src/builtins/rand/`.
+
+- `rand`: tillstånden är OTP:s `{AlgHandler, AlgState}` med OTP:s
+  hanterar-maps (deras funs är `rand`:s egna) och OTP:s tillståndslayouter,
+  så exporterade frön, sekvenser och hoppade tillstånd är lika OTP:s för
+  varje algoritm (`exsss`, `exro928ss`, `exrop`, `exs1024s`, `exsp` och
+  de föråldrade `exs64`, `exsplus`, `exs1024` samt `dummy`). För en
+  hanterare lika OTP:s egen gör de privata inbyggda funktionerna
+  `clause_rand:seed/2`, `next/2`, `uniform/2,3`, `uniform_real/2`,
+  `bytes/3`, `normal/2`, `shuffle/3` och `jump/2` arbetet i C++:
+  frösättning (SplitMix64, listor, OTP:s 3-tupelhashar och fröfel),
+  intervall bortom generatorns bitar, täta flyttal, byte, normalzigguraten
+  och blandningens bitström. Varje annan hanterare är ett instick:
+  `rand.erl` kör OTP:s generiska algoritmer ovanpå dess funs.
+- `splitmix64_next/1`, `exsp_next/1`, `exsp_jump/1` och `mwc59`-funktionerna
+  är inbyggda; `mwc59_seed/0` hashar `rand`:s standardfrö.
+- `tools/rand/observe.escript` observerar OTP:s konstanter genom `rand`:s
+  insticks-API: zigguratens remsbredder (produkter för den snabba vägen)
+  och gränser (där en remsas ord når den långsamma vägen), samt hoppade
+  tillstånd, från vilka `tools/rand/generate.py` löser varje hopppolynom
+  över GF(2) (kontrollerat på ett andra tillstånd) och skriver
+  `tables.cpp`; remshöjder beräknas med hög precision
+  ([skillnader](differences.md#random-numbers)).
+- `random` (föråldrad): `uniform_s/1` är en inbyggd funktion för
+  Wichmann-Hill-generatorn; funktionerna för frösättning och processlexikon
+  är Erlang.
+
+## Kalender
+
+`runtime/src/builtins/calendar.cpp`.
+
+- Den gregorianska aritmetiken är inbyggda funktioner över heltal av valfri
+  storlek med Erlangs trunkerande `div` och `rem`, enligt OTP:s eraformler:
+  `date_to_gregorian_days/1,3`, `gregorian_days_to_date/1`,
+  `datetime_to_gregorian_seconds/1`, `gregorian_seconds_to_datetime/1`,
+  `day_of_the_week/1,3`, `is_leap_year/1`, `last_day_of_the_month/2`,
+  `valid_date/1,3`, `seconds_to_time/1`, `seconds_to_daystime/1`,
+  `time_to_seconds/1`, `time_difference/2`, `iso_week_number/1`. En form
+  som OTP:s klausuler avvisar ger `function_clause`, ett icke-heltal den
+  räknar med `badarith`; datum utanför intervallet beräknas som OTP
+  beräknar dem.
+- Lokal och universell tid, systemtid samt tolkning och formatering av
+  RFC 3339 är Erlang i `library/stdlib/calendar.erl` ovanpå de inbyggda
+  tidsfunktionerna i `erlang` och `proplists`, med OTP:s fel
+  (`{badarg, [Arg, Options]}` utanför intervallet, `{badmatch, _}` och
+  `{case_clause, _}` för en felaktigt formad förskjutning).
+
 ## Persistenta termer
 
 `runtime/src/builtins/persistent_term.cpp`, ovanpå runtimens tabell
@@ -438,15 +711,17 @@ funktion är inbyggd:
 `badarg`); `get/1` för en nyckel som inte är lagrad ger `badarg`, `get/2`
 returnerar standardvärdet; `get/0` listar varje `{Key, Value}`; `erase/1` anger
 om nyckeln var lagrad; `info/0` är `#{count => N, memory => Bytes}` (orden i de
-lagrade kopiorna). Nycklar matchas exakt (`1` och `1.0` skiljer sig). Varje
-läsning kopierar värdet till anroparens heap.
+lagrade kopiorna). Nycklar matchas exakt (`1` och `1.0` skiljer sig). Läsningar
+returnerar den lagrade termen på plats, utan kopia.
 
 ## Modulen unicode
 
-`runtime/src/builtins/unicode/`. `characters_to_binary/1,2,3`,
-`characters_to_list/1,2`, `bin_is_7bit/1`, `bom_to_encoding/1` och
-`encoding_to_bom/1` är inbyggda funktioner; normaliserings-, kategori- och
-identifierarfunktionerna i `library/stdlib/unicode.erl` är stubbar.
+`runtime/src/builtins/unicode/`. Varje funktion är inbyggd:
+`characters_to_binary/1,2,3`, `characters_to_list/1,2` (även under OTP:s
+interna namn `characters_to_binary_int/2` och `characters_to_list_int/2`),
+`bin_is_7bit/1`, `bom_to_encoding/1`, `encoding_to_bom/1`, och
+(`unicode/forms.cpp`) normalformerna, `category/1`, `is_whitespace/1`,
+`is_id_start/1` och `is_id_continue/1`.
 
 - Kodningar: `latin1`, `unicode`/`utf8`, `utf16` och `utf32`, big endian som
   standard eller `{utf16 | utf32, big | little}`; allt annat ger `badarg`
@@ -465,6 +740,13 @@ identifierarfunktionerna i `library/stdlib/unicode.erl` är stubbar.
   vidare från en binary kommer först, och med `latin1`-utdata omsluts ett
   felande heltal av en lista.
 - `bin_is_7bit/1` är falskt för allt utom en binary med byte under 128.
+- `characters_to_nfc_list/1` och dess syskon kör OTP:s loop över
+  `unicode_util`:s normalformer: kodpunkterna som en lista eller en
+  UTF-8-binary, `{error, Converted, Rest}` vid ogiltig UTF-8 och `badarg` för
+  allt annat. Egenskapsfunktionerna tar en kodpunkt (annars `badarg`) och
+  behåller OTP:s genvägar: `is_whitespace/1` är falskt under 5001 utanför dess
+  ASCII- och Latin-1-lista, och identifierartesterna avgör ASCII direkt och
+  resten efter kategori, Other_ID_Start, Other_ID_Continue och mönstersyntax.
 
 ## Modulen code
 
@@ -562,10 +844,15 @@ genererar `unicode_util` när det byggs (900 KB Erlang); Clause håller data i
 genererade C++-tabeller (`unicode/tables.cpp`) som efterfrågas av de inbyggda
 funktionerna i den privata modulen `clause_unicode`, och `unicode_util.erl`
 besvarar varje OTP-funktion ovanpå dem med OTP:s resultatformer
-(`{error, Rest}` eller `{badarg, Rest}` vid ogiltig UTF-8). `gc/1` delar upp
+(`{error, Rest}` eller `{badarg, Rest}` vid ogiltig UTF-8). Chardata-genomgångarna är inbyggda
+funktioner: `cp/1` (`unicode/code_points.cpp`) öppnar nästlade listor så långt
+som OTP gör och behåller en binarys rest som en del av den; `gc/1` delar upp
 utökade grafemkluster enligt UAX #29 i OTP:s regelordning; `nfd/1`, `nfc/1`,
-`nfkd/1`, `nfkc/1` normaliserar det första klustret; `spec_version/0` är
-`{17, 0}`.
+`nfkd/1`, `nfkc/1` (`unicode/normalize.cpp`) normaliserar det första
+klustret, där `nfkc/1` behåller en lista där dess dekomposition hade flera
+kodpunkter, som OTP:s `compose_compat_0`; `uppercase/1`, `lowercase/1`,
+`titlecase/1` och `casefold/1` mappar den första kodpunkten.
+`spec_version/0` är `{17, 0}`.
 
 `tools/unicode/generate.py` skriver tabellerna en gång per Unicode-uppdatering:
 skiftlägesmappningar, kategorier, dekompositioner och egenskapspredikaten från
@@ -574,7 +861,59 @@ grafemgränser, emoji-, indiska och kompositionsdata från de filer i Unicode
 Character Database som OTP 29 låser (Unicode 17.0). Endast de genererade
 tabellerna checkas in, med den notis som Unicode License v3 kräver; byggen
 behöver varken OTP eller datafilerna. `executables_unicode_tables` och
-`executables_unicode_clusters` jämför svar, kluster och normalformer med OTP:s.
+`executables_unicode_clusters` jämför svar, kluster och normalformer med OTP:s, `executables_unicode_forms` jämför `unicode`-formerna och
+egenskaperna.
+
+## io_lib
+
+`library/stdlib/io_lib.erl`, `runtime/src/builtins/io_lib/`. Resultaten är OTP:s
+djupa teckenlistor, nästlade exakt som `io_lib` och `io_lib_format` bygger
+dem: text byggs först som celler i en C++-arena (`io_lib/deep.cpp`), och blir
+sedan en term (`io_lib`) eller platta tecken (`io:format/1,2,3`, som kör samma
+motor).
+
+- Skrivare (`io_lib/write.cpp`): `write/1,2,5` följer `write1/4` med
+  djupgränser (`[...]`, `|...`, `,...`), atomer efter kodning (`latin1`
+  skriver escape-sekvenser för tecken utanför Latin-1), maps i Clauses
+  nyckelordning, `ordered` eller `reversed`; `write_bin/5` rapporterar OTP:s
+  storlekar, inklusive egenheter. `write_string/1,2` och dess Latin-1- och
+  `as_latin1`-former, `write_char/1` och besläktade funktioner,
+  `write_atom/1`, `quote_atom/2`, `write_binary/3` och binary-formerna
+  skriver escape-sekvenser som `string_char/4` och `needs_escape/2`.
+- Formatmotor (`io_lib/format_scan.cpp`, `format_build.cpp`): `scan` gör
+  om formatet till literaler och `format_spec()`-maps (`scan_format/2`,
+  `unscan_format/1`, `build_text/1,2`); `build_small` plattar ut de små
+  styrsekvenserna (`~e ~f ~g ~b ~B ~x ~X ~+ ~# ~c ~~ ~n ~i`, `~s` för en
+  atom) till resultatet; `build_limited` delar `chars_limit` mellan
+  `~w ~W ~s ~p ~P` och skriver dem genom `string/6`, `term/6` och den
+  balanserade utfyllnaden i `chars/2`. `~e`, `~f`, `~g` avrundar de 21
+  siffrorna från `float_to_list/1` som `float_man/3` gör
+  (`format_float.cpp`). Interna fel är `badarg`, som `io_lib`:s catch gör
+  dem till; `unscan_format/1` kastar sina egna. `bformat/2,3` och
+  `bfwrite/2,3` är samma text som UTF-8.
+- Kontroller och hjälpfunktioner: `char_list/1`, `deep_char_list/1`,
+  kontrollerna av utskrivbarhet (`printable_list/1` är Latin-1:
+  `io:printable_range/0` är `latin1`), `chars_length/1`, `indentation/2`
+  (med OTP:s binary-förskjutningar efter en tabb), `limit_term/2`, `nl/0`
+  och I/O-serverns tillstånd `collect_chars/1,3,4`,
+  `collect_chars_eager/4`, `collect_line/1,3,4`, `collect_line_no_eol/4`
+  (`io_lib/collect.cpp`).
+- Pretty printer (`io_lib/pretty*.cpp`): OTP:s `io_lib_pretty` för
+  `print/1,4`, `~p`/`~P` (djup och `chars_limit`), `write/2,5`,
+  `bwrite/2` och `write_bin/5` med `chars_limit` över 0, samt
+  kraschrapporter. `print_length/7` bygger mellanformatet i en arena (varje
+  värde med sin längd på en rad, punkter bär det som ska skrivas djupare);
+  `intermediate/7` fördjupar det inom `chars_limit` (`expand/3`,
+  `find_upper`, `search_depth`); `cind/7` väljer taggindrag och `pp/8`
+  bryter rader i OTP:s djupa listformer. `bformat/2,3` lägger ut `~p` som
+  `print_bin/2`, med dess binary-radbrytningar, storlek och kolumn.
+- Erlang: `get_until/1,3,4` (tillämpar anroparens skanner),
+  `format_prompt/1,2` och `write/3`. Stubbe: `fread/2,3`.
+- Behållare nästlade djupare än 256 nivåer ger `system_limit`, och
+  jämförelse-funs för `maps_order` ger `badarg`
+  ([skillnader](differences.md#io)).
+  `executables_io_lib_text` jämför varje funktions former med OTP:s,
+  `executables_pretty_print` jämför pretty printer.
 
 ## Modulen zlib
 

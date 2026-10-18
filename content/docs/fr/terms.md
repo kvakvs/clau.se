@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: a8c3f8f6
-sourceSha256: ceb9d797b2321fa19ef5f072328d39fd9fca241aa41e24f7a8fceea9ff69a78b
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
+translatedAt: 2026-10-18
 ---
 # Représentation des termes
 
@@ -19,25 +19,27 @@ en mots se trouvent dans [abi.md](abi.md#terms).
 - Les valeurs composées vivent dans le tas de leur processus
   ([contrat du tas](runtime-heap.md)) ou dans la zone de littéraux en lecture
   seule d'un module ([zones](runtime-heap.md#areas)). Les pointeurs de
-  processus désignent toujours le début d'un objet. L'admission vérifie la
-  plage possédée et la forme de l'en-tête, en rejetant les mots étrangers et
-  périmés ([admission](runtime-heap.md#admission)) ; le type et l'étendue sont
+  processus désignent toujours le début d'un objet. L'admission (compilations Debug uniquement ;
+  Release fait confiance aux mots, `CHECKED_ADMISSION`) vérifie la plage
+  possédée et la forme de l'en-tête, en rejetant les adresses étrangères et
+  les formes invalides ([admission](runtime-heap.md#admission)) ; le type et l'étendue sont
   décodés depuis l'en-tête.
-- Un `Term` hôte pour une valeur du tas est un mot étiqueté brut, valide
-  jusqu'au prochain ramassage de son tas
-  ([racines](runtime-heap.md#roots-and-safe-points)) ; il n'épingle pas le
-  stockage du tas. Après la destruction du contexte, l'accès renvoie
-  `expired_context` ; après un ramassage ultérieur, `stale_term`. Les termes
-  peuvent toujours être détruits sans risque. La vérification de destruction
-  lit le jeton de durée de vie du contexte sans le verrouiller : un contexte et
-  ses termes ne sont utilisés que par un seul thread à la fois.
+- Un `Term` hôte est exactement un `Word`, trivialement copiable, avec
+  seulement `value_`. Un Term du tas est valide jusqu'au prochain ramassage
+  de son tas ou à la fin du processus
+  ([racines](runtime-heap.md#roots-and-safe-points)) ; il n'épingle rien et
+  ne porte ni tas, ni jeton de durée de vie, ni compteur de ramassages.
+  L'accès lit ensuite de la mémoire déplacée ou libérée et est indéfini ;
+  il n'existe pas d'erreur `stale_term`. La destruction est sans risque.
+  Les fabriques, les réservations et les tampons de messages conservent leurs
+  propres vérifications de durée de vie et signalent toujours `expired_context`.
 - La construction valide les enfants, réserve, initialise, puis publie en une
   seule étape ; un échec annule le stockage et les compteurs.
 - `Term::from_word(word)` n'admet que les immédiats indépendants du
   propriétaire ; `Term::from_word(word, context)` admet aussi les atomes et les
   termes du tas de ce contexte. La transmission dans un même tas conserve
   l'identité. `copy_to`/`ProcessHeap::add` copient un graphe d'un autre
-  processus du même runtime avec son partage ; les fabriques de termes refusent
+  processus selon un contrat imposant le même runtime à l'appelant ; les fabriques de termes refusent
   les entrées étrangères avec `wrong_owner`
   ([copie entre tas](runtime-heap.md#copying-between-heaps)).
 - Les cellules vivent jusqu'à ce qu'un ramassage les trouve inaccessibles, ou
@@ -52,20 +54,27 @@ en mots se trouvent dans [abi.md](abi.md#terms).
   pleine capacité.
 - Jusqu'à 255 scalaires Unicode ; vide, NUL et caractères supplémentaires
   autorisés ; UTF-8 malformé/trop long/de substitution rejeté.
-- Les charges utiles proviennent d'un compteur global au processus, de sorte
-  qu'un mot d'atome d'un runtime étranger est détectable. Les processus 32 bits
-  disposent de 2^26 identités au total sur toute leur durée de vie.
-- L'admission d'un mot d'atome lit un index sans verrou par numéro d'atome
-  (directement les atomes fixes, puis des blocs de 4 096 entrées publiés une
-  seule fois sous le verrou d'internement) ; les numéros au-delà de 2^24 se
-  replient sur la table verrouillée.
-- Les Terms d'atomes hôtes épinglent l'orthographe et survivent à la
-  destruction du runtime. Déplacer un atome entre runtimes signifie interner
-  `atom_utf8()` dans la destination.
+- Les charges utiles proviennent d'un compteur global au processus et ne sont
+  jamais réutilisées, même entre runtimes. L'index global contient 2^28 numéros,
+  limités par la charge utile d'atome du mot sur les cibles 32 bits (2^26
+  identités sur toute la durée de vie). Les limites par runtime sont inchangées.
+  Les numéros d'atomes ne quittent jamais un nœud : ETF et les formes sur disque
+  utilisent les orthographes.
+- `detail::atom_table` fournit des lectures sans verrou par numéro d'atome :
+  directement les enregistrements fixes, puis des blocs de 4 096 emplacements
+  conservés pendant toute la durée de vie du processus. Chaque `AtomStorage`
+  possède ses enregistrements par orthographe, les publie dans cet index et
+  n'admet que ceux qu'il possède ou les enregistrements fixes. La destruction
+  retire ses emplacements.
+- Les Terms d'atomes n'épinglent rien. `atom_spelling()` emprunte jusqu'à la
+  destruction du runtime ; cette fonction et `atom_utf8()` signalent
+  `expired_context` après la destruction du runtime d'un atome non fixe.
+  Déplacer un atome entre runtimes signifie interner son orthographe dans la
+  destination tant que le runtime source est en vie.
 - Les booléens sont les atomes `true`/`false`. Les atomes fixes `false`,
   `true`, `undefined`, `ok` et `error` (`abi::v1::fixed_atom_spellings`) ont
-  les mots des numéros d'atome 0–4 dans chaque runtime, inscrits avec le
-  stockage, trouvés sans le verrou et comptés ni par `size()` ni dans
+  les mots des numéros d'atome 0–4 dans chaque runtime, avec des enregistrements
+  statiques immortels, trouvés sans le verrou et comptés ni par `size()` ni dans
   `max_atoms` ; le code généré les utilise comme constantes. Tout autre mot
   d'atome est privé au runtime.
 - Les littéraux composés de constantes (chaînes, listes et tuples d'immédiats
@@ -249,9 +258,10 @@ référence ; `pid_to_list/1` et `ref_to_list/1` renvoient leur texte.
   pids ([ports](ports.md#identity)).
 - Une référence est une cellule du tas (`reference` : en-tête plus un numéro
   64 bits non tracé) admise comme tout terme du tas : seulement dans son propre
-  processus, périmée après un ramassage pour un `Term` hôte, copiée par valeur
-  entre processus. Les numéros proviennent d'un seul compteur global au
-  processus, donc chaque référence d'une exécution du programme est unique.
+  processus, copiée par valeur entre processus. Un `Term` hôte sans racine ne
+  peut pas être accédé après un ramassage ou la fin du processus. Les numéros
+  proviennent d'un seul compteur global au processus, donc chaque référence
+  d'une exécution du programme est unique.
 - Une référence handle (une référence magique d'OTP) est une cellule de
   référence qui contient aussi un tampon hors tas ; c'est la même référence
   pour chaque service et elle partage son tampon avec chaque copie
@@ -276,7 +286,9 @@ Les atomes se comparent selon leur orthographe UTF-8 (ordre des points de
 code) ; les tuples par arité puis par champs ; les maps par taille, puis clés,
 puis valeurs ; les bitstrings par bits logiques. Deux petits entiers, deux
 flottants ou deux binaries d'octets entiers sont ordonnés directement depuis
-leurs mots ou cellules (`detail::word_order`), sans admission de termes.
+leurs mots ou cellules (`detail::word_order`), et deux atomes depuis leurs
+orthographes dans la table des atomes (`AtomStorage::spelling`, via l'index
+sans verrou par numéro), sans admission de termes.
 
 ## Affichage
 

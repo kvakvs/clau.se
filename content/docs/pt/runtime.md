@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: a8c3f8f6
-sourceSha256: 191e95cc2bea15e016f69e98aca4ce93be2fa8f47a09d9d1977607eceaf69fc2
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
+translatedAt: 2026-10-18
 ---
 # Runtime
 
@@ -58,8 +58,11 @@ completo.
 
 Ordem de desmontagem: fechar os registos do escalonador → destruir os contextos
 → libertar os registos de código → destruir o serviço do escalonador → tabela de
-átomos por último. Os handles de funções resolvidas mantêm vivos o código e as
-grafias dos átomos após a desmontagem do runtime, mas nunca um processo.
+átomos por último. Os handles de funções resolvidas mantêm vivo o código após
+a desmontagem do runtime, mas as palavras dos seus slots de átomos não fixam
+grafias. O armazenamento de átomos retira os seus slots globais antes de libertar
+os registos; aceder à grafia através de um Term de átomo não fixo sobrevivente
+indica `expired_context`.
 
 ## Memória dos processos
 
@@ -93,6 +96,11 @@ Cada contexto detém um `ProcessHeap`
   ([raízes e pontos seguros](runtime-heap.md#roots-and-safe-points)); o código
   gerado faz a recolha nos seus próprios pontos seguros
   ([recolha no código gerado](runtime-heap.md#collection-in-generated-code)).
+  Os Terms do anfitrião são valores de uma palavra sem raiz; devem ser
+  reconstruídos a partir das raízes reescritas após a recolha. Não têm
+  verificações de tempo de vida ou obsolescência e não podem ser lidos após a
+  recolha ou a saída do processo. As fábricas e as reservas mantêm os seus
+  próprios tokens de tempo de vida e continuam a indicar `expired_context`.
 
 ## Servidor de código e builtins
 
@@ -146,24 +154,35 @@ Uma tabela por runtime (`memory/persistent_terms`), pertencente a
 `Runtime::Impl` e acessível através de `ProcessContext::persistent_terms()`,
 guarda os termos de `persistent_term` ([builtins](builtins.md#persistent-terms)).
 
-- Uma chave e o seu valor são copiados, cada um, para um `MessageBuffer`
-  ([buffers de mensagens](runtime-heap.md#message-buffers)) fora de qualquer
-  processo, pelo que sobrevivem ao processo que os guardou e nenhuma recolha os
-  move.
-- As entradas são encontradas por um hash da chave (os builtins usam o hash de
-  termos de `phash2`) e por igualdade exata, comparada no próprio buffer
-  (`MessageBuffer::value`).
-- Uma leitura copia o valor para o heap do leitor, onde o OTP entrega uma
-  referência para uma área de literais e paga com uma recolha global ao
-  substituir ou apagar ([diferenças](differences.md)). Cada heap de processo
-  mantém-se autocontido: um valor substituído ou apagado é libertado quando o
-  último leitor que ainda o está a copiar larga a sua referência ao buffer, e
-  não é necessária nenhuma recolha global.
+- Cada chave e valor é copiado para uma área própria no intervalo de termos
+  persistentes do runtime (`memory/persistent_region`): uma reserva de endereços
+  (64 GiB de espaço de endereçamento em anfitriões de 64 bits, 256 MiB nos de
+  32 bits) cujas páginas são comprometidas à medida que se alocam áreas, pelo
+  que uma comparação de intervalo determina se uma palavra designa um termo
+  persistente. As cópias partilham apenas literais de módulos, pelo que cada
+  área é autónoma; os seus binaries partilham os respetivos buffers.
+- As entradas são palavras-raiz encontradas por um hash da chave (os builtins
+  usam o hash de termos de `phash2`) e por igualdade exata, comparada no local.
+- Uma leitura devolve a palavra guardada no local, como os termos persistentes
+  literais do OTP: qualquer processo pode guardá-la e enviá-la (uma cópia para
+  outro processo mantém a palavra); as recolhas deixam-na intacta e a admissão
+  aceita-a como um literal. Os buffers de mensagens e os novos termos
+  persistentes copiam as palavras persistentes.
+- **Recuperação.** A área de um valor substituído ou apagado é retirada sob uma
+  nova época. A partir daí, cada cópia copia as suas palavras, e cada processo
+  registado quando foi retirada copia os objetos em retirada que detém para o
+  seu próprio heap numa recolha completa com evacuação (`Copier` com a região,
+  cada objeto uma vez, buffers binários retidos antes da recolha): um processo
+  em execução ou em fila no início da sua próxima fatia, um suspenso de
+  imediato, pelo put ou erase que a retirou (`Executor::evacuate_parked`, sob o
+  bloqueio do executor). Quando todos esses processos o tiverem feito ou
+  terminado, a área é libertada. `info/0` conta apenas as entradas atuais.
 - Um bloqueio partilhado serve leitores em qualquer número de workers; put e
-  erase obtêm-no em exclusivo e nunca copiam enquanto o detêm. O CTest
+  erase obtêm-no em exclusivo (as cópias são feitas antes). O CTest
   `runtime_persistent_terms` cobre valores que sobrevivem a quem os escreveu,
-  valores substituídos detidos por leitores, leitores e escritores concorrentes
-  e débitos libertados.
+  leituras no local através de recolhas e entre processos, valores substituídos
+  e apagados detidos por leitores, leitores e escritores concorrentes, e
+  recuperação (cópias em retirada, evacuação, áreas e débitos libertados).
 
 ## Registo do escalonador
 
@@ -190,13 +209,15 @@ em várias threads de um runtime. Os serviços que partilham são sincronizados;
 tudo o resto fica confinado à thread que executa o seu processo ou protegido
 pelo mutex do executor.
 
-- Átomos: `AtomStorage` protege ambos os índices com um mutex partilhado. As
-  consultas (`lookup`, `boolean`, `size`) partilham-no; `intern` consulta sob o
-  bloqueio partilhado e só uma grafia nova obtém o bloqueio exclusivo, verifica
-  de novo e publica a entrada, pelo que interns concorrentes da mesma grafia
-  obtêm uma única palavra. As palavras mantêm-se estáveis: uma entrada nunca é
-  alterada nem removida antes da desmontagem. A admissão de palavras de átomo lê
-  um índice sem bloqueios ([átomos](terms.md#atoms)).
+- Átomos: `AtomStorage` protege o seu map de grafias e os registos que possui
+  com um mutex partilhado. `existing` e `size` partilham-no; `intern` procura
+  primeiro sob o bloqueio partilhado, depois obtém o bloqueio exclusivo para
+  uma nova grafia e verifica de novo, pelo que interns concorrentes obtêm uma
+  única palavra. A publicação usa a `detail::atom_table` global do processo;
+  a admissão e as leituras de grafias usam o seu índice numérico sem bloqueios
+  (`lookup` também verifica o dono do registo). Os átomos fixos não precisam de
+  bloqueio. Os registos mantêm-se inalterados até a desmontagem retirar os seus
+  slots ([átomos](terms.md#atoms)).
 - Código: `CodeServer` protege os seus módulos e as definições de funs externos
   com um mutex partilhado. As consultas (`find_module`, `resolve`, `atom_word`,
   `record_definition`, `fun_definition`, `export_frame`, `function_frame`,
@@ -210,7 +231,8 @@ pelo mutex do executor.
   é destruído depois de todos os contextos, pelo que as definições, os frames e
   os slots de átomos que devolveu permanecem válidos para todas as invocações e
   todas as células de fun. Os handles de `ResolvedFunction` e `find_module`
-  também mantêm o seu módulo depois de o runtime desaparecer.
+  também mantêm o seu módulo depois de o runtime desaparecer; os seus slots de
+  átomos retêm palavras, sem fixar grafias.
 - Números de pid e de port: `IdentityNumbers` emite números sob um bloqueio
   exclusivo e admite palavras de pid e de port sob um bloqueio partilhado.
 - Memória: a conta global do runtime (`RuntimeMemory`) debita e liberta com

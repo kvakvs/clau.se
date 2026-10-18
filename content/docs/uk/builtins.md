@@ -1,9 +1,10 @@
 ---
 source: docs/builtins.md
-sourceCommit: a8c3f8f6
-sourceSha256: c5b5b3ed022c6da6d2e2862ed0b124314e7f7a5b8cfdfcc5b3a787b4b99841fb
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: c5d99568a38fc1f7bc865c63163039a8c2acba8d978636c0b9290afdf0b9a637
+translatedAt: 2026-10-18
 ---
+
 # Вбудовані функції
 
 Вбудовані функції (builtins) — це функції, які runtime реалізує мовою C++: BIF
@@ -29,9 +30,13 @@ translatedAt: 2026-10-17
   [системна інформація](#system-information),
   [інформація про fun](funs.md#fun-information), [хешування](#hashing) і
   [завантаження коду](#code-loading);
-- інші модулі: виведення `io` ([io](io.md)), функції даних
+- інші модулі: виведення `io` ([введення-виведення](io.md)), функції даних
   [`lists`](#lists-module), [`math`](#math-module),
   [`binary`](#binary-module), [`maps` і `os`](#maps-module),
+  [`ordsets`, `orddict`, `proplists`, `dict`, `sets`, `gb_trees`, `gb_sets`,
+  `queue` і `array`](#collections), [`base64` і `json`](#encodings),
+  [`calendar`](#calendar), [`filename`](#filename), [`uri_string`](#uri-string),
+  [`string`](#string), [`rand` і `random`](#random-numbers),
   [`persistent_term`](#persistent-terms), [`unicode`](#unicode-module),
   [`code`](#code-module), [`init`](#init-module),
   [`atomics`](#atomics-and-counters), [`erts_internal`](#erts-internal),
@@ -56,8 +61,9 @@ translatedAt: 2026-10-17
 | Джерело | Шлях |
 | --- | --- |
 | `abs(X)`, `X + Y`, `erlang:display(X)`, `halt()`, `error(R)` | Вбудований у код фрагмент або окрема служба runtime |
-| `erlang:function_exported(M, F, A)`, `A -- B`, `length(L)` у тілі (вбудовані функції з каталогу без вбудованої служби) | Вхід як у функцію: `CLAUSE_builtin_frame_v1(context, index)` дає фрейм вбудованої функції, аргументи передаються в регістрах ([порції](#portions)) |
+| `erlang:function_exported(M, F, A)`, `A -- B` у тілі (вбудовані функції каталогу без inline-сервісу) | Вхід як у функцію: `CLAUSE_builtin_frame_v1(context, index)` дає фрейм вбудованої функції, аргументи потрапляють у регістри ([порції](#portions)) |
 | `integer_to_list(I)`, `atom_to_list(A)`, `setelement(I, T, V)`, ... (прямі вбудовані функції: ніколи не перехоплюють керування (trap), не чекають і не діють на інший процес) | Викликаються одразу: `CLAUSE_builtin_call_v1(context, index, arguments)` повертає результат ([ABI](abi.md#runtime-services)) |
+| `length(L)`, `binary_to_list(B)`, `list_to_binary(L)`, `iolist_to_binary(L)` (швидкі вбудовані функції) | `CLAUSE_builtin_call_v1` виконує обмежений швидкий шлях над словами аргументів (щонайбільше 256 комірок, елементів або байтів, 4096 байтів результату); для довших вхідних даних, інших форм і помилок повертає 0, після чого виклик входить у фрейм вбудованої функції |
 | `A ++ B` | Короткий правильний `A` копіюється вбудованим кодом; інакше вхід як у функцію ([ABI](abi.md#frames-and-transfers)) |
 | `fun abs/1`, `fun erlang:'+'/2` | Зовнішній fun `erlang:F/A`; реєстрація прив'язує його до вбудованої функції |
 | `M:F(Args)`, `apply(M, F, Args)`, `fun M:F/A` під час виконання | Сервер коду спершу шукає експорт модуля, потім вбудовану функцію |
@@ -171,20 +177,28 @@ comprehension) виконуються до кінця як частина цик
 `Result Function(ProcessContext &, Parameters...)`, зареєстровані через
 `typed_entry<Function>(module, name)` (арність дорівнює кількості параметрів).
 
-- Адаптер допускає кожне слово аргументу по черзі (слово, яким цей процес не
-  володіє, є саме тим збоєм, яким воно є, а не `badarg`), потім перетворює
-  кожне на тип свого параметра (`Term`, мале або будь-яке ціле число, `double`,
-  аргументи-списки, кортежі, binary, атоми, maps або локальні pid; див.
-  `typed.hpp`); невідповідність генерує `badarg`, і функція не виконується.
+- Адаптер допускає кожне слово аргументу по черзі (слово, яке не належить
+  процесу, дає відповідну помилку, ніколи не `badarg`), потім перетворює кожне
+  на тип параметра (`Term`, мале чи довільне ціле, `double`, список, кортеж,
+  binary, атом, map або локальний pid; див. `typed.hpp`); невідповідність
+  піднімає `badarg`, функція не виконується. `Named<Role>` — довільний терм
+  під власним типом ролі (`collections::Key`, `Value`, `List`, ...), тому у
+  вбудованої функції з кількома параметрами-термами не можна поміняти два
+  місцями; терм перевіряє сама вбудована функція.
 - Функція повертає терм, `BuiltinResult` (`std::expected` з `BuiltinFailure`)
   або сире `Word`, яке сама опублікувала, чи кидає `BuiltinFailure` (помилку
   Erlang або збій доступу до терму); `call_builtin` перетворює кожен інший виняток
   C++ на `out_of_memory` або `internal_error`, тож жоден не перетинає ABI
   згенерованого коду.
 - Більшість сімейств типізовані. Guard BIF і оператори (`erlang/core.cpp`),
-  спискові вбудовані функції з перехопленням і кілька інших є адаптерами
-  `BuiltinBody` на рівні слів, які передають слова своїх аргументів вбудованим
-  службам, що їх викликає й згенерований код.
+  вбудовані функції списків із призупиненням та деякі інші — адаптери
+  `BuiltinBody` на рівні слів, що передають слова аргументів inline-сервісам,
+  які викликає і згенерований код. Часті перетворення читають комірки аргументів
+  на місці (`TermAccess::trusted`) замість допуску `Term`: `tuple_to_list/1`,
+  `phash2/1` (списки, кортежі й малі цілі), а також `list_to_atom/1`,
+  `list_to_integer/1` коротких ASCII-рядків і `binary:part/2,3` — пряма
+  вбудована функція, короткий результат якої записується прямо в слова купи
+  (аргументи вбудованих функцій на рівні слів).
 
 ## Реєстрація
 
@@ -196,10 +210,12 @@ comprehension) виконуються до кінця як частина цик
   зберігаючи.
 - Запуск runtime реєструє кожну таблицю сімейства з `production_builtins()`
   (`builtins/registry.cpp`), які разом покривають каталог.
-- Вбудовані функції «липкі»: коли модуль реєструється, сервер коду пропускає
-  кожен експорт з іменем зареєстрованої вбудованої функції, тож `M:F(Args)`,
-  `apply/3` і зовнішні funs прив'язуються до вбудованої функції, а не до
-  бібліотечної заглушки чи однойменної користувацької функції.
+- Вбудовані функції закріплені: під час реєстрації модуля сервер коду пропускає
+  кожен експорт із назвою зареєстрованої вбудованої функції, тому `M:F(Args)`,
+  `apply/3` і зовнішні fun прив’язують вбудовану функцію, а не тіло
+  `clause_builtin_placeholder` бібліотечного модуля
+  ([заповнювачі](library.md#provided-or-missing)) чи однойменну функцію
+  користувача.
 - Тіло читає рівно стільки слів аргументів, скільки його арність, і записує
   помилки в перевірений канал; винятки хоста стають збоями `out_of_memory` або
   `internal_error`.
@@ -234,13 +250,14 @@ comprehension) виконуються до кінця як частина цик
   `tests/compiler/builtins/observe_erlang.escript` спостерігає OTP хоста й
   зберігає статуси, які підтримуються вручну.
 - `tests/compiler/builtins/generate_erlang.py` перетворює його на
-  `library/erts/erlang.erl` (власний модуль-заглушку Clause) і
-  `compiler/src/semantic/erlang_auto_imports.inc` (список автоімпортів OTP).
-  CTest `builtins_erlang_inventory` перевіряє, що обидва актуальні і що
-  `implemented` означає вбудовану функцію з каталогу, функцію, яку обробляє
-  компілятор (`apply/2,3`, `is_record/1,2,3`), або справжнє тіло на Erlang
-  (`nif_error/1,2` генерують `error(Reason)`, як заглушки OTP);
-  `builtins_erlang_freshness` (мітка `host_otp`) порівнює інвентар з OTP хоста.
+  `library/erts/erlang.erl` (власний модуль-заглушку Clause з тілом-заповнювачем
+  для кожної вбудованої функції каталогу) та
+  `compiler/src/semantic/erlang_auto_imports.inc` (список автоімпорту OTP).
+  CTest `builtins_erlang_inventory` перевіряє їхню актуальність і те, що
+  `implemented` означає вбудовану функцію каталогу, функцію, яку обробляє
+  компілятор (`apply/2,3`, `is_record/1,2,3`), або справжнє тіло Erlang
+  (`nif_error/1,2` піднімають `error(Reason)`, як заглушки OTP);
+  `builtins_erlang_freshness` (мітка `host_otp`) порівнює перелік із хостовою OTP.
 
 Виклики:
 
@@ -321,11 +338,15 @@ comprehension) виконуються до кінця як частина цик
 
 `erlang/hashing.cpp`, `erlang/md5.cpp`.
 
-- `phash2/1,2` і `phash/2` хешують структуру терму: точно рівні терми мають
-  однаковий хеш у кожному запуску програми (атоми — за написанням, maps — у
-  порядку ключів, `1` і `1.0` різні). `phash2/1` лежить у 0..2^27-1,
-  `phash2/2` — у 0..Range-1, `phash/2` — у 1..Range; Range — це 1..2^32, інакше
-  `badarg`. Значення власні для Clause, не такі, як в OTP.
+- `phash2/1,2` — це `make_hash2` OTP, а `phash/2` — її `make_hash`, з обходом
+  комірок списків і кортежів на місці: атоми (за хешем написання OTP), цілі,
+  числа з рухомою комою, binary й bitstring, списки, кортежі та map (незалежно
+  від порядку) дають хеші OTP, тому `dict` і `sets` версії 1 розміщують кошики
+  як OTP. Pid, порти й посилання хешуються за номерами Clause, fun — за
+  модулем, арністю або індексом і захопленнями, native record — за значеннями
+  полів ([відмінності](differences.md)). `phash2/1` лежить у 0..2^27-1,
+  `phash2/2` у 0..Range-1, `phash/2` у 1..Range; Range — 1..2^32, інакше
+  `badarg`.
 - `md5/1` і `md5_init/0`, `md5_update/2`, `md5_final/1` дають дайджести за
   RFC 1321 (байти OTP) для iodata. Контекст — непрозорий 96-байтовий binary з
   власною розкладкою Clause; інший binary дає `badarg`.
@@ -349,11 +370,24 @@ comprehension) виконуються до кінця як частина цик
 клаузи OTP:
 
 - `sublist/2,3`, `droplast/1`, `nthtail/2`, `last/1`, `duplicate/2`,
-  `join/2`, `flatten/1,2`, `max/1`, `min/1`, `usort/1`, `umerge/1,2` і
-  `keydelete/3` генерують `function_clause` для аргументу, який не приймає
-  жодна клауза OTP, і обходять списки так само ліниво, як OTP:
-  `sublist([a | b], 1)` дає `[a]`, `nthtail(1, [a | b])` дає `b`, `flatten/2`
-  не перевіряє свій хвіст далі за `is_list`.
+  `join/2`, `flatten/1,2`, `flatlength/1`, `delete/2`, `concat/1`, `max/1`,
+  `min/1`, `usort/1`, `umerge/1,2`, `merge/1,2`, `merge3/3`, `umerge3/3`,
+  `keymerge/3`, `ukeymerge/3`, `ukeysort/2`, `keydelete/3`, `keyreplace/4`,
+  `keystore/4`, `keytake/3`, `zip/2,3`, `zip3/3,4`, `unzip/1`, `unzip3/1` і
+  `enumerate/1,2,3` піднімають `function_clause` для аргументу, який не приймає
+  жодна клауза OTP, й обходять списки так само ліниво, як OTP:
+  `sublist([a | b], 1)` — `[a]`, `nthtail(1, [a | b])` — `b`, `flatten/2` не
+  перевіряє хвіст далі за `is_list`, злиття повертає інший список як є, коли
+  один — `[]`, і піднімає `badarg` для неправильного залишку, який додає, а
+  злиття за ключем піднімає `badarg` для елемента, що не є кортежем розміру
+  ключа, як `element/2`.
+- `zipwith/3,4` і `zipwith3/4,5` написано Erlang поверх вбудованих функцій
+  `zip`, які спершу утворюють пари елементів; `flatmap/2`, `keymap/3`,
+  `search/2`, `umerge/3` і `usort/2` теж написано Erlang. Усередині `lists.erl`
+  вбудована функція викликається кваліфіковано (`lists:zip(...)`): локальний
+  виклик досяг би її заповнювача. Недокументовані `rmerge/2,3`, `rmerge3/3`,
+  `rumerge/2,3`, `rumerge3/3`, `rkeymerge/3` і `rukeymerge/3` (допоміжні функції
+  сортування OTP) залишаються заглушками.
 - `keymember/3` і `keysearch/3` в OTP є BIF: `badarg` для позиції, що не є
   додатним малим цілим числом, або для неправильного хвоста, досягнутого до
   збігу.
@@ -411,14 +445,20 @@ LLVM) для числових аргументів вбудовано в ком�
 
 `runtime/src/builtins/maps.cpp`, `runtime/src/builtins/os.cpp`.
 
-- `maps:get/3`, `is_key/2`, `remove/2`, `new/0`, `size/1`, `merge/2`,
-  `take/2`, `update/3`, `with/2`, `without/2` і `from_keys/2` є вбудованими
-  функціями з помилками OTP: не-map дає `{badmap, Map}`, відсутній ключ у
+- Кожна документована функція `maps` працює. `maps:get/3`, `is_key/2`,
+  `remove/2`, `new/0`, `size/1`, `merge/2`, `take/2`, `update/3`, `with/2`,
+  `without/2`, `from_keys/2`, `intersect/2` та `is_iterator_valid/1` — вбудовані
+  функції з помилками OTP: не-map дає `{badmap, Map}`, відсутній ключ
   `update/3` — `{badkey, Key}`, список ключів, що не є правильним списком, —
-  `badarg`. Ключі зіставляються точно (`1` і `1.0` — різні ключі). Інші
-  реалізовані функції (`filter/2`, `map/2`, `fold/3`, `iterator/1,2`,
-  `next/1`, ...) написано на Erlang у `library/stdlib/maps.erl`; ітератори
-  використовують [`erts_internal:map_next/3`](#erts-internal).
+  `badarg`. Ключі збігаються точно (`1` і `1.0` — різні ключі).
+- Функції, що приймають fun, написано Erlang у `library/stdlib/maps.erl`:
+  `filter/2`, `filtermap/2`, `map/2`, `fold/3` і `foreach/2` приймають map або
+  ітератор (усе інше — `{badmap, MapOrIter}`), `intersect_with/3` поєднує через
+  `intersect/2`, а `merge_with/3` — через `merge/2`. `groups_from_list/2,3`
+  викликають fun починаючи з останнього елемента, як OTP, а приватна вбудована
+  функція `clause_maps:groups/1` групує пари `{Key, Value}`. Ітератори
+  (`iterator/1,2`, `next/1`) використовують
+  [`erts_internal:map_next/3`](#erts-internal).
 - Курсори map (`runtime/src/terms/map_cursor.hpp`) однаково обходять пласку
   комірку map і дерево map як слова в порядку ключів, без `Term` для кожного
   запису. Приватна вбудована функція `clause_maps:entries/1` повертає з курсора
@@ -433,23 +473,241 @@ LLVM) для числових аргументів вбудовано в ком�
   `getenv/1`; `os:cmd/1` працює через порт
   ([підпроцеси](ports.md#subprocesses)).
 
+## Колекції
+
+`runtime/src/builtins/collections/`: `ordsets`, `orddict`, `proplists`, `dict`,
+`sets`, `gb_trees`, `gb_sets`, `queue` та `array`, кожна документована функція.
+
+- Обходи списків — вбудовані функції: перевірка належності, вставлення,
+  видалення й алгебра множин `ordsets` (`union/2`, `intersection/1,2`,
+  `subtract/2`, `is_subset/2`, `is_disjoint/2`, `is_set/1`); пошуки й оновлення
+  `orddict` без fun (`store/3`, `append/3`, `append_list/3`, `update_counter/3`,
+  `take/2`, `from_list/1`, ...); усі функції `proplists`, крім `property/1,2`,
+  `get_value/2`, `normalize/2`, `to_map/2` і `from_map/1`, які є сполучним кодом
+  Erlang у `library/stdlib/`.
+- Функції, що приймають fun (`ordsets:fold/3`, `filter/2`, `map/2`,
+  `filtermap/2`, `orddict:update/3,4`, `fold/3`, `map/2`, `filter/2`,
+  `merge/3`), написано Erlang.
+- Кожна вбудована функція обходить списки як клаузи OTP, тому результати й
+  помилки збігаються для будь-яких вхідних даних: елементи й ключі порівнюються
+  через `<` і `==` (із `1` і `1.0` зберігається представник OTP, зокрема після
+  переставляння множин у `union/2`), залишок, який OTP повертає без перевірки
+  (`ordsets:union([], X)` — `X`), повертається як є, форма, яку не приймає
+  жодна клауза, дає `function_clause`, вхід comprehension, що не є списком, —
+  `{bad_generator, Rest}`, `Old ++ New` з неправильним `Old` — `badarg`, а
+  `update_counter/3` з нечисловим значенням — `badarith`. Ключі `proplists`
+  зіставляються через `=:=`.
+- `proplists:get_keys/1` перелічує ключі в порядку ключів map, як це робить
+  множина ключів OTP ([відмінності](differences.md)).
+- `dict` і `sets`: словник і множина версії 1 — record OTP над лінійною
+  хеш-таблицею (`collections/linear_hash.cpp`), сегментами з 16 списків кошиків
+  зі слотами від `erlang:phash/2`, що розширюються й стискаються точно як OTP,
+  тому record, `to_list/1` і порядок згортання дорівнюють OTP. Множина версії 2
+  (типова) — map зі значеннями `[]`; перетин і різниця двох map зберігають
+  значення як OTP (власні значення map, якщо зберігається достатньо ключів,
+  інакше `[]`). Пошуки й оновлення словника, операції `sets` без fun, `new/0`
+  і `from_list/1` — вбудовані функції; `update`, `fold`, `map`, `filter`,
+  `merge` та `sets:new/1`, `from_list/2`, `fold`, `filter`, `map`, `filtermap`
+  написано Erlang, хешовані — поверх приватних вбудованих функцій
+  `clause_hashed:entries/1` (порядок зберігання), `with_values/2` і `keep/2`.
+  Терм, що не є словником, піднімає `{badrecord, Term}` (`size/1`, `is_empty/1`
+  — `function_clause`), а той, що не є множиною, — `function_clause`.
+- `gb_trees` і `gb_sets` спільно використовують рушій збалансованих дерев
+  (`collections/balanced_tree.cpp`): вставлення перевіряє вагове правило
+  Andersson на зворотному шляху вгору й перебудовує піддерево з відсортованих
+  записів, як OTP, видалення піднімає найменший вузол більшої сторони, а
+  об’єднання, перетин і різниця `gb_sets` зливають відсортовані списки або
+  вставляють і шукають за правилом розміру OTP
+  (`N2 < 10` або `N2 < N1 * round(1.46 ln N2)`), будуючи злиті дерева з
+  перевагою праворуч, як `balance_revlist` OTP, тому кожне дерево дорівнює OTP.
+  `map`, `fold`, `filter`, `filtermap` і константи написано Erlang.
+- `queue`: `{Rear, Front}` OTP; кожна операція переміщує елементи між списками
+  як OTP (сторона з одним елементом переміщується, єдиний список ділиться
+  навпіл), тому черги дорівнюють OTP. Терм, що не є парою списків, дає `badarg`,
+  `get`, `drop`, `head` порожньої черги — помилку `empty`. Функції з fun і
+  назви Okasaki написано Erlang.
+- `array`: record `#array{}` OTP 29, дерево кортежів із листками по 16 записів
+  (`[]` для порожнього піддерева), одним кешованим листком і нульовим зсувом;
+  `set`, `append`, `shift`, `prepend`, `slice`, `reset`, `resize` та будівники
+  (`from_list`, `from_orddict` з маркерами проміжків, `from`) змінюють record
+  точно як OTP. Згортки й mapfold написано Erlang поверх приватних вбудованих
+  функцій `clause_array:values/3`, `sparse/3` і `replace/4`; остання перебудовує
+  відображений діапазон як mapfold OTP (порожні піддерева розгортаються, якщо
+  відображення не розріджене) і знову читає кеш.
+
+## Кодування
+
+`runtime/src/builtins/encoding/`.
+
+- `base64`: кожна документована функція — вбудована. Кодування приймає binary
+  або список цілих (з арифметикою OTP: `badarith` для нецілого, `badarg` за
+  межами таблиці алфавіту); декодування обходить вхідні дані як автомати OTP,
+  тому помилки збігаються для будь-якого входу: пробільні символи пропускаються,
+  вхід, що закінчується після одного символу групи, дає `function_clause`,
+  після двох чи трьох — `missing_padding`, якщо не `padding => false`, символ
+  поза алфавітом — `badarg` під час побудови групи (`badarith` усередині зсувів
+  OTP), будь-що, крім пробільних символів, після заповнення —
+  `{case_clause, Symbol}`. `mime_decode` пропускає кожен символ поза алфавітом і
+  дані після неправильно розташованого `=`.
+- `json` (`encoding/json.cpp`): `decode/1` — вбудована функція, що обходить
+  стани декодувальника OTP з явним стеком відкритих контейнерів, тому значення
+  (об’єкт зберігає перше значення ключа), залишок після значення й помилки
+  збігаються: `unexpected_end`, коли додатковий вхід міг би завершити текст,
+  `{invalid_byte, Byte}` на байті, який відхиляє OTP (для обірваного літерала —
+  байт після першого), `{unexpected_sequence, Bytes}` для хибного екранування
+  `\u` або числа з рухомою комою, яке відхиляє `binary_to_float/1`.
+  `encode_binary/1` та `encode_binary_escape_all/1` — вбудовані функції, що
+  будують вкладені iodata OTP, як і типові шляхи `encode/1` та `format/1,2`
+  (`encoding/json_encode.cpp`, через `clause_json:encode/1` і `format/2`);
+  понад 256 рівнів вкладеності або для параметрів форматування, відмінних від
+  малих невід’ємних цілих, вони повертають `fallback`, і `json.erl` будує ті
+  самі iodata самостійно. Кодувальники й форматувальники з fun та декодувальники
+  зі зворотними викликами `decode/3`, `decode_start/3`, `decode_continue/2`
+  написано Erlang; декодувальники обходять стани OTP поверх приватних сканерів
+  `clause_json:string/2` і `number/2`, тому зворотні виклики виконуються в
+  порядку OTP, а стани продовження — кортежі OTP.
+
+## Імена файлів
+
+`runtime/src/builtins/filename/`.
+
+- `flatten/1`, `join/1,2`, `absname_join/2`, `append/2`, `basename/1,2`,
+  `dirname/1`, `extension/1`, `rootname/1,2`, `split/1`, `pathtype/1`,
+  `nativename/1` і `validate/1` — вбудовані функції за клаузами OTP для родини
+  хоста: Unix `/` або Windows `/` і `\`, літери дисків (велику `join` і
+  `split` переводять у малу) та мережеві імена `//`. Списки обходяться так, як
+  їх відкривають клаузи OTP (вкладені списки й атоми там, де клауза їх
+  відкриває, `List ++ Rest` піднімає `badarg` для неправильного списку), тому
+  результати зберігають форми OTP: елементи імені, binary, збережені як елементи
+  у `flatten/1`, підсписки й підbinary, та `function_clause` OTP там, де
+  клауза зустрічає несимвольне значення.
+- `absname/1,2` (поточний каталог і власний каталог диска) та `basedir/2,3`
+  (середовище) написано Erlang поверх них.
+
+## Рядки
+
+`runtime/src/builtins/string/`: кожна функція `string`.
+
+- Обходи повторюють `string.erl` клауза за клаузою поверх `unicode_util:cp/1`
+  і `gc/1`, які `unicode/code_points.cpp` переносить на терми у формах OTP:
+  вкладені списки відкриваються настільки, наскільки OTP (після першої
+  вирівнюються ще до трьох кодових точок), binary зберігаються як зрізи зі
+  спільним буфером, `{error, Rest}` для некоректного UTF-8. Тому `trim`, `take`,
+  `lexemes`, `split`, `find`, `slice` і `prefix` повертають хвости входу,
+  підbinary й змішані списки, які будує OTP (`[Keep | Cont]`, `[Token, Bin]`,
+  вкладеність `stack/2`), та піднімають помилки OTP (`{badarg, Rest}`,
+  `function_clause`, `case_clause` і `badmatch`, коли клаузи зустрічають
+  неочікувану відповідь, `badarg` від `binary:compile_pattern([])`, коли
+  `nth_lexeme/3` компілює порожню множину роздільників).
+- Обходи з кінця (`trim/3`, `take/4` з `trailing`), рекурсивні в тілі в OTP,
+  виконуються циклами зі збереженням одного фрейму на крок і згортанням фреймів
+  наприкінці, тому довгі рядки не переповнюють стек C++.
+- `uppercase/1`, `lowercase/1`, `casefold/1` повертають сам вхід, коли жоден
+  символ не змінюється, як OTP; `titlecase/1` відображає першу кодову точку.
+  `equal/4` нормалізує через `unicode/normalize.cpp`, перенесення
+  `nfc/nfd/nfkc/nfkd` з `unicode_util` (таблиці декомпозиції, канонічний
+  порядок, попарна композиція, jamo Hangul), і повторно перевіряє однакові
+  залишки на кожному кроці, як клауза `equal_nocase(A, A)` OTP.
+- `to_integer/1` і `to_float/1` беруть символи числа через `take/2` й
+  розбирають їх як `string:list_to_integer/1` (`{Int, Rest}` erts з
+  `no_integer`, `not_a_list`, `system_limit`) і `list_to_float/1` (синтаксис
+  чисел із рухомою комою Erlang, кома дозволена як крапка, експонента лише з
+  цифрами); будь-яка внутрішня помилка — `{error, badarg}`.
+- API Latin-1 (`len`, `chr`, `tokens`, `strip`, `left`, `centre`, ...)
+  перенесено з його помилками: `function_clause`, коли клауза доходить до `[]`,
+  `badarg` від `erlang:length/1`, `++` і `lists:reverse/2`.
+- `jaro_similarity/2` зіставляє графемні кластери в межах відстані OTP і
+  рахує транспозиції в порядку OTP.
+
+## Рядок URI
+
+`runtime/src/builtins/uri/`.
+
+- `parse/1` — один обхід граматики RFC 3986, керований таблицею роздільників,
+  зі збереженням порядку OTP, тому відповіді містять місце зупинки парсера OTP:
+  спершу URI зі схемою (помилка після двокрапки схеми остаточна), інакше
+  відносне посилання; `userinfo@host`, якщо обхід userinfo успішний, інакше
+  authority як хост; хост із цифр, що не є строгим IPv4, знову обходиться як
+  зареєстроване ім’я; `{error,
+  invalid_uri, Fragment}` з фрагментом OTP. Хости перевіряються за строгими
+  формами IPv4 та IPv6 `inet`.
+- `recompose/1`, `normalize/1,2` і `resolve/2,3` працюють із компонентами map
+  як `uri_string.erl`: форма списку чи binary кожного компонента визначає
+  форму результату, відповіді `{error, ...}` OTP повертаються, піднімаються або
+  кидаються там, де в OTP, а `resolve` зливає відносний шлях після останньої
+  скісної риски базового шляху (обхід графем, як `string:split/3` OTP).
+- `percent_decode/1`, `quote/1,2`, `unquote/1`, `transcode/2`,
+  `compose_query/1,2`, `dissect_query/1` і класи символів повторюють побайтові
+  обходи OTP, зокрема кидання помилок binary та повернення помилок списків,
+  числові посилання HTML і `+` у запитах форм.
+- `unicode/graphemes.cpp` ділить кодові точки на графемні кластери за
+  правилами `unicode_util:gc/1` для вбудованих функцій, яким потрібні межі
+  кластерів.
+
+## Випадкові числа
+
+`runtime/src/builtins/rand/`.
+
+- `rand`: стани — `{AlgHandler, AlgState}` OTP з map обробників OTP (їхні
+  fun належать самому `rand`) і схемами станів OTP, тому експортовані
+  початкові стани, послідовності й стани після стрибків дорівнюють OTP для
+  кожного алгоритму (`exsss`, `exro928ss`, `exrop`, `exs1024s`, `exsp` і
+  застарілих `exs64`, `exsplus`, `exs1024`, а також `dummy`). Для обробника,
+  рівного власному обробнику OTP, приватні вбудовані функції
+  `clause_rand:seed/2`, `next/2`, `uniform/2,3`, `uniform_real/2`, `bytes/3`,
+  `normal/2`, `shuffle/3` і `jump/2` виконують роботу в C++: ініціалізацію
+  (SplitMix64, списки, хеші трійок OTP і помилки початкових станів), діапазони
+  за межами бітів генератора, щільні числа з рухомою комою, байти, нормальний
+  зикурат і бітовий потік перемішування. Будь-який інший обробник — під’єднуваний:
+  `rand.erl` виконує узагальнені алгоритми OTP над його fun.
+- `splitmix64_next/1`, `exsp_next/1`, `exsp_jump/1` і функції `mwc59` —
+  вбудовані; `mwc59_seed/0` хешує типовий початковий стан `rand`.
+- `tools/rand/observe.escript` спостерігає константи OTP через API
+  під’єднуваних генераторів `rand`: ширини смуг зикурата (добутки швидкого
+  шляху) й границі (де слова смуги досягають повільного шляху) та стани після
+  стрибків, з яких `tools/rand/generate.py` розв’язує кожен поліном стрибка над
+  GF(2) (перевіряється на другому стані) й записує `tables.cpp`; висоти смуг
+  обчислюються з високою точністю ([відмінності](differences.md#random-numbers)).
+- `random` (застарілий): `uniform_s/1` — вбудована функція генератора
+  Wichmann-Hill; ініціалізацію й функції словника процесу написано Erlang.
+
+## Календар
+
+`runtime/src/builtins/calendar.cpp`.
+
+- Григоріанська арифметика — вбудовані функції над цілими довільного розміру
+  з усікальними `div` і `rem` Erlang, за формулами ер OTP:
+  `date_to_gregorian_days/1,3`, `gregorian_days_to_date/1`,
+  `datetime_to_gregorian_seconds/1`, `gregorian_seconds_to_datetime/1`,
+  `day_of_the_week/1,3`, `is_leap_year/1`, `last_day_of_the_month/2`,
+  `valid_date/1,3`, `seconds_to_time/1`, `seconds_to_daystime/1`,
+  `time_to_seconds/1`, `time_difference/2`, `iso_week_number/1`. Форма, яку
+  відхиляють клаузи OTP, дає `function_clause`, неціле в обчисленнях —
+  `badarith`; дати поза діапазоном обчислюються так само, як OTP.
+- Локальний і всесвітній час, системний час, розбір і форматування RFC 3339
+  написано Erlang у `library/stdlib/calendar.erl` поверх вбудованих функцій
+  часу `erlang` і `proplists`, з помилками OTP (`{badarg, [Arg, Options]}` поза
+  діапазоном, `{badmatch, _}` і `{case_clause, _}` для некоректного зсуву).
+
 ## Persistent terms
 
-`runtime/src/builtins/persistent_term.cpp`, над таблицею runtime
+`runtime/src/builtins/persistent_term.cpp`, поверх таблиці runtime
 ([runtime](runtime.md#persistent-terms)). `put/2` і `put_new/2` повертають `ok`
-(`put_new/2` для збереженого ключа дає `ok` для точно рівного значення, інакше
-`badarg`); `get/1` для незбереженого ключа дає `badarg`, `get/2` повертає
-значення за замовчуванням; `get/0` перелічує кожну пару `{Key, Value}`;
-`erase/1` повідомляє, чи був ключ збережений; `info/0` дає
-`#{count => N, memory => Bytes}` (слова збережених копій). Ключі зіставляються
-точно (`1` і `1.0` різні). Кожне читання копіює значення в купу викликача.
+(`put_new/2` для збереженого ключа — `ok` для точно рівного значення, інакше
+`badarg`); `get/1` для незбереженого ключа — `badarg`, `get/2` повертає типове
+значення; `get/0` перелічує всі `{Key, Value}`; `erase/1` каже, чи був ключ
+збережений; `info/0` — `#{count => N, memory => Bytes}` (слова збережених
+копій). Ключі збігаються точно (`1` і `1.0` різні). Читання повертає збережений
+терм на місці, без копіювання.
 
 ## Модуль unicode
 
-`runtime/src/builtins/unicode/`. `characters_to_binary/1,2,3`,
-`characters_to_list/1,2`, `bin_is_7bit/1`, `bom_to_encoding/1` і
-`encoding_to_bom/1` є вбудованими; функції нормалізації, категорій та
-ідентифікаторів у `library/stdlib/unicode.erl` є заглушками.
+`runtime/src/builtins/unicode/`. Кожна функція — вбудована:
+`characters_to_binary/1,2,3`, `characters_to_list/1,2` (також під внутрішніми
+назвами OTP `characters_to_binary_int/2` і `characters_to_list_int/2`),
+`bin_is_7bit/1`, `bom_to_encoding/1`, `encoding_to_bom/1`, а також
+(`unicode/forms.cpp`) форми нормалізації, `category/1`, `is_whitespace/1`,
+`is_id_start/1` та `is_id_continue/1`.
 
 - Кодування: `latin1`, `unicode`/`utf8`, `utf16` і `utf32`, за замовчуванням
   big endian або `{utf16 | utf32, big | little}`; усе інше дає `badarg`
@@ -468,6 +726,13 @@ LLVM) для числових аргументів вбудовано в ком�
   незавершені байти, перенесені з binary, ідуть першими, а з виходом `latin1`
   ціле число, на якому стався збій, загортається в список.
 - `bin_is_7bit/1` дає false для всього, крім binary з байтів, менших за 128.
+- `characters_to_nfc_list/1` і споріднені функції виконують цикл OTP над
+  нормальними формами `unicode_util`: кодові точки як список або UTF-8 binary,
+  `{error, Converted, Rest}` для некоректного UTF-8 і `badarg` для всього
+  іншого. Функції властивостей приймають кодову точку (інакше `badarg`) й
+  зберігають скорочення OTP: `is_whitespace/1` дає false нижче 5001 поза своїм
+  списком ASCII й Latin-1, а перевірки ідентифікаторів визначають ASCII прямо,
+  решту — за категорією, Other_ID_Start, Other_ID_Continue і синтаксисом зразків.
 
 ## Модуль code
 
@@ -560,24 +825,74 @@ runtime). `ensure_loaded/1` дає `{module, M}` або `{error, nofile}`,
 ## Unicode util
 
 `library/stdlib/unicode_util.erl`, `runtime/src/builtins/unicode/`. OTP
-генерує `unicode_util` під час свого збирання (900 KB коду Erlang); Clause
-зберігає дані в згенерованих таблицях C++ (`unicode/tables.cpp`), до яких
-звертаються вбудовані функції його приватного модуля `clause_unicode`, а
-`unicode_util.erl` відповідає на кожну функцію OTP над ними з формами
-результатів OTP (`{error, Rest}` або `{badarg, Rest}` для некоректного UTF-8).
-`gc/1` розділяє розширені кластери графем за UAX #29 у порядку правил OTP;
-`nfd/1`, `nfc/1`, `nfkd/1`, `nfkc/1` нормалізують перший кластер;
-`spec_version/0` дає `{17, 0}`.
+генерує `unicode_util` під час збирання (900 KB Erlang); Clause зберігає дані
+в згенерованих таблицях C++ (`unicode/tables.cpp`), які опитують вбудовані
+функції приватного модуля `clause_unicode`, а `unicode_util.erl` реалізує кожну
+функцію OTP поверх них із формами результатів OTP (`{error, Rest}` або
+`{badarg, Rest}` для некоректного UTF-8). Обходи chardata — вбудовані функції:
+`cp/1` (`unicode/code_points.cpp`) відкриває вкладені списки настільки, наскільки
+OTP, і зберігає залишок binary як його зріз; `gc/1` відокремлює розширені
+графемні кластери за UAX #29 у порядку правил OTP; `nfd/1`, `nfc/1`, `nfkd/1`,
+`nfkc/1` (`unicode/normalize.cpp`) нормалізують перший кластер, причому `nfkc/1`
+зберігає список там, де декомпозиція мала кілька кодових точок, як
+`compose_compat_0` OTP; `uppercase/1`, `lowercase/1`, `titlecase/1` і
+`casefold/1` відображають першу кодову точку. `spec_version/0` — `{17, 0}`.
 
-`tools/unicode/generate.py` записує таблиці один раз на кожне оновлення Unicode:
-відображення регістру, категорії, декомпозиції та предикати властивостей — з
-відповідей OTP хоста для кожної кодової точки (`tools/unicode/observe.escript`),
-дані про межі графем, emoji, індійські писемності та композицію — з файлів
-Unicode Character Database, зафіксованих в OTP 29 (Unicode 17.0). Закомічено
-лише згенеровані таблиці, з повідомленням, якого вимагає Unicode License v3;
-збиранням не потрібні ні OTP, ні файли даних. `executables_unicode_tables` і
-`executables_unicode_clusters` порівнюють відповіді, кластери й нормальні
-форми з OTP.
+`tools/unicode/generate.py` записує таблиці при кожному оновленні Unicode:
+відображення регістру, категорії, декомпозиції й предикати властивостей із
+відповідей хостової OTP для кожної кодової точки (`tools/unicode/observe.escript`),
+дані розривів графем, emoji, Indic і композиції з файлів Unicode Character
+Database, зафіксованих OTP 29 (Unicode 17.0). Комітяться лише згенеровані
+таблиці з повідомленням, якого вимагає Unicode License v3; збірки не потребують
+ні OTP, ні файлів даних. `executables_unicode_tables` і
+`executables_unicode_clusters` порівнюють відповіді, кластери й нормальні форми
+з OTP, а `executables_unicode_forms` — форми й властивості `unicode`.
+
+## io_lib
+
+`library/stdlib/io_lib.erl`, `runtime/src/builtins/io_lib/`. Результати —
+глибокі списки символів OTP, вкладені точно як їх будують `io_lib`,
+`io_lib_format`: текст спершу будується як комірки арени C++ (`io_lib/deep.cpp`),
+потім стає термом (`io_lib`) або плоскими символами (`io:format/1,2,3`, що
+виконує той самий рушій).
+
+- Функції виведення (`io_lib/write.cpp`): `write/1,2,5` повторюють `write1/4`
+  з обмеженнями глибини (`[...]`, `|...`, `,...`), атомами за кодуванням
+  (`latin1` екранує символи поза Latin-1), map у порядку ключів Clause,
+  `ordered` або `reversed`; `write_bin/5` повідомляє розміри OTP, включно з
+  особливостями. `write_string/1,2` та його форми Latin-1 і `as_latin1`,
+  `write_char/1` і споріднені, `write_atom/1`, `quote_atom/2`, `write_binary/3`
+  і форми binary екранують як `string_char/4` і `needs_escape/2`.
+- Рушій форматування (`io_lib/format_scan.cpp`, `format_build.cpp`): `scan`
+  перетворює формат на літерали й map `format_spec()` (`scan_format/2`,
+  `unscan_format/1`, `build_text/1,2`); `build_small` перетворює малі керувальні
+  послідовності (`~e ~f ~g ~b ~B ~x ~X ~+ ~# ~c ~~ ~n ~i`, `~s` атома) на
+  плоский результат; `build_limited` ділить `chars_limit` між `~w ~W ~s ~p ~P`
+  і записує їх через `string/6`, `term/6` та збалансоване заповнення `chars/2`.
+  `~e`, `~f`, `~g` округлюють 21 цифру `float_to_list/1`, як `float_man/3`
+  (`format_float.cpp`). Внутрішні помилки — `badarg`, як їх перетворює catch
+  `io_lib`; `unscan_format/1` піднімає власні. `bformat/2,3` і `bfwrite/2,3` —
+  той самий текст у UTF-8.
+- Перевірки й допоміжні функції: `char_list/1`, `deep_char_list/1`, перевірки
+  друкованості (`printable_list/1` — Latin-1: `io:printable_range/0` — `latin1`),
+  `chars_length/1`, `indentation/2` (зі зсувами binary OTP після табуляції),
+  `limit_term/2`, `nl/0` і стани сервера введення-виведення
+  `collect_chars/1,3,4`, `collect_chars_eager/4`, `collect_line/1,3,4`,
+  `collect_line_no_eol/4` (`io_lib/collect.cpp`).
+- Форматувальник (`io_lib/pretty*.cpp`): `io_lib_pretty` OTP для `print/1,4`,
+  `~p`/`~P` (глибина й `chars_limit`), `write/2,5`, `bwrite/2` і `write_bin/5`
+  з `chars_limit` понад 0 та звітів про аварії. `print_length/7` будує проміжний
+  формат в арені (кожне значення з однорядковою довжиною, крапки з даними для
+  глибшого виведення); `intermediate/7` поглиблює його в межах `chars_limit`
+  (`expand/3`, `find_upper`, `search_depth`); `cind/7` обирає відступ тегу, а
+  `pp/8` розбиває рядки у формах глибоких списків OTP. `bformat/2,3` розміщують
+  `~p` як `print_bin/2`, з його розривами рядків binary, розміром і стовпцем.
+- Erlang: `get_until/1,3,4` (застосовує сканер викликача), `format_prompt/1,2`
+  і `write/3`. Заглушка: `fread/2,3`.
+- Контейнери із вкладеністю понад 256 піднімають `system_limit`, а fun
+  порівняння `maps_order` дають `badarg` ([відмінності](differences.md#io)).
+  `executables_io_lib_text` порівнює форми кожної функції з OTP,
+  `executables_pretty_print` — форматувальник.
 
 ## Модуль zlib
 

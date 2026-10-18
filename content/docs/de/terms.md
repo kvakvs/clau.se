@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: a8c3f8f6
-sourceSha256: ceb9d797b2321fa19ef5f072328d39fd9fca241aa41e24f7a8fceea9ff69a78b
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
+translatedAt: 2026-10-18
 ---
 # Term-Darstellungen
 
@@ -19,18 +19,20 @@ stehen in [abi.md](abi.md#terms).
 - Zusammengesetzte Werte leben im Heap ihres Prozesses
   ([Heap-Vertrag](runtime-heap.md)) oder im schreibgeschützten Literalbereich
   eines Moduls ([Bereiche](runtime-heap.md#areas)). Prozesszeiger benennen
-  immer Objektanfänge. Die Zulassung prüft den besessenen Bereich und die Form
-  des Headers und weist fremde und veraltete Wörter ab
+  immer Objektanfänge. Die Zulassung (nur Debug-Builds; Release vertraut den
+  Wörtern, `CHECKED_ADMISSION`) prüft den besessenen Bereich und die Form des
+  Headers und weist fremde Adressen und ungültige Formen ab
   ([Zulassung](runtime-heap.md#admission)); Art und Umfang werden aus dem
   Header dekodiert.
-- Ein Host-`Term` für einen Heap-Wert ist ein rohes getaggtes Wort, gültig bis
-  zur nächsten Speicherbereinigung seines Heaps
-  ([Wurzeln](runtime-heap.md#roots-and-safe-points)); er hält den Heap-Speicher
-  nicht fest. Nach dem Abbau des Kontexts liefert ein Zugriff
-  `expired_context`; nach einer späteren Speicherbereinigung `stale_term`.
-  Terme können immer sicher zerstört werden. Die Abbauprüfung liest das
-  Lebensdauer-Token des Kontexts, ohne ihn zu sperren: Ein Kontext und seine
-  Terme werden jeweils von einem Thread verwendet.
+- Ein Host-`Term` ist genau ein `Word`, trivial kopierbar, mit nur `value_`.
+  Ein Heap-Term ist bis zur nächsten Bereinigung seines Heaps oder zum
+  Prozessende gültig ([Wurzeln](runtime-heap.md#roots-and-safe-points)); er
+  pinnt nichts und trägt weder Heap noch Lebensdauer-Token oder
+  Bereinigungszähler. Ein Zugriff danach liest verschobenen oder freigegebenen
+  Speicher und ist undefiniert; es gibt keinen `stale_term`-Fehler.
+  Die Zerstörung ist sicher. Fabriken, Reservierungen und Nachrichtenpuffer
+  behalten ihre eigenen Lebensdauerprüfungen und melden weiterhin
+  `expired_context`.
 - Die Konstruktion validiert Kinder, reserviert, initialisiert und
   veröffentlicht dann in einem Schritt; ein Fehlschlag macht Speicher und
   Zähler rückgängig.
@@ -38,7 +40,7 @@ stehen in [abi.md](abi.md#terms).
   `Term::from_word(word, context)` lässt zusätzlich Atome und Heap-Terme dieses
   Kontexts zu. Die Übergabe innerhalb desselben Heaps bewahrt die Identität.
   `copy_to`/`ProcessHeap::add` kopieren einen Graphen eines anderen Prozesses
-  derselben Runtime samt seiner gemeinsamen Teile; Term-Fabriken weisen fremde
+  unter einem Vertrag mit dem Aufrufer über dieselbe Runtime; Term-Fabriken weisen fremde
   Eingaben mit `wrong_owner` ab
   ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)).
 - Zellen leben, bis eine Speicherbereinigung sie als unerreichbar erkennt, oder
@@ -54,20 +56,26 @@ stehen in [abi.md](abi.md#terms).
 - Bis zu 255 Unicode-Skalare; leere Atome, NUL und Zeichen aus den
   Zusatzebenen sind erlaubt; fehlerhaftes/überlanges/Surrogat-UTF-8 wird
   abgewiesen.
-- Nutzdaten stammen aus einem prozessweiten Zähler, sodass das Atomwort einer
-  fremden Runtime erkennbar ist. 32-Bit-Prozesse haben insgesamt 2^26
-  Identitäten über ihre gesamte Lebensdauer.
-- Das Zulassen eines Atomworts liest einen sperrfreien Index nach Atomnummer
-  (die festen Atome direkt, dann Blöcke von 4.096 Einträgen, die einmal unter
-  der Internierungssperre veröffentlicht werden); Nummern jenseits von 2^24
-  weichen auf die gesperrte Tabelle aus.
-- Host-Atom-Terme halten die Schreibweise fest und überleben den Abbau der
-  Runtime. Ein Atom zwischen Runtimes zu bewegen heißt, `atom_utf8()` im Ziel
-  zu internieren.
+- Nutzdaten stammen aus einem prozessweiten Zähler und werden selbst über
+  Runtimes hinweg nie wiederverwendet. Der globale Index fasst 2^28 Nummern,
+  auf 32-Bit-Zielen durch die Atom-Nutzdaten des Wortes begrenzt (2^26
+  Identitäten über die Lebensdauer). Grenzen pro Runtime bleiben unverändert.
+  Atomnummern verlassen nie einen Knoten: ETF- und Plattenformate verwenden
+  Schreibweisen.
+- `detail::atom_table` ermöglicht sperrfreies Lesen nach Atomnummer: feste
+  Datensätze direkt, dann Blöcke von 4.096 Slots für die Prozesslebensdauer.
+  Jeder `AtomStorage` besitzt seine Datensätze nach Schreibweise,
+  veröffentlicht sie in diesem Index und lässt nur eigene oder feste
+  Datensätze zu. Der Abbau zieht seine Slots zurück.
+- Atom-Terme pinnen nichts. `atom_spelling()` leiht bis zum Abbau der Runtime;
+  diese Funktion und `atom_utf8()` melden `expired_context`, nachdem die
+  Runtime eines nicht festen Atoms abgebaut wurde. Ein Atom zwischen Runtimes
+  zu bewegen heißt, seine Schreibweise im Ziel zu internieren, während die
+  Quell-Runtime lebt.
 - Booleans sind die Atome `true`/`false`. Die festen Atome `false`, `true`,
   `undefined`, `ok` und `error` (`abi::v1::fixed_atom_spellings`) haben in
-  jeder Runtime die Wörter der Atomnummern 0–4, werden mit dem Speicher
-  angelegt, ohne Sperre gefunden und weder von `size()` noch gegen
+  jeder Runtime die Wörter der Atomnummern 0–4, mit unsterblichen statischen
+  Datensätzen, werden ohne Sperre gefunden und weder von `size()` noch gegen
   `max_atoms` gezählt; erzeugter Code verwendet sie als Konstanten. Jedes
   andere Atomwort ist privat für die Runtime.
 - Zusammengesetzte Literale aus Konstanten (Zeichenketten, Listen und Tupel aus
@@ -250,10 +258,10 @@ Referenz; `pid_to_list/1` und `ref_to_list/1` geben ihren Text zurück.
   zwischen Funs und Pids ein ([Ports](ports.md#identity)).
 - Eine Referenz ist eine Heap-Zelle (`reference`: Header plus eine nicht
   verfolgte 64-Bit-Nummer), die wie jeder Heap-Term zugelassen wird: nur in
-  ihrem eigenen Prozess, als Host-`Term` veraltet nach einer
-  Speicherbereinigung, zwischen Prozessen als Wert kopiert. Nummern stammen aus
-  einem prozessweiten Zähler, sodass jede Referenz eines Programmlaufs
-  eindeutig ist.
+  ihrem eigenen Prozess, zwischen Prozessen als Wert kopiert. Auf einen
+  unverwurzelten Host-`Term` darf nach Bereinigung oder Prozessende nicht
+  zugegriffen werden. Nummern stammen aus einem prozessweiten Zähler, sodass
+  jede Referenz eines Programmlaufs eindeutig ist.
 - Eine Handle-Referenz (eine magic reference von OTP) ist eine Referenzzelle,
   die zusätzlich einen Puffer außerhalb des Heaps hält; sie ist für jeden
   Dienst dieselbe Referenz und teilt ihren Puffer mit jeder Kopie
@@ -277,7 +285,9 @@ Atome werden nach UTF-8-Schreibweise verglichen (Codepoint-Reihenfolge); Tupel
 nach Stelligkeit, dann Feldern; Maps nach Größe, dann Schlüsseln, dann Werten;
 Bitstrings nach logischen Bits. Zwei kleine Ganzzahlen, zwei Gleitkommazahlen
 oder zwei ganzbytige Binaries werden direkt aus ihren Wörtern oder Zellen
-geordnet (`detail::word_order`), ohne Zulassung als Term.
+geordnet (`detail::word_order`), und zwei Atome aus ihren Schreibweisen in
+der Atomtabelle (`AtomStorage::spelling`, über den sperrfreien Nummernindex),
+ohne Zulassung als Term.
 
 ## Ausgabe
 

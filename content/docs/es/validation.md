@@ -1,8 +1,8 @@
 ---
 source: docs/validation.md
-sourceCommit: a8c3f8f6
-sourceSha256: 54f5af0873d1220b42924fb4323bb6d19263b4e6301ffc0aa412ca04dcd9e835
-translatedAt: 2026-10-17
+sourceCommit: 336caea7
+sourceSha256: b00092bc767953e496774561feaef35ac500b4db73b4344eafd6dda372c90e24
+translatedAt: 2026-10-18
 ---
 # Validación
 
@@ -30,7 +30,7 @@ cmake --preset debug --fresh -DBUILD_TESTING=ON -G Ninja -DCMAKE_C_COMPILER=clan
 cmake --build build/debug
 ctest --preset debug-fast                  # during development
 ctest --preset debug -j 16                 # full mode, at feature completion
-cmake --build build/debug --target check-quality      # changed files + dependents
+cmake --build build/debug --target check-quality      # changed files, one unit per header
 cmake --build build/debug --target check-quality-all  # whole tree
 ```
 
@@ -38,7 +38,9 @@ cmake --build build/debug --target check-quality-all  # whole tree
   más el proyecto en O2 sin especialización, ejecuta las mutaciones una sola vez
   y omite las pruebas `full_only` (proyectos consumidores separados como
   `runtime_generated_link`, las mediciones, la auditoría `library_freshness`
-  con el OTP del anfitrión). El modo completo (predeterminado) ejecuta todas las
+  con el OTP del anfitrión y los flujos de trabajo lentos `linking_lto`,
+  `linking_exports`, `linking_compile_cache`, `programs_compile` y
+  `transforms_cache`). El modo completo (predeterminado) ejecuta todas las
   combinaciones de driver y política.
 - Las pruebas largas dirigidas por un script de Python o CMake llevan un `COST`
   fijo de CTest: CTest aprende el coste de un envoltorio a partir de su propio
@@ -48,8 +50,10 @@ cmake --build build/debug --target check-quality-all  # whole tree
   compilaciones instrumentadas.
 - `check-quality`, `make format` y `make-format.bat` cubren los archivos
   modificados desde `HEAD` más los archivos no rastreados; `cmake/quality_scope.py`
-  añade las unidades de traducción que incluyen una cabecera modificada (a partir
-  de los datos de dependencias de Ninja de cualquier configuración) y, para
+  añade, por cada cabecera modificada, una unidad de traducción que la incluye
+  (su propio fuente o, en su defecto, su primer usuario, a partir de los datos
+  de dependencias de Ninja de cualquier configuración; los demás dependientes
+  de la cabecera quedan para `check-quality-all` en la puerta completa) y, para
   clang-tidy, las unidades cuyo comando de compilación difiere del que registró
   la última ejecución aprobada (`build/debug/quality/tidy-commands.json`), de
   modo que una edición de una regla de compilación vuelve a comprobar solo las
@@ -236,14 +240,21 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   respecto a cada sistema (`+N%`: Clause es más rápido, el otro tarda un N% más;
   `-N%`: Clause tarda un N% más; `(Fx)` la razón de tiempos) con una media
   geométrica, `--lto` frente a OTP y O2, tiempos de reloj de los programas
-  incluido el arranque, fallos y agotamientos de tiempo (`--timeout`, 600 s por
+  incluido el arranque, tamaños de ejecutables, fallos y agotamientos de tiempo (`--timeout`, 600 s por
   ejecución). Los recuentos de iteraciones mantienen una ejecución
   predeterminada por debajo de 10 minutos; Clause, el sistema más lento, fija
   los tamaños, por lo que algunos núcleos de OTP duran solo unos pocos
   milisegundos.
+- Tamaños de ejecutables, en bytes: cada programa en `-O2`, con `--lto` y en
+  `-O0` (una compilación adicional que solo se mide, nunca se ejecuta; ambas se
+  omiten con `--no-lto`) y la línea base en `-O2`, con una fila de totales y los
+  cambios O2 frente a O0, `--lto` frente a O2, `--lto` frente a O0 y O2 frente a
+  la línea base (`-N%` menor); y `clau` en HEAD y en la línea base. El historial
+  los guarda como `sizes_bytes` (`programs`: programa → columna → bytes,
+  `clau`: `head`/`baseline` → bytes; `null` cuando falla una compilación).
 - Historial: `benchmarks/history/<host>.json` guarda un registro por día de
   ejecución (fecha de ejecución, hash y fecha del commit de HEAD, medianas de
-  Clause, OTP y la línea base), y
+  Clause, OTP y la línea base, tamaños), y
   `benchmarks/history/reports/<host>/<day>-<hash>.txt` los informes de texto;
   una nueva ejecución el mismo día reemplaza ambos. Se eliminan los registros e
   informes ejecutados más de 183 días antes del más reciente; una ejecución con
@@ -292,6 +303,7 @@ recuentos de pruebas son aprobaciones completas de CTest sin omisiones.
 | 2026-10-12 | Steps 62D1–62E directorio de compilación y cachés | 263/264 | todas | CTest completo, fallo conocido de `codegen_resource_cli`; `check-quality-all` limpio |
 | 2026-10-13 | Steps 58U–58W caché de inferencia | 278/279 | todas | CTest completo, fallo conocido de `codegen_measurements`; `check-quality-all` limpio |
 | 2026-10-14 | Step 41S `prim_eval` y la nueva ejecución de luerl (H3 cerrado) | 299/300 | todas | Véase la línea base actual |
+| 2026-10-17 | Plan 20 OPTM.2 (Term de una palabra, términos persistentes en su sitio y recuperados) y OPTM.3 (accesores sin comprobaciones) | 330/332 | todas | CTest completo: fallo conocido de `codegen_measurements`, y `library_freshness` (OTP del anfitrión) todavía espera los cuerpos de stub `not_implemented` que `b0e62a38` reemplazó; `check-quality-all` limpio |
 
 PG = paso del plan de patrones/guards; los registros de pasos del plan 11 están
 archivados en `.agents/00-finished.md`.
