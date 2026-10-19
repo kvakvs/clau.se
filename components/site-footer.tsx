@@ -8,7 +8,7 @@ export function SiteFooter({ locale, t }: { locale: string; t: Messages }) {
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-sm text-muted">
         <p>Clause · {t.footer.tagline}</p>
         <p className="flex items-center gap-4">
-          {/* Date of the last /update-doc run (content/home-meta.json). */}
+          {/* Date of the last /update-pages run (content/home-meta.json). */}
           <span>
             {t.footer.updated}{" "}
             <time dateTime={homeMeta.updatedAt} className="tabular-nums">

@@ -163,8 +163,8 @@ scripts/             build helper scripts (e.g. docs sync)
   (`lib/doc-structure.ts`, `components/markdown.tsx`), so translations must keep
   the same headings, code blocks and link targets.
 - Front page text (intro, status, feature cards and details) is refreshed from
-  `../clau` docs and progress notes with the `/update-doc` skill
-  (`.agents/skills/update-doc/`), which also translates the changed strings and
+  `../clau` docs and progress notes with the `/update-pages` skill
+  (`.agents/skills/update-pages/`), which also translates the changed strings and
   records the source commit in `content/home-meta.json`.
 - Benchmarks page data comes from `pnpm sync-benchmarks`, which reads the newest
   report of `../clau/benchmarks/history/` into `content/benchmarks.json` (commit

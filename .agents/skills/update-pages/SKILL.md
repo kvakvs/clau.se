@@ -1,6 +1,6 @@
 ---
-name: update-doc
-description: Refresh the clau.se front page (intro, status, feature cards, feature details) and the documentation summaries from the current state of ../clau (docs/, README.md, .agents/00-finished.md, .agents/01-todo.md), then translate every changed string into all site languages. Use when the user runs /update-doc or asks to update the front page or features from the project.
+name: update-pages
+description: Refresh the clau.se front page (intro, status, feature cards, feature details) and the documentation summaries from the current state of ../clau (docs/, README.md, .agents/00-finished.md, .agents/01-todo.md), then translate every changed string into all site languages. Use when the user runs /update-pages or asks to update the front page or features from the project.
 disable-model-invocation: true
 argument-hint: "[docs] [full]"
 ---
@@ -52,10 +52,12 @@ All in `messages/en.ts` first; it is the source of truth:
   number, command or keyword shown large in monospace: keep it short, at most
   about 20 characters, and language-neutral where possible), a `title` and one
   sentence of `text`.
-- `home.details`: grouped feature list (Frontend, Compiler, Runtime, Projects
-  and tooling; add a group only when a new area appears). One line per
-  feature, plain statements of what works, no qualifiers like "partial" unless
-  the limitation is important to a user.
+- `home.details`: grouped feature list (Frontend, Erlang semantics, Compiler,
+  Runtime, OTP library, Projects and tooling; add a group only when a new area
+  appears). One short line per feature, plain statements of what works, no
+  qualifiers like "partial" unless the limitation is important to a user.
+  Library support is named by module or OTP application (`ets`, `dets`,
+  stdlib), never by function lists; details already in the docs stay there.
 - `docs.featured.*.text`: one-line summaries of the featured doc pages, if
   their content changed (prerequisites, build steps, options).
 - The paragraphs of documentation (typically first) which state implementation
@@ -69,8 +71,9 @@ Only claim what `docs/` or `00-finished.md` shows as delivered. Items that are
 open in `01-todo.md` or listed as unfinished are not features, those can only be mentioned as planned; at most they appear in `home.status` as remaining work. When a source says a feature is
 limited to a subset, describe it as a subset.
 
-Style: technical, concise, neutral; no marketing words ("blazing",
-"powerful", "seamless"). Technical names stay as written: Erlang, OTP, ERTS,
+Style: the front page is marketing for developers: highlights, not a
+detailed overview; the docs hold the details. Technical and concise; no hype
+words ("blazing", "powerful", "seamless"). Technical names stay as written: Erlang, OTP, ERTS,
 BEAM, LLVM, Clang, CMake, Clause, `clau`.
 
 The benchmarks page (`benchmarks.*`, `content/benchmarks.json`) is not part

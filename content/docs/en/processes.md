@@ -454,6 +454,20 @@ Ports are specified in [ports](ports.md): a port is linked to its opener, takes
 part in links, monitors, exit signals and registered names like a process, and
 talks to its connected process with messages.
 
+## Suspending processes
+
+`erlang:suspend_process/1,2` and `erlang:resume_process/1` (`scheduler/suspension.cpp`): each suspend is one hold of the target in the
+executor, so a suspended process runs again only when every suspend of every
+suspender is resumed; messages and signals still reach it (an exit signal
+still ends it), and `process_info(Pid, status)` reports `suspended`. The end
+of a suspender resumes its suspends. A synchronous suspend of a process running
+on another worker waits for its time slice to end; `asynchronous` returns at
+once, `{asynchronous, Tag}` also sends the caller `{Tag, suspended}`, and
+`unless_suspending` answers `false` when the caller already suspends the
+process. Suspending or resuming the caller itself, a process that has ended, a
+non-pid or bad options are `badarg`, as is resuming a process the caller does
+not suspend.
+
 ## Builtins
 
 | Builtin | Behavior |
@@ -468,8 +482,17 @@ talks to its connected process with messages.
 | `register(Name, Pid)`, `unregister(Name)`, `whereis(Name)`, `registered()` | See [registered names](#registered-names); `Name` must be an atom |
 | `demonitor(Ref)`, `demonitor(Ref, Options)` | `badarg` unless `Ref` is a reference and `Options` a proper list of `flush` and `info` |
 | `exit(Dest, Reason)`, `exit_signal(Dest, Reason)` | `badarg` unless `Dest` is a pid or reference; `true` after the [exit signal](#exit-signals) |
-| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)` | The previous setting; `badarg` for another flag, a non-boolean or a negative or non-integer size |
+| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)`, `process_flag(save_calls, N)` | The previous setting; `badarg` for another flag, a non-boolean or a negative or non-integer size |
 | `erlang:send(Dest, Msg)`, `Dest ! Msg` | `Msg`, after sending it ([messages](#messages)); `send/2` is not auto-imported |
+| `spawn(Node, ...)`, `spawn_link(Node, ...)`, `spawn_monitor(Node, ...)` (`/2`, `/4`) | This node (`nonode@nohost`): as without `Node`. Another node: OTP's useless pid of a node that is not alive, a process that ends at once with reason `noconnection`, so a link or monitor reports `noconnection`; `badarg` for a non-atom node |
+| `erlang:send(Dest, Msg, Options)` | `ok`, or `noconnect` for a message to another node with the `noconnect` option; options `nosuspend`, `noconnect`, `priority` (an ordinary message) |
+| `send_nosuspend(Dest, Msg)`, `send_nosuspend(Dest, Msg, [noconnect])` | `true`; `false` for another node with `noconnect` |
+| `link(Pid, Options)`, `exit(Dest, Reason, Options)`, `exit_signal(Dest, Reason, Options)` | As without options; `Options` is `[]` or `[priority]` (an ordinary signal) |
+| `process_flag(Pid, save_calls, N)` | The previous setting of another process (0..10000); kept, but Clause saves no calls; other flags `badarg` |
+| `processes_iterator()`, `processes_next(Iter)` | Iterate the live processes: `{Pid, Iter1}` or `none`; a process spawned during the walk may appear |
+| `bump_reductions(N)` | `true` for a non-negative integer; Clause counts no reductions |
+| `erlang:suspend_process(Pid)`, `erlang:suspend_process(Pid, Options)`, `erlang:resume_process(Pid)` | See [suspending processes](#suspending-processes) |
+| `erlang:process_display(Pid, backtrace)` | `true` after writing the call stack of the live process `Pid` on standard error, one `Module:Function/Arity` per line, the current function first; `badarg` for another type or a process that has ended |
 
 The new process joins the end of its parent's worker queue
 ([workers](#workers)); `spawn` returns its pid at once.

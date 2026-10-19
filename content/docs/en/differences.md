@@ -14,7 +14,8 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `bad_generators` payload of a map generator in a zip group | Its iterator: `{K, V, Next}` chain ending in `none`, in OTP's order | The same chain, built in canonical key order | [patterns](patterns.md#comprehensions) |
 | `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3`, the order `maps` funs run in (`intersect_with/3`, `merge_with/3`, ...), `proplists:get_keys/1`, `sets` of version 2 (`to_list/1`, `fold/3`) | Internal order (atom-table order for atom keys, hash order above 32 keys); an iterator is a position or a `{K, V, Next}` chain | Canonical key order; an iterator continues over a key list | [builtins](builtins.md#erts-internal) |
 | Map printing (`erlang:display/1`, `~w`, `~p`) | Internal layout order (atom-table order for atom keys, hash order above 32 keys) | Map-key order, as OTP's `~kw` | [terms](terms.md#printing) |
-| Order of `maps:keys/1`, `values/1`, `to_list/1`, `fold/3`, and of the members `json:encode/1` writes | The map's internal order (atom-table order for atom keys, hash order above 32 keys) | Key order | [library](library.md) |
+| Order of `digraph:vertices/1`, `edges/1`, `source_vertices/1`, `sink_vertices/1` and of `digraph_utils`' orderings and components where they start from those lists | The vertex and edge tables' hash order | Clause's hash order ([ETS](#ets)); paths and neighbour lists follow edge insertion in both | [builtins](builtins.md#digraph) |
+| Order of `maps:keys/1`, `values/1`, `to_list/1`, `fold/3`, of the members `json:encode/1` writes, and of `graph`'s vertex lists and traversals | The map's internal order (atom-table order for atom keys, hash order above 32 keys) | Key order | [library](library.md) |
 | Native record printing (`erlang:display/1`) | Fields in atom-table index order | Definition order, as `~w` | [native records](native-records.md#printing-and-order) |
 | `==` between native records whose fields differ only as integer/float | The compiler may fold it to `=:=` (false) | Numeric comparison (true) | [native records](native-records.md#printing-and-order) |
 | External native record construction of a module that is not loaded | Fails until the defining module is loaded | Every batch module is loaded at startup; a module outside the batch always fails | [native records](native-records.md#differences-kept) |
@@ -37,6 +38,13 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | Memory of replaced or erased persistent terms | Reclaimed by a literal-area collector process that has every process copy the value out, in the background | Each process copies it out at its next slice (parked ones at once, by the `put`/`erase`), then the area is freed; no collector process | [runtime](runtime.md#persistent-terms) |
 | `persistent_term:info/0` and `get/0` | Include the terms OTP's `kernel` and `stdlib` store at boot (26 on OTP 29) | Only the program's own terms | [builtins](builtins.md#persistent-terms) |
 | `code:is_loaded/1`, `code:which/1`, `code:all_loaded/0` of a compiled module | The `.beam` file it was loaded from | `preloaded`: every module is linked into the executable | [builtins](builtins.md#code-module) |
+| `priority` option of `send/3`, `link/2`, `exit/3`, `exit_signal/3` | Priority messages and signals overtake ordinary ones | Accepted; delivered as ordinary messages and signals | [processes](processes.md#builtins) |
+| `spawn/2,4`, `spawn_link/2,4`, `spawn_monitor/2,4` naming another node | A warning report `** Can not start ... on Node **` is logged | Nothing is printed; the useless pid still ends with `noconnection` | [processes](processes.md#builtins) |
+| `system_flag/2` flags other than `backtrace_depth` and `min_heap_size` (`fullsweep_after`, `schedulers_online`, `multi_scheduling`, `max_heap_size`, ...) | Change the emulator | Checked and read back without an effect; `system_logger` starts as `undefined` (no logger process); `cpu_topology`, `erts_alloc`, `scheduler_bind_type` are `badarg` | [builtins](builtins.md#system-information) |
+| A suspended process's timers (`receive ... after`, `send_after/3` and `start_timer/3` to its pid) | Suspended with the process until it is resumed (OTP 28, 29) | Keep running: a timeout that expires while suspended is taken once the process resumes; a timer message waits in its mailbox | [processes](processes.md#suspending-processes) |
+| `process_display/2` output | OTP's stack dump with addresses and stack slots | One `Module:Function/Arity` per frame | [processes](processes.md#builtins) |
+| `process_flag(save_calls, N)` | Saves the last N calls for `process_info(Pid, last_calls)` | Kept and read back; no calls are saved | [processes](processes.md#builtins) |
+| `adler32_combine/3`, `crc32_combine/3` with a second size above 2^31 - 1 on Windows | Combined | `badarg` (zlib's `z_off_t` is 32 bits there) | [builtins](builtins.md#erlang-module) |
 | `init:get_arguments/0`, `init:get_argument/1` | The emulator's flags: `root`, `bindir`, `progname`, `home` and every `-Flag` of the command line | Only `home`; an executable has no emulator flags | [builtins](builtins.md#init-module) |
 | `init:script_name/0`, `init:script_id/0` | The boot script's path and `{"Erlang/OTP", "29"}` | The executable's absolute path and `{"Clause", "29"}` | [builtins](builtins.md#init-module) |
 | `init:get_status/0`, `init:ensure_loaded/1` in the entry | `{starting, started}` and code loading while `escript`, `-s` or `-eval` code runs during boot; `{started, started}` and `not_allowed` once started | Always the started answers | [builtins](builtins.md#init-module) |
@@ -147,14 +155,44 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `include_lib` of an application found in several `<app>-<version>` directories | The code path holds one version (boot picks the highest); no diagnostic | The highest version below each searched directory, with one warning per run listing them | [preprocessor](preprocessor.md#compatibility-policies) |
 | A `-spec` whose types share no value with the inferred result, entry domain or a call's arguments | Compiles; Dialyzer may warn | A contradicted argument entry domain is a compile error naming the declared and inferred types; a contradicted result or call is a warning, and the inferred types are used | [semantic analysis](semantic.md#inference) |
 
+## ETS
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Order of `first/1`, `next/2`, `tab2list/1`, `foldl/3` and `i/1` over `set`, `bag` and `duplicate_bag` tables, and what `slot/2` numbers | Linear hash slots visited lock by lock; the order changes as the table grows | Parts, then buckets in order, then keys in insertion order within a bucket; a slot is one bucket | [runtime](runtime.md#ets-tables) |
+| `ets:all/0` | Includes the tables of OTP's `kernel` and `stdlib`; order of the scheduler replies | Only the program's tables, in no particular order | [builtins](builtins.md#ets) |
+| `info/2` `memory` | Allocated words of the table and its objects | Stored object words plus Clause's own overheads | [builtins](builtins.md#ets) |
+| `{write_concurrency, auto}` | Lock count adapts to contention (64 to 8192) | 64 fixed parts, as for `true`; `stats` reports 64 locks | [runtime](runtime.md#ets-tables) |
+| `compressed` | Stores elements other than the key in external format | Accepted and reported; objects are stored as they are | [builtins](builtins.md#ets) |
+| `info/2` `stats` of an `ordered_set` with `write_concurrency`; `data`; `binary` | CA tree `{RouteNodes, BaseNodes, MaxDepth}`; prints the table; the table's off-heap binaries | `false`; `true` without printing; `[]` | [builtins](builtins.md#ets) |
+| `badarg` of an `ets` builtin | Carries `error_info` with a cause (`id`, `access`, `type`, ...) | Plain `badarg` | [builtins](builtins.md#ets) |
+| Order of `select`, `match` and `match_object` results of hash tables, and which results each chunk of `select/3` holds | Results of each walk step consed, newest first; linear hash slots | Walk order of Clause's parts and buckets; each chunk the first `Limit` results gathered | [builtins](builtins.md#ets) |
+| `select_delete/2`, `select_replace/2` over a whole table | Trap every 1000 objects (the table fixed meanwhile) | Run in one piece, each part under its lock | [runtime](runtime.md#ets-tables) |
+| Match specifications naming a variable numbered 25 or above | Renumbers every `'$N'` atom of the specification, even inside `{const, ...}` (so `{const, '$30'}` gives `'$0'`) | Variables keep their numbers; `{const, '$30'}` gives `'$30'` | [runtime](runtime.md#match-specifications) |
+| Match specification guards and bodies nested deeper than 1000 levels | Compile until the C stack runs low (`system_limit`) | `system_limit` | [runtime](runtime.md#match-specifications) |
+| Trace actions in `erlang:match_spec_test/3`: `enable_trace`, `disable_trace`, `trace` with valid flags | Change the caller's trace flags (29.1.1 crashes without a tracer) | `true` after checking the flags (and that a pid argument is alive); nothing changes | [builtins](builtins.md#ets) |
+| `ets:tab2file/3` with `{sync, true}` | `disk_log:sync/1` flushes the file to disk | The file is written and closed without a flush to disk (`file:sync/1` is LIB50) | [builtins](builtins.md#ets) |
+| `ets:tab2file/2,3` and `file2tab/1,2` | Through a disk_log process named by a fresh reference | Written and read directly with `file` | [builtins](builtins.md#ets) |
+| `{process_dump}` and `{current_stacktrace}` in `erlang:match_spec_test/3` | The process's dump text; its stack trace | `<<>>`; `[]` | [builtins](builtins.md#ets) |
+
+## dets
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Requests waiting together at a table | Lookups, inserts and deletes queued at once share one cache update; lookups are answered before the writes are made; a fixed table makes some writers sleep 1 ms | Each request in turn, in arrival order | [builtins](builtins.md#dets) |
+| Long dets operations (repairs, `init_table/2,3`, compactions, flushes of a large cache) | Erlang code, preempted by reductions | One builtin call each; the table's worker runs nothing else meanwhile | [builtins](builtins.md#dets) |
+| `dets` processes | The `dets` server and `dets_sup` under `kernel_safe_sup`, tables under `dets_sup` | A `dets` server started on first use, unsupervised; table processes linked to it | [builtins](builtins.md#dets) |
+| `dets:all/0` order | The registry's ETS order | Clause's ETS order ([ETS](#ets)) | [builtins](builtins.md#dets) |
+| Reports | A repair is logged at info level; `verbose/0,1` and `DETS_DEBUG` log more; an internal failure is `{dets_bug, ...}` | Nothing is logged | [builtins](builtins.md#dets) |
+
 ## io
 
 | Difference | OTP | Clause | Owner |
 | --- | --- | --- | --- |
-| `maps_order` comparison funs (`~K` with a fun, `io_lib:write/2` option) | Maps sorted by the fun | `badarg` when a map is written | [io_lib](builtins.md#io_lib) |
 | `~p`, `~w` and `io_lib` writers of containers nested more than 256 deep | Printed | `system_limit` | [io](io.md#pretty-printing-p) |
 | `io_lib:print/4` with a column or line length that is not an integer | Depends on the term: printed (guards fail quietly), `function_clause` or `badarith` | `badarith` for any container term | [io_lib](builtins.md#io_lib) |
 | Negative precision or pad count (`~.*c` with -1) | Loops forever | `badarg` | [io](io.md#formats) |
+| `io:fread/2,3` (any `get_until` request) on standard input or a file with characters above 127 | The I/O server decodes the device's encoding into characters | The scanner sees the input's bytes | [ports](ports.md#standard-io-and-files) |
 
 ## Random numbers
 

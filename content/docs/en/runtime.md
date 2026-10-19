@@ -165,6 +165,110 @@ reached through `ProcessContext::persistent_terms()`, keeps the terms of
   writers, and reclamation (retiring copies, evacuation, freed areas and
   charges).
 
+## ETS tables
+
+One registry per runtime (`ets/tables`), owned by `Runtime::Impl` and reached
+through `ProcessContext::ets_tables()`, keeps the tables of `ets`
+([builtins](builtins.md#ets)).
+
+- **Objects.** Each stored object (and a heir's data) is a `DetachedTerm`
+  (`memory/detached_term`): a flat copy in one block of its own, made by the
+  graph copy, outside every heap. Module literals stay shared; persistent
+  terms are copied, because their areas may retire; binary cells share their
+  buffers. Blocks never move and belong to no process, so readers compare and
+  hash them in place and copy them into their own heap. Their words are charged
+  to the runtime's memory account.
+- **Indexes** (`ets/index`). `set`, `bag` and `duplicate_bag` tables use a
+  hash index: a power-of-two array of buckets, each a small vector of entries
+  (one per key, its objects in insertion order), doubling above two keys per
+  bucket and halving below one in eight. Keys are found by the 64-bit spread of
+  their `phash2` hash and exact equality. `ordered_set` tables use a
+  `std::set` of one node per key in term order, where keys that compare equal
+  (`1`, `1.0`) are one key; replacing an object keeps its node.
+- **Parts and locks** (`ets/table`). A hash table with `write_concurrency`
+  (`true` or `auto`) splits its keys into 64 parts by the hash's top bits, each
+  an index with its own `shared_mutex`; any other table has one part. The table
+  lock is shared by single-key operations and taken alone by whole-table ones
+  (lists of objects, `delete_all_objects/1`, fixation, deletion), so a list
+  insert is atomic and isolated as in OTP. Reads copy objects out while their
+  part is locked shared.
+- **Walks and fixation.** A hash table walks part by part and bucket by bucket,
+  backwards as forwards; `next/2` from a key it does not hold is `badarg`. While
+  the table is fixed (`safe_fixtable/2`, `foldl/3`) its indexes never resize, a
+  removed key stays as a tombstone holding one object for its key, and new keys
+  join the end of their bucket, so a walk sees every key that stayed once. The
+  last unfixation drops the tombstones and resizes. An ordered_set walks from
+  any key to the nearest one.
+- **Registry.** Tables by identifier number (a plain reference from the program
+  sequence) and by name, and the tables each process owns or fixes. A process's
+  end (`Executor::release_tables`, under the executor lock before links and
+  monitors are signalled) releases its fixations and passes each table it owned
+  to a live heir other than itself, which gets `{'ETS-TRANSFER', Table, From,
+  HeirData}` (none for a heir set without data), or deletes it. Lock order: the
+  executor's, the registry's, a table's; builtins never take the executor lock
+  while they hold an ETS lock, and `give_away/3` sends its message after
+  releasing them.
+- **Portions**. `tab2list/1` and the selects of every
+  object (`select/2`, `select_reverse/2`, `match/2`, `match_object/2`,
+  `select_count/2`) walk the table as many objects a portion as the process's
+  budget allows, then trap (`builtins/ets/table_walks.cpp`); a hash table is
+  fixed by the walking process from its first trap to its end, as OTP fixes
+  it, so its slots stay put. `delete_all_objects/1` and `delete/1` empty or
+  delete the table at once by taking its indexes out (`Table::empty`,
+  `Table::destroy`), then free the old objects in portions
+  (`builtins/ets/disposal.cpp`, `Index::shed`); a fixed hash table is emptied
+  in place instead, keeping its tombstones. The tables an ended owner leaves
+  are freed by the worker after it releases the executor lock.
+  `select_delete/2` and `select_replace/2` still run in one piece.
+- **Counters in place.** `update_counter/3,4` on a key whose object is the
+  table's own copy and whose counters stay small integers changes the stored
+  fields where they are, under the part's lock, as OTP's does; a bignum, a
+  module literal object or a default object takes the general path, which
+  stores a new copy.
+- CTest `executables_ets_concurrency` covers counters, inserts and walks from
+  many processes on one and four workers, and the end of owners of many tables;
+  `executables_ets_portions` shows other processes running during long
+  operations on one worker.
+- **Selects** ([match specifications](#match-specifications)). A whole-table
+  select reads every part under its locks; one whose heads all bind the key
+  looks the keys up. A chunked select walks a hash table slot by slot (each
+  slot under its part's lock) and an ordered_set by keys from the last one, so
+  a continuation names a slot or a key. `select_delete/2` and
+  `select_replace/2` edit each part under its own lock (`Index::edit`); a fixed
+  hash table keeps the tombstones of removed keys meanwhile.
+
+## Match specifications
+
+`runtime/src/match_spec/` compiles and runs match
+specifications as OTP's `erl_db_util.c` does, for `ets` and
+`erlang:match_spec_test/3` ([builtins](builtins.md#ets)).
+
+- **Programs.** `compile` turns a specification into a `Program`: per clause a
+  head pattern, guard and body expressions over numbered variable slots, and
+  the variables the head binds (`'$$'`). Constants fold as OTP folds them
+  (`{{...}}` and `{const, X}` into values; a constant map keeps its keys as
+  written) and are kept as `DetachedTerm` copies, so a program belongs to no
+  process. Two dialects: `table` (ets) and `trace` (heads are argument lists,
+  a list ending in `'_'` matches a prefix, `'$N'` or `'_'` the whole list;
+  bodies may run trace actions).
+- **Checks.** The compiler applies OTP's checks in OTP's order and, when
+  linting (`erlang:match_spec_test/3`), gives OTP's messages for the first
+  clause that has any, operands of calls and tuples compiled last to first as
+  OTP compiles them; a message is cut at 99 bytes as OTP's buffer cuts it.
+  Guard functions are OTP's table (`match_spec/functions.cpp`), with the
+  contexts each may be called in; nesting past 1000 levels is `system_limit`.
+- **Running** (`match_spec/run.cpp`). Clauses are tried in order. A head binds
+  parts of the object in place (exact equality for constants and repeated
+  variables, maps holding at least the pattern's keys); guards read them in
+  place and must give exactly `true`; a body copies every value it gives into
+  the caller's heap. A guard function that raises fails the clause; in a body
+  it gives `'EXIT'` in its place and the body goes on, as do `and`, `or`,
+  `andalso` and `orelse` of a term that is no boolean. Most guard functions
+  are the immediate service's operations on terms (`terms/immediate_terms.hpp`).
+- **Compiled specifications** are handle references holding the program
+  (`match_spec/handles.cpp`), so they survive `term_to_binary/1` within the
+  program as OTP 20+ magic references do.
+
 ## Scheduler bookkeeping
 
 `SchedulerService`

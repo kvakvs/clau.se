@@ -255,6 +255,35 @@ Calls:
   `fun put/2`) that the module neither defines, imports nor suppresses with
   `-compile({no_auto_import, ...})` reaches `erlang:F/A` the same way.
 
+Source: `executables_erlang_gaps`.
+
+- `adler32/1,2`, `adler32_combine/3`, `crc32/1,2`, `crc32_combine/3` over the
+  pinned zlib (`erlang/checksums.cpp`); `iolist_to_iovec/1` keeps binaries
+  above 512 bytes as their own elements and copies the rest together, as
+  OTP's iol2v does, and returns a binary or `[Binary]` as it is.
+- `append_element/2`, `insert_element/3`, `delete_element/2`, and
+  `is_integer/3` when called rather than inlined (`erlang/tuple_edits.cpp`).
+- `get_cookie/0,1` answer `nocookie` and `set_cookie/1,2`
+  `error:distribution_not_started` (badarg for this node in `set_cookie/2`),
+  as on a node that is not alive; `halt/2` checks its options and halts as
+  `halt/1`.
+- `send/3`, `send_nosuspend/2,3`, `link/2`, `exit/3`, `exit_signal/3`,
+  `spawn/2,4`, `spawn_link/2,4`, `spawn_monitor/2,4`, `process_flag/3`,
+  `bump_reductions/1` and `processes_iterator/0`, `processes_next/1`
+  ([processes](processes.md#builtins)); `system_flag/2`
+  ([system information](#system-information)); `hibernate/0` is an Erlang
+  body over `hibernate/3`.
+- `decode_packet/3` (`erlang/packets.cpp`, `erlang/packet_http.cpp`,
+  `executables_packet_decoding`): OTP's packet_parser rules for every type
+  (`raw`, `0`, `1`, `2`, `4`, `asn1`, `sunrm`, `cdr`, `fcgi`, `tpkt`, `line`,
+  `http`, `httph`, `http_bin`, `httph_bin`, `ssl_tls`) and options
+  (`packet_size`, `line_length`, `line_delimiter`): `{ok, Packet, Rest}` with
+  sub-binaries of the input, `{more, Length | undefined}` or
+  `{error, invalid}`; http lines give OTP's request, response, header (known
+  headers as atoms with their bit, names in OTP's case) and `http_error` terms.
+- `suspend_process/1,2`, `resume_process/1` and `process_display/2` (`erlang/suspension.cpp`, `executables_suspension`):
+  [suspending processes](processes.md#suspending-processes).
+
 ## External term format
 
 `erlang/term_encoding.cpp`, `erlang/term_decoding.cpp`. Both directions share
@@ -315,6 +344,16 @@ use the C library's local time zone. Timers:
   process memory, `atom` an estimate from the atom count, `binary`, `code`
   and `ets` are 0.
 - Other items are `badarg`.
+- `system_flag/2` (`erlang/system_flags.cpp`) returns each flag's
+  previous value: `backtrace_depth` bounds the frames of every stack trace
+  (at most 64), `min_heap_size` the first heap of processes spawned later;
+  `fullsweep_after`, `min_bin_vheap_size`, `max_heap_size`,
+  `microstate_accounting`, `scheduler_wall_time`, `trace_control_word`,
+  `outstanding_system_requests_limit`, `schedulers_online`,
+  `dirty_cpu_schedulers_online`, `multi_scheduling`, `system_logger` and
+  `time_offset` (always `final`: no time warp) are checked and read back
+  without an effect ([differences](differences.md#pids-references-and-processes)).
+  Other flags (`cpu_topology`, `erts_alloc`, ...) are `badarg`.
 
 ## Hashing
 
@@ -510,6 +549,163 @@ builtin:
   over the private builtins `clause_array:values/3`, `sparse/3` and
   `replace/4`, the last rebuilding a mapped range as OTP's mapfolds do (empty
   subtrees unfolded unless the map is sparse) and reading the cache again.
+
+## Sets of sets
+
+`sofs` (`builtins/sofs/`, `executables_sofs_sets`): OTP
+29's typed sets, relations, functions and families, the sorted lists under
+OTP's `{'Set', Data, Type}` and `{'OrdSet', Data, Type}` records. Type checks,
+construction from terms and external data, the set algebra, relations,
+products, selectors and families are builtins merging the sorted lists the way
+OTP does (on equal elements the first operand's is kept, so `2.0` and `2` stay
+as OTP leaves them). The functions taking funs (`specification/2`,
+`substitution/2`, `projection/2`, `partition/2,3`, `restriction/3`,
+`family_projection/2`, ...) are Erlang over `clause_sofs` builtins that sort,
+check and wrap the results.
+`family_to_digraph/1,2` and `digraph_to_family/1,2` are stubs until `digraph`
+(LIB12).
+
+## Graph
+
+`graph` (`builtins/graph/`, `executables_graph_module`):
+OTP 29's functional graphs over OTP's `#graph{}` record (vertex labels and
+each vertex's edge ordsets in maps). The queries and traversals are builtins
+that port OTP's walks with explicit stacks: `revpreorders/4` (components,
+reachability), `posttraverse/4` (orderings, `topsort/1`, strong components),
+`one_path/8` with its prune counter (`get_path/3`, `get_cycle/2`) and the
+breadth-first `get_short_path/3`; lists built by folds over the maps come in
+reverse map order as in OTP. The updates (`add_*`, `del_*`), `fold_vertices/3`,
+`subgraph/2,3` and `condensation/1` are Erlang.
+
+## Digraph
+
+`digraph` and `digraph_utils` (`builtins/digraph/`,
+`executables_digraph_tables`): OTP 29's `#digraph{}` record over three ETS
+tables (a set of `{V, Label}`, a set of `{E, V1, V2, Label}` and a bag of
+`{{out, V1}, E}` and `{{in, V2}, E}` that also holds the `'$vid'` and `'$eid'`
+counters). The updates and reads are Erlang over the `ets` builtins, as
+OTP's; the path searches (`get_path/3`, `get_cycle/2`, `get_short_path/3`,
+`get_short_cycle/2`) and digraph_utils' traversals, orderings, components and
+tree tests are builtins that read the tables in place (`DigraphView`) and run
+module graph's walks over them (`graph::View`), composed as digraph_utils
+composes them (`topsort/1` through the reverse postorder of all vertices,
+`is_acyclic/1` through loops and topsort). Vertices come in the vertex
+table's walk order and neighbours last edge first, as OTP lists them;
+`subgraph/2,3` and `condensation/1` are Erlang. `sofs:family_to_digraph/1,2`
+and `digraph_to_family/1,2` are Erlang over `digraph`.
+
+## ETS
+
+`ets` (`builtins/ets/`, over the runtime's tables:
+[runtime](runtime.md#ets-tables)). Builtins: `new/2`, `delete/1,2`,
+`whereis/1`, `all/0`, `rename/2`, `give_away/3`, `setopts/2`, `info/1,2`,
+`insert/2`, `insert_new/2`, `delete_object/2`, `delete_all_objects/1`,
+`take/2`, `lookup/2`, `member/2`, `lookup_element/3,4`, `tab2list/1`,
+`slot/2`, `safe_fixtable/2`, `first/1`, `next/2`, `last/1`, `prev/2` and
+their `*_lookup` forms, `update_counter/3,4` and `update_element/3,4`.
+Erlang: `foldl/3`, `foldr/3` (the table fixed meanwhile), `i/0` and the
+`i/1,2,3` pager, and `fun2ms/1`, which exits as OTP does for a fun the
+`ms_transform` parse transform did not translate.
+
+- Options read as OTP reads them: the last type and access option win, but
+  `set` and `protected` change nothing (`[bag, set]` is a bag); `{heir, Pid}`
+  without data inherits without a message; a heir that is not alive is no heir.
+  `write_concurrency`, `read_concurrency` and `decentralized_counters` take
+  effect, and `info/2` reports them, only for tables that are not private.
+- Access: `public` tables are read and written by anyone, `protected` ones
+  read by anyone and written by the owner, `private` ones used only by the
+  owner; `info/1,2` work for anyone, `give_away/3` and `setopts/2` only for the
+  owner. Every failure is `badarg`; `info/1,2` of a name or identifier that
+  names no table is `undefined`.
+- `info/1` lists OTP's items in OTP's order. `info/2` also gives `fixed`,
+  `safe_fixed`, `safe_fixed_monotonic_time` (the fixing processes from the
+  highest pid down), `stats` (OTP's tuple for hash tables, `false` for an
+  ordered_set), and `data` and `binary` (`true` and `[]`). `memory` counts the
+  stored words and Clause's own overheads.
+- Match specifications (`builtins/ets/select*.cpp`,
+  `match_specs.cpp`, over [runtime](runtime.md#match-specifications)):
+  `select/1,2,3`, `select_reverse/1,2,3`, `match/1,2,3`, `match_object/1,2,3`,
+  `select_count/2`, `select_delete/2`, `select_replace/2`,
+  `match_spec_compile/1`, `match_spec_run_r/3`, `is_compiled_ms/1` and
+  `erlang:match_spec_test/3` are builtins; `match_spec_run/2`, `test_ms/2`,
+  `repair_continuation/2`, `match_delete/2` and `init_table/2` Erlang.
+  - Results come in walk order: an ordered_set's in key order
+    (`select_reverse` reversed), a hash table's by part and bucket.
+  - Chunks: a hash table returns `Limit` results a time, keeping the rest of
+    the last slot it read in its continuation `{Tid, NextSlot, Limit,
+    MatchSpec, Rest, RestCount}`; an ordered_set stops at the `Limit`th result
+    and goes on after that key, `{Tid, LastKey, [], Limit, MatchSpec, [],
+    Reverse, 0}`. Heads that all bind the key look its objects up (an
+    ordered_set returns a single key's results in one chunk, as OTP does).
+  - `select_replace/2` checks first that every clause keeps the key (OTP's
+    rule: `'$_'`, or a built or constant tuple with the head's key, or
+    `{element, KeyPos, '$_'}`, in the key position) and refuses bags.
+  - `erlang:match_spec_test/3` lints as OTP does (its messages and their
+    order), runs table specifications on a term and trace ones on an argument
+    list, and reports `return_trace` and `exception_trace`; trace actions
+    that would change tracing check their arguments only
+    ([differences](differences.md#ets)).
+- Table files: `tab2file/2,3`, `file2tab/1,2` and
+  `tabfile_info/1` are Erlang over `file`, writing and reading disk_log halt
+  logs in OTP's internal format (head `LOGMAGIC` with `OPENED` until closed,
+  `BIGMAGIC` items with an MD5 of the size from 65528 bytes on), so files
+  pass both ways between Clause and OTP. `clause_disk_log:items/1`
+  (`builtins/disk_log/halt_log.cpp`) splits a file's bytes as disk_log reads
+  them read-only: undecodable items and bytes framing none are skipped
+  (`badfile` when verifying). Options, extended information
+  (`object_count`, `md5sum`), verification and the error terms are OTP's;
+  CTest `executables_ets_table_files` also reads a file OTP 29.1.1 wrote.
+- `to_dets/2` and `from_dets/2` are Erlang over
+  `dets:from_ets/2` and `dets:to_ets/2`, raising their errors as OTP does;
+  `table/1,2` (LIB73) are stubs.
+- CTests `executables_ets_tables`, `_owner`, `_update`, `_walk`,
+  `_concurrency`, `_match_specs` and `_table_files` run OTP goldens.
+
+## Dets
+
+`dets` (`library/stdlib/dets.erl` over `clause_dets`, the
+file engine in `builtins/dets/`) keeps OTP's version 9 file format byte for
+byte: for the same operations Clause writes the files OTP writes, so files pass
+both ways and every order that depends on the file (`match`, `select`,
+`foldl`, `traverse`, `to_ets`, `bchunk` in file order; `first`, `next` and
+`slot` in slot order) is OTP's.
+
+- **The engine** (C++, `builtins/dets/`): the header with its MD5 and buddy
+  counters (`header.cpp`), the buddy system with OTP's frozen lists while a
+  table is fixed (`free_lists.cpp`), segments, linear hashing with phash2 (and
+  the old phash of files that use it), growth by segments and the split of a
+  slot's collections (`table.cpp`, `growth.cpp`), the write cache's flush in
+  OTP's order: empty slots from the highest down, the others in batches of up
+  to 80 KB in file order, collections merged per key as `dets_v9` merges them
+  (`work_list.cpp`), the 8 KB chunks of scans and bchunk (`scan.cpp`), and
+  the bulk layouts of `init_table/2,3`, repairs and compactions: per buddy size
+  the largest first, blocks in a row, the segments rewritten
+  (`bulk.cpp`). Files are read and written with positioned I/O on the
+  worker, or in memory for `{ram_file, true}`.
+- **The processes** (Erlang): a `dets` server registered on first use with
+  OTP's `dets_registry` and `dets_owners` tables opens tables for their users,
+  closes a table when its last user closes it or ends, and answers `all/0`,
+  `pid2name/1` and `info(T, users)`. Each table has a process that holds the
+  file's handle, OTP's write cache (`{3000, 14000}` by default: flushed by a
+  lookup, past the size threshold or after the delay), the update mode
+  (`saved`, `dirty` after marking the file not properly closed), the fixes
+  (`safe_fixtable/2`, linked fixers), autosave and growth timers.
+- Opening checks the file as OTP does: a file not properly closed is repaired
+  (`{repair, false}` gives `needs_repair`), `{repair, force}` compacts a closed
+  file into the same slots, bad free lists repair; errors are OTP's
+  (`type_mismatch`, `keypos_mismatch`, `not_a_dets_file`, `access_mode`,
+  `incompatible_arguments`, `{file_error, File, Posix}`, ...).
+- Funs run where OTP runs them: `init_table/2,3` and `from_ets/2` call the
+  init fun in the table process (closing it only for invalid objects, as
+  file_sorter does), `foldl/3`, `traverse/2` and chunked matches in the caller.
+  `init_table/3` takes `term` and `bchunk` data (`bchunk/2` copies, with OTP's
+  filler bytes before large copies).
+- `table/1,2` wait for `qlc` (LIB73). The undocumented `file_info/1`,
+  `fsck/1,2`, `view/1`, `get_head_field/2`, `init/2`, `istart_link/1` and
+  the `sys` callbacks are stubs.
+- CTest `executables_dets_tables` compares every table type, option, error,
+  read, update, match, traversal, fix, bulk load, repair and compaction with
+  OTP, including the MD5 of each file written.
 
 ## Encodings
 
@@ -856,12 +1052,65 @@ arena (`io_lib/deep.cpp`), then becomes a term (`io_lib`) or flat characters
   `find_upper`, `search_depth`); `cind/7` picks the tag indentation and
   `pp/8` breaks lines in OTP's deep list shapes. `bformat/2,3` lay `~p` out as
   `print_bin/2` does, with its binary line breaks, size and column.
+- Scanner (`io_lib/fread.cpp`): `fread/2` reads the
+  controls `~d ~u ~- ~f ~s ~a ~c ~l ~~ ~#` with widths, `~*` and `~t` over the
+  line as a list, so its rest is the input's own tail; `fread/3` gathers lines
+  (LF, CRLF or a CR before the end) into OTP's `{Format, Stack, N, Results}`
+  continuation, which `io:fread/2,3` feeds through a `get_until` request.
+  Malformed input and formats give OTP's `{error, {fread, What}}`, and OTP's
+  `try` around `~#` turns every later error into `{fread, based}`.
 - Erlang: `get_until/1,3,4` (it applies the caller's scanner),
-  `format_prompt/1,2` and `write/3`. Stub: `fread/2,3`.
-- Containers nested more than 256 deep raise `system_limit`, and `maps_order`
-  comparison funs are `badarg` ([differences](differences.md#io)).
+  `format_prompt/1,2` and `write/3`.
+- `maps_order` comparison funs (`~K` with a fun, the `maps_order` option of
+  `write/2`, `write/5`, `bwrite/2` and `write_bin/5`; plan 21 step LIB4F,
+  `io_lib/key_orders.cpp`): a builtin cannot call the fun, so the call writes
+  such a map in Clause's key order, records it, and at its end continues in
+  `clause_io_lib:sort_maps/6` instead of returning (or writing, for
+  `io:format`). That sorts the keys with `lists:sort(Fun, maps:keys(Map))`, as
+  `maps:iterator/2` does, and reruns the call through
+  `clause_io_lib:apply_ordered/4` with every key list sorted so far; maps
+  reached only by the new order go round again. A fun that raises or answers
+  no boolean makes the format functions and `io:format` raise `badarg`, as
+  io_lib's catch does, and `write/2` raise its error.
+- Containers nested more than 256 deep raise `system_limit`
+  ([differences](differences.md#io)).
   `executables_io_lib_text` compares every function's shapes with OTP's,
-  `executables_pretty_print` the pretty printer's.
+  `executables_pretty_print` the pretty printer's, `executables_fread_scanning`
+  the scanner's.
+
+## Compiler tables
+
+`erl_internal`, `erl_anno` and `erl_features` (`builtins/front_end/`) are runtime builtins following OTP's clauses; `records`
+is in [native records](native-records.md#reflection):
+
+- `erl_internal`: `bif/2,3` answers from the auto-import flags of
+  `library/erts/erlang.terms` (`front_end/erlang_bifs.inc`, generated with
+  the compiler's own auto-import table by
+  `tests/compiler/builtins/generate_erlang.py`) plus OTP's leftover
+  `bitsize/1`; `guard_bif/2` from their guard flags; `type_test/2`,
+  `new_type_test/2`, `old_type_test/2`, `is_type/2` and the operator tables
+  (`arith_op/2` ... `op_type/2`) are fixed tables. A name that is not an atom
+  or an arity that is not an integer is `function_clause`, as OTP's guarded
+  last clauses make it. `add_predefined_functions/1` appends the export
+  attribute, `behaviour_info/1` (when the forms have callbacks) and
+  `module_info/0,1` with anno 0.
+- `erl_anno`: annotations are a location or a list of `{Item, Value}` pairs;
+  reads and `set_*` updates keep OTP's shapes (a list holding only a location
+  becomes the location) and errors: `badarg` from `lists:keyfind/3` on a list
+  it cannot walk, `try_clause` for a tuple found that is not a pair,
+  `function_clause` where OTP's `lists:keydelete/3` or `keyreplace/4` meets an
+  improper tail, `badarith` when `end_location/1` counts lines from a location
+  that is not a number.
+- `erl_features`: `all/0`, `configurable/0`, `enabled/0`,
+  `info/1`, `keywords/0,1` answer from Clause's compiler (`maybe_expr` approved
+  and enabled, `compr_assign` experimental; `error:invalid_feature` for another
+  name). `used(Module)` reads the features each module of the program was
+  compiled with from its descriptor (`not_found` for others); `used(FileName)`
+  reads the `Meta` chunk of `FileName.beam` (`clause_features:beam_meta/1`,
+  gzip-compressed files included). The parse-state functions OTP's compiler
+  calls stay stubs.
+- `executables_compiler_tables` compares `erl_internal` and `erl_anno` with
+  OTP, `executables_records_reflection` `records` and `erl_features`.
 
 ## Zlib module
 
