@@ -70,6 +70,10 @@ content/benchmarks.json`. Note the Clause commit, run count, new or removed
    new data and edit where needed:
    - add a `groups` title for every new program prefix, drop titles of
      programs that are gone;
+   - add a 5-10 word summary to `kernelInfo` (full `<program>.<kernel>`
+     name) and `programInfo` for every new kernel or program, read from its
+     source in `../clau/benchmarks/bench_*.erl`; drop entries that are gone,
+     and update a summary when its kernel's workload changed;
    - `intro`, `kernelsNote`, `programsNote`, `historyNote`: still true for the
      report (run count, units, what is measured);
    - `home.status` mentions the benchmarks page: check it still reads right

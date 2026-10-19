@@ -238,6 +238,64 @@ export const sv = {
       msg: "Meddelandeöverföring",
       socket: "Loopback-sockets",
     },
+    kernelInfo: {
+      "datagen.list_of_tuples": "Bygger en lista med 200 000 små tupler",
+      "datagen.list_to_tuple":
+        "Gör om listor med 1000 element till tupler, 100 gånger",
+      "datagen.map_put": "Lägger in 2000 heltalsnycklar i en map, en i taget",
+      "datagen.binary_append":
+        "Lägger till 10 000 32-bitars heltal i en växande binary",
+      "datagen.bigint_factorial":
+        "Beräknar fakulteten av 3000 med stora heltal",
+      "datagen.string_build": "Bygger 20 000 strängar av heltal och atomer",
+      "dataproc.sort": "Sorterar en lista med 20 000 slumpmässiga heltal",
+      "dataproc.map_foldl": "Kör map och sedan fold över 20 000 heltal",
+      "dataproc.map_update":
+        "Ökar varje värde i en map med 500 nycklar två gånger",
+      "dataproc.binary_match":
+        "Summerar 20 000 32-bitars heltal matchade ur en binary",
+      "dataproc.int_to_list": "Gör om 20 000 heltal till strängar och tillbaka",
+      "dataproc.term_to_binary": "Kodar och avkodar en stor nästlad term",
+      "dataproc.comprehension":
+        "Comprehension som filtrerar och dubblar 20 000 heltal",
+      "dataproc.small_map": "Uppdaterar en liten tillståndsmap 20 000 gånger",
+      "file.small_files": "Skriver, läser tillbaka och raderar 500 små filer",
+      "file.large_write": "Skriver en fil på 16 MB i block om 64 KB",
+      "file.large_read": "Läser en fil på 16 MB i block om 64 KB",
+      "file.read_line": "Läser en textfil med 20 000 rader rad för rad",
+      "file.read_file": "Läser en hel fil på 16 MB i ett anrop",
+      "gc.short_processes":
+        "Startar 5000 kortlivade processer som var och en skapar skräp",
+      "gc.grow_shrink":
+        "Växer heapen med en lista på 200 000 element och släpper den",
+      "gc.long_lived_churn":
+        "Behåller ett glidande fönster av levande data bland skräp",
+      "gc.explicit_collect":
+        "Tvingar fram skräpsamling med 10 000 levande tupler",
+      "msg.ping_pong":
+        "Studsar ett meddelande mellan två processer 50 000 gånger",
+      "msg.fan_in": "100 processer skickar var och en 1000 meddelanden till en",
+      "msg.ring": "Skickar en token 50 varv runt en ring av 1000 processer",
+      "msg.large_message":
+        "Skickar en lista med 100 000 element till en process och tillbaka",
+      "socket.tcp_echo": "Ekar 2000 meddelanden på 1 KB över TCP via loopback",
+      "socket.tcp_connect":
+        "Öppnar och stänger 300 TCP-anslutningar via loopback",
+      "socket.udp_round_trip":
+        "Studsar ett datagram på 1 KB 2000 gånger över UDP via loopback",
+    },
+    programInfo: {
+      bench_datagen:
+        "Bygger listor, tupler, maps, binaries och stora heltal i mängd",
+      bench_dataproc:
+        "Sortering, fold, map-uppdateringar, binary-matchning och konverteringar",
+      bench_file: "Skriver och läser små och stora filer, läser rader",
+      bench_gc:
+        "Kortlivade processer, heap som växer och krymper, levande data",
+      bench_msg:
+        "Ping-pong, fan-in, processring och kopiering av stora meddelanden",
+      bench_socket: "TCP-eko, TCP-anslutningar och UDP-rundturer via loopback",
+    },
     programsTitle: "Hela program",
     programsNote:
       "Verklig tid i sekunder, inklusive uppstart, median av körningarna.",

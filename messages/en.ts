@@ -234,6 +234,61 @@ export const en = {
       msg: "Message passing",
       socket: "Loopback sockets",
     },
+    kernelInfo: {
+      "datagen.list_of_tuples": "Builds a list of 200,000 small tuples",
+      "datagen.list_to_tuple":
+        "Converts 1,000-element lists to tuples, 100 times",
+      "datagen.map_put": "Inserts 2,000 integer keys into a map one by one",
+      "datagen.binary_append":
+        "Appends 10,000 32-bit integers to a growing binary",
+      "datagen.bigint_factorial":
+        "Computes the factorial of 3,000 with big integers",
+      "datagen.string_build": "Builds 20,000 strings from integers and atoms",
+      "dataproc.sort": "Sorts a list of 20,000 random integers",
+      "dataproc.map_foldl": "Maps, then folds a list of 20,000 integers",
+      "dataproc.map_update": "Increments every value of a 500-key map twice",
+      "dataproc.binary_match":
+        "Sums 20,000 32-bit integers matched out of a binary",
+      "dataproc.int_to_list": "Converts 20,000 integers to strings and back",
+      "dataproc.term_to_binary": "Encodes and decodes a large nested term",
+      "dataproc.comprehension":
+        "List comprehension filtering and doubling 20,000 integers",
+      "dataproc.small_map": "Updates a small state map 20,000 times",
+      "file.small_files": "Writes, reads back and deletes 500 small files",
+      "file.large_write": "Writes a 16 MB file in 64 KB chunks",
+      "file.large_read": "Reads a 16 MB file in 64 KB chunks",
+      "file.read_line": "Reads a 20,000-line text file line by line",
+      "file.read_file": "Reads a whole 16 MB file in one call",
+      "gc.short_processes":
+        "Spawns 5,000 short-lived processes that each make garbage",
+      "gc.grow_shrink":
+        "Grows the heap with a 200,000-element list, then drops it",
+      "gc.long_lived_churn":
+        "Keeps a sliding window of live data among garbage",
+      "gc.explicit_collect":
+        "Forces garbage collection with 10,000 live tuples",
+      "msg.ping_pong": "Bounces one message between two processes 50,000 times",
+      "msg.fan_in": "100 processes each send 1,000 messages to one",
+      "msg.ring": "Passes a token around a 1,000-process ring 50 times",
+      "msg.large_message":
+        "Sends a 100,000-element list to another process and back",
+      "socket.tcp_echo": "Echoes 2,000 messages of 1 KB over loopback TCP",
+      "socket.tcp_connect":
+        "Opens and closes 300 TCP connections over loopback",
+      "socket.udp_round_trip":
+        "Bounces a 1 KB datagram 2,000 times over loopback UDP",
+    },
+    programInfo: {
+      bench_datagen:
+        "Builds lists, tuples, maps, binaries and big integers in bulk",
+      bench_dataproc:
+        "Sorting, folds, map updates, binary matching and conversions",
+      bench_file: "Small and large file writes and reads, line reads",
+      bench_gc:
+        "Short-lived processes, heap growth and shrinking, live data churn",
+      bench_msg: "Ping-pong, fan-in, a process ring and large message copies",
+      bench_socket: "TCP echo, TCP connects and UDP round trips over loopback",
+    },
     programsTitle: "Whole programs",
     programsNote: "Wall time in seconds, startup included, median of the runs.",
     program: "Program",

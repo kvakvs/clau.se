@@ -237,6 +237,67 @@ export const es = {
       msg: "Paso de mensajes",
       socket: "Sockets de loopback",
     },
+    kernelInfo: {
+      "datagen.list_of_tuples":
+        "Construye una lista de 200 000 tuplas pequeñas",
+      "datagen.list_to_tuple":
+        "Convierte listas de 1000 elementos en tuplas, 100 veces",
+      "datagen.map_put": "Inserta 2000 claves enteras en un map, una a una",
+      "datagen.binary_append":
+        "Añade 10 000 enteros de 32 bits a un binary creciente",
+      "datagen.bigint_factorial":
+        "Calcula el factorial de 3000 con enteros grandes",
+      "datagen.string_build":
+        "Construye 20 000 cadenas a partir de enteros y átomos",
+      "dataproc.sort": "Ordena una lista de 20 000 enteros aleatorios",
+      "dataproc.map_foldl": "Aplica map y luego fold a 20 000 enteros",
+      "dataproc.map_update":
+        "Incrementa dos veces cada valor de un map de 500 claves",
+      "dataproc.binary_match":
+        "Suma 20 000 enteros de 32 bits extraídos de un binary",
+      "dataproc.int_to_list": "Convierte 20 000 enteros en cadenas y de vuelta",
+      "dataproc.term_to_binary":
+        "Codifica y decodifica un término anidado grande",
+      "dataproc.comprehension":
+        "Comprehension que filtra y duplica 20 000 enteros",
+      "dataproc.small_map": "Actualiza 20 000 veces un map de estado pequeño",
+      "file.small_files": "Escribe, relee y borra 500 archivos pequeños",
+      "file.large_write": "Escribe un archivo de 16 MB en bloques de 64 KB",
+      "file.large_read": "Lee un archivo de 16 MB en bloques de 64 KB",
+      "file.read_line":
+        "Lee línea a línea un archivo de texto de 20 000 líneas",
+      "file.read_file": "Lee un archivo entero de 16 MB en una sola llamada",
+      "gc.short_processes":
+        "Lanza 5000 procesos efímeros que generan basura cada uno",
+      "gc.grow_shrink":
+        "Hace crecer el heap con una lista de 200 000 elementos y la suelta",
+      "gc.long_lived_churn":
+        "Mantiene una ventana deslizante de datos vivos entre basura",
+      "gc.explicit_collect":
+        "Fuerza la recolección de basura con 10 000 tuplas vivas",
+      "msg.ping_pong": "Rebota un mensaje entre dos procesos 50 000 veces",
+      "msg.fan_in": "100 procesos envían 1000 mensajes cada uno a uno solo",
+      "msg.ring": "Pasa un testigo 50 vueltas por un anillo de 1000 procesos",
+      "msg.large_message":
+        "Envía una lista de 100 000 elementos a otro proceso y de vuelta",
+      "socket.tcp_echo":
+        "Hace eco de 2000 mensajes de 1 KB por TCP en loopback",
+      "socket.tcp_connect": "Abre y cierra 300 conexiones TCP en loopback",
+      "socket.udp_round_trip":
+        "Rebota un datagrama de 1 KB 2000 veces por UDP en loopback",
+    },
+    programInfo: {
+      bench_datagen:
+        "Construye en masa listas, tuplas, maps, binaries y enteros grandes",
+      bench_dataproc:
+        "Ordenación, fold, actualización de maps, matching de binaries y conversiones",
+      bench_file:
+        "Escritura y lectura de archivos pequeños y grandes, lectura por líneas",
+      bench_gc: "Procesos efímeros, heap que crece y encoge, datos vivos",
+      bench_msg:
+        "Ping-pong, fan-in, anillo de procesos y copia de mensajes grandes",
+      bench_socket: "Eco TCP, conexiones TCP e idas y vueltas UDP en loopback",
+    },
     programsTitle: "Programas completos",
     programsNote:
       "Tiempo real en segundos, incluido el arranque, mediana de las ejecuciones.",

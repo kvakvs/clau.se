@@ -33,6 +33,9 @@ export default async function BenchmarksPage({ params }: Props) {
   const { lang } = await params;
   if (!isLocale(lang)) return null;
   const t = getMessages(lang).benchmarks;
+  // Summaries of what each kernel and program does; new ones show none.
+  const kernelInfo: Partial<Record<string, string>> = t.kernelInfo;
+  const programInfo: Partial<Record<string, string>> = t.programInfo;
 
   const number = (value: number, digits: number) =>
     value.toLocaleString(lang, {
@@ -155,6 +158,7 @@ export default async function BenchmarksPage({ params }: Props) {
                             🔺
                           </span>
                         )}
+                        <Info text={kernelInfo[k.name]} />
                       </td>
                       <td className="py-1.5 pr-3 text-right tabular-nums">
                         {number(k.otp, 2)}
@@ -217,7 +221,10 @@ export default async function BenchmarksPage({ params }: Props) {
                     key={p.name}
                     className="border-b border-border hover:bg-card"
                   >
-                    <td className="py-1.5 pr-3 font-mono text-xs">{p.name}</td>
+                    <td className="py-1.5 pr-3 font-mono text-xs">
+                      {p.name}
+                      <Info text={programInfo[p.name]} />
+                    </td>
                     <td className="py-1.5 pr-3 text-right tabular-nums">
                       {p.otp === null ? "–" : number(p.otp, 2)}
                     </td>
@@ -420,6 +427,15 @@ function Tile({ value, label }: { value: ReactNode; label: string }) {
       <dd className="font-mono text-3xl font-semibold">{value}</dd>
     </div>
   );
+}
+
+/** A short description in small font under a benchmark name. */
+function Info({ text }: { text: string | undefined }) {
+  return text ? (
+    <span className="mt-0.5 block font-sans text-[11px] leading-tight break-normal text-muted">
+      {text}
+    </span>
+  ) : null;
 }
 
 type SizeDay = {

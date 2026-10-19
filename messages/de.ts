@@ -237,6 +237,69 @@ export const de = {
       msg: "Nachrichtenaustausch",
       socket: "Loopback-Sockets",
     },
+    kernelInfo: {
+      "datagen.list_of_tuples": "Baut eine Liste aus 200.000 kleinen Tupeln",
+      "datagen.list_to_tuple":
+        "Wandelt Listen mit 1000 Elementen 100-mal in Tupel um",
+      "datagen.map_put": "Fügt 2000 Ganzzahlschlüssel einzeln in eine Map ein",
+      "datagen.binary_append":
+        "Hängt 10.000 32-Bit-Ganzzahlen an ein wachsendes Binary an",
+      "datagen.bigint_factorial":
+        "Berechnet die Fakultät von 3000 mit großen Ganzzahlen",
+      "datagen.string_build":
+        "Baut 20.000 Zeichenketten aus Ganzzahlen und Atomen",
+      "dataproc.sort": "Sortiert eine Liste mit 20.000 zufälligen Ganzzahlen",
+      "dataproc.map_foldl": "Wendet map und dann fold auf 20.000 Ganzzahlen an",
+      "dataproc.map_update":
+        "Erhöht jeden Wert einer Map mit 500 Schlüsseln zweimal",
+      "dataproc.binary_match":
+        "Summiert 20.000 32-Bit-Ganzzahlen, per Matching aus einem Binary",
+      "dataproc.int_to_list":
+        "Wandelt 20.000 Ganzzahlen in Zeichenketten und zurück",
+      "dataproc.term_to_binary":
+        "Kodiert und dekodiert einen großen verschachtelten Term",
+      "dataproc.comprehension":
+        "Comprehension, die 20.000 Ganzzahlen filtert und verdoppelt",
+      "dataproc.small_map": "Aktualisiert eine kleine Zustands-Map 20.000-mal",
+      "file.small_files": "Schreibt, liest und löscht 500 kleine Dateien",
+      "file.large_write": "Schreibt eine 16-MB-Datei in Blöcken zu 64 KB",
+      "file.large_read": "Liest eine 16-MB-Datei in Blöcken zu 64 KB",
+      "file.read_line": "Liest eine Textdatei mit 20.000 Zeilen zeilenweise",
+      "file.read_file": "Liest eine ganze 16-MB-Datei mit einem Aufruf",
+      "gc.short_processes":
+        "Startet 5000 kurzlebige Prozesse, die jeweils Müll erzeugen",
+      "gc.grow_shrink":
+        "Lässt den Heap mit einer 200.000-Elemente-Liste wachsen, verwirft sie",
+      "gc.long_lived_churn":
+        "Hält ein gleitendes Fenster lebender Daten inmitten von Müll",
+      "gc.explicit_collect":
+        "Erzwingt Garbage Collection mit 10.000 lebenden Tupeln",
+      "msg.ping_pong":
+        "Schickt eine Nachricht 50.000-mal zwischen zwei Prozessen hin und her",
+      "msg.fan_in": "100 Prozesse senden je 1000 Nachrichten an einen",
+      "msg.ring": "Reicht ein Token 50-mal durch einen Ring aus 1000 Prozessen",
+      "msg.large_message":
+        "Sendet eine Liste mit 100.000 Elementen an einen Prozess und zurück",
+      "socket.tcp_echo": "Echo von 2000 Nachrichten zu 1 KB über Loopback-TCP",
+      "socket.tcp_connect":
+        "Öffnet und schließt 300 TCP-Verbindungen über Loopback",
+      "socket.udp_round_trip":
+        "2000 UDP-Roundtrips eines 1-KB-Datagramms über Loopback",
+    },
+    programInfo: {
+      bench_datagen:
+        "Erzeugt massenhaft Listen, Tupel, Maps, Binaries und große Ganzzahlen",
+      bench_dataproc:
+        "Sortieren, Folds, Map-Updates, Binary-Matching und Umwandlungen",
+      bench_file:
+        "Schreiben und Lesen kleiner und großer Dateien, zeilenweises Lesen",
+      bench_gc:
+        "Kurzlebige Prozesse, wachsender und schrumpfender Heap, lebende Daten",
+      bench_msg:
+        "Ping-Pong, Fan-in, Prozessring und Kopieren großer Nachrichten",
+      bench_socket:
+        "TCP-Echo, TCP-Verbindungsaufbau und UDP-Roundtrips über Loopback",
+    },
     programsTitle: "Vollständige Programme",
     programsNote:
       "Gesamtlaufzeit in Sekunden, einschließlich Start, Median der Läufe.",
