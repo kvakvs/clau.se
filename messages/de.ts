@@ -40,55 +40,55 @@ export const de = {
         id: "otp",
         property: "OTP 29",
         title: "Moderne Erlang-Syntax",
-        text: "Präprozessor und Parser für Erlang/OTP 29: Makros, Records, native Records, Maps, Bitstrings, Comprehensions, maybe und Typspezifikationen.",
+        text: "Präprozessor und Parser für Erlang/OTP 29-Quellcode, native Records eingeschlossen.",
       },
       {
         id: "llvm",
         property: "LLVM",
         title: "LLVM-Backend",
-        text: "Kompiliert zu verifiziertem LLVM-IR, Bitcode oder nativen Objektdateien mit O0, O2 oder Os, optional mit modulübergreifender Link-Time-Optimierung.",
+        text: "Kompiliert über LLVM mit O2, mit modulübergreifender Link-Time-Optimierung.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Native Programme",
-        text: "Linkt Erlang-Module, die von ihnen genutzte Teilmenge der Bibliothek und die Laufzeitumgebung mit Clang zu einem eigenständigen Programm, mit einem einzigen Befehl. Auch Escripts lassen sich kompilieren.",
+        text: "Ein Befehl vom Erlang-Quellcode zum eigenständigen Programm. Auch Escripts.",
       },
       {
         id: "processes",
         property: "spawn · send · receive",
         title: "Erlang-Prozesse",
-        text: "Leichtgewichtige Prozesse mit eigenem Heap und eigener Garbage Collection auf mehreren Scheduler-Threads, mit selektivem receive, Links und Monitoren.",
+        text: "Leichtgewichtige Prozesse mit Garbage Collection pro Prozess auf mehreren Scheduler-Threads.",
       },
       {
         id: "library",
         property: "ets · dets · json",
         title: "OTP-Bibliothek",
-        text: "Clause-eigene Module für stdlib, kernel und ERTS mit den Exporten, Ergebnissen und Fehlern von OTP 29, von lists und maps bis zu ETS-Tabellen und dets-Dateien, die OTP öffnen kann.",
+        text: "Clause-eigene stdlib und kernel mit den Exporten, Ergebnissen und Fehlern von OTP 29.",
       },
       {
         id: "ports",
         property: "gen_tcp · file · os",
         title: "Ports und I/O",
-        text: "Dateien, Standardein- und -ausgabe, Unterprozesse und TCP/UDP-Sockets über Ports, bedient von einem ereignisgesteuerten I/O-Thread.",
+        text: "Dateien, Unterprozesse und TCP/UDP-Sockets auf einem ereignisgesteuerten I/O-Thread.",
       },
       {
         id: "inference",
         property: "--print-types",
         title: "Typinferenz",
-        text: "Inferiert Funktionstypen pro Klausel; mit O2 entfallen dadurch Laufzeitprüfungen, und es werden typspezialisierte Varianten mit generischem Fallback gewählt.",
+        text: "Mit O2 entfernen inferierte Typen Laufzeitprüfungen und wählen spezialisierten Code.",
       },
       {
         id: "transforms",
         property: "parse_transform",
         title: "Parse-Transforms",
-        text: "Wendet Parse-Transforms wie erlc an und führt sie beim Kompilieren auf einem auf dem Host installierten Erlang/OTP 29 aus; die Programme selbst benötigen OTP nie.",
+        text: "Führt Parse-Transforms beim Kompilieren aus; die Programme selbst benötigen OTP nie.",
       },
       {
         id: "targets",
         property: "7 Zielplattformen",
         title: "Plattformübergreifend",
-        text: "Native Ausführung unter Windows x64 und Linux x86-64 validiert; Laufzeitumgebung getestet unter 32-Bit-x86 und, per Emulation, unter ARM. Objektdateien für sieben Zielplattformen, einschließlich Apple Silicon.",
+        text: "Läuft unter Windows x64 und Linux x86-64; Objektdateien für sieben Zielplattformen.",
       },
     ],
     detailsTitle: "Funktionen im Detail",
@@ -97,48 +97,37 @@ export const de = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Präprozessor: Makros, include, include_lib (auch aus versionierten Anwendungsverzeichnissen), bedingte Kompilierung und Sprachfeatures",
-          "Parse-Transforms laufen auf einem Erlang/OTP 29 des Hosts, einschließlich ms_transform und qlc von OTP; --print-abstr gibt die Formen im abstrakten Format aus",
-          "Erlang/OTP 29-Syntax: Ausdrücke, Muster, Records, Bitstrings, Typen und Spezifikationen, Kontrollfluss und Comprehensions",
-          "Syntaxprüfung, Ausgabe des expandierten Quellcodes und eingerückte Syntaxbaum-Ansicht",
-          "Diagnosen im Quellcode über mehrere Eingabedateien",
+          "Erlang/OTP 29-Syntax: Records, Maps, Bitstrings, Comprehensions, Typen und Spezifikationen",
+          "Makros, Includes und bedingte Kompilierung",
+          "Parse-Transforms auf einem Erlang/OTP 29 des Hosts, einschließlich ms_transform und qlc",
         ],
       },
       {
         id: "language",
         title: "Erlang-Semantik",
         items: [
-          "Musterabgleich und Guards in Funktionsklauseln, case, if, receive und Match-Ausdrücken im Rumpf",
-          "maybe sowie List-, Binary- und Map-Comprehensions",
-          "Records mit Updates und record_info/2; native, qualifizierte und anonyme Records",
-          "Funs mit erfassten Variablen, benannte Funs, dynamische Aufrufe und apply",
-          "Ausnahmen: error, exit, throw, catch, try ... of ... catch ... after sowie Stacktraces",
-          "Modulattribute: Prüfung der Callbacks von -behaviour, -import, informative Attribute und generiertes module_info/0,1",
+          "Pattern Matching und Guards in Klauseln, case, if und receive",
+          "Records, Funs, maybe sowie List-, Binary- und Map-Comprehensions",
+          "Ausnahmen mit try, catch und Stacktraces",
         ],
       },
       {
         id: "compiler",
         title: "Compiler",
         items: [
-          "Semantische Analyse: Prüfung der Teilmenge, Variablenbindungen, Aufrufauflösung, deklarierte und inferierte Typen",
-          "Typinferenz mit Funktionstypen pro Klausel; widersprüchliche Spezifikationen werden gemeldet",
-          "LLVM O0, O2 und Os; Objektdateien, IR und Bitcode pro Modul; IR- und Assembler-Listings mit Erlang-Quellcode als Kommentar",
-          "Schnelle Inline-Pfade für Allokation, Typprüfungen, Zugriffe auf Tupel, Listen und maps, binaries, Closures und Gleitkommaarithmetik",
-          "O2 entfernt durch die Inferenz bewiesene Typprüfungen und wählt typspezialisierte Varianten",
-          "Modulübergreifende Link-Time-Optimierung mit --lto; nicht erreichbare Exporte werden aus Programmen weggelassen",
-          "Echte Endaufrufe und tiefe Rekursion auf einem expliziten Stack pro Prozess",
-          "Eine eindeutige notimpl-Meldung für gültiges Erlang, das ein noch nicht implementiertes Feature braucht",
+          "Typinferenz mit Funktionstypen pro Klausel",
+          "LLVM O0, O2 und Os, mit modulübergreifender Link-Time-Optimierung",
+          "O2 entfernt Typprüfungen, die die Inferenz beweist",
+          "Echte Endaufrufe und tiefe Rekursion",
         ],
       },
       {
         id: "runtime",
         title: "Laufzeitumgebung",
         items: [
-          "LLVM-freie C++23-Laufzeitbibliothek, in jedes Programm gelinkt",
-          "Alle Erlang-Termtypen, einschließlich Ganzzahlen beliebiger Genauigkeit",
-          "Prozesse, Nachrichten, selektives receive, Links, Monitore, registrierte Namen und Timer auf mehreren Scheduler-Workern",
-          "Heap pro Prozess mit kopierendem Garbage Collector, gemeinsam genutzten binaries außerhalb des Heaps und optionalen Speicherlimits",
-          "Ports für Dateien, Standard-I/O, Unterprozesse und TCP/UDP-Sockets auf einem ereignisgesteuerten I/O-Thread",
+          "C++23-Laufzeitumgebung mit allen Erlang-Termtypen, einschließlich Ganzzahlen beliebiger Genauigkeit",
+          "Prozesse, selektives receive, Links, Monitore und Timer auf mehreren Schedulern",
+          "Heaps pro Prozess mit kopierendem Garbage Collector",
           "Nebenläufige ETS-Tabellen in C++",
         ],
       },
@@ -146,24 +135,20 @@ export const de = {
         id: "library",
         title: "OTP-Bibliothek",
         items: [
-          "Clause-eigene Versionen der OTP-29-Module mit den Exportlisten, Ergebnissen und Fehlergründen von OTP; noch nicht implementierte Funktionen lösen not_implemented aus",
-          "stdlib: lists, maps, string, unicode, binary, io_lib, json, rand, calendar, die Collection-Module, sofs, graph und digraph",
-          "ets mit Match-Spezifikationen und Tabellendateien, dets mit Dateien, die Byte für Byte denen von OTP entsprechen, sowie ms_transform",
-          "re über PCRE2, zlib und das Modul erlang",
-          "kernel: file, gen_tcp, gen_udp, inet, os und code",
-          "Die ERTS-Module, die kernel und stdlib von OTP aufrufen",
+          "Clause-eigene OTP 29-Module mit den Exporten, Ergebnissen und Fehlergründen von OTP",
+          "stdlib: lists, maps, string, binary, json, rand und die Collection-Module",
+          "ets, dets mit Dateien, wie OTP sie schreibt, re und zlib",
+          "kernel: file, gen_tcp, gen_udp, inet und os",
         ],
       },
       {
         id: "tooling",
         title: "Projekte und Werkzeuge",
         items: [
-          "TOML-Projekte mit benannten Zielen, Quellsuche und Optionen pro Ziel",
-          "SQLite-Build-Caches für Kompilierergebnisse, die Ausgabe von Parse-Transforms und Inferenzergebnisse",
-          "Kommentierte Startprojekte mit clau --new-project",
-          "Ein clau-Befehl vom Erlang-Quellcode zum nativen Programm; auch Escripts lassen sich kompilieren",
-          "Debug-Zeilentabellen mit -g (CodeView oder DWARF 5) und optionales Profiling mit --profile",
-          "Getestet gegen das Referenz-Erlang/OTP, mit Sanitizer-Prüfläufen unter Linux und Benchmarks gegen OTP",
+          "Ein clau-Befehl vom Erlang-Quellcode zum nativen Programm",
+          "TOML-Projekte mit SQLite-Build-Caches",
+          "Debug-Informationen mit -g (CodeView oder DWARF 5) und Profiling mit --profile",
+          "Getestet gegen das Referenz-Erlang/OTP und per Benchmarks mit OTP verglichen",
         ],
       },
     ],
@@ -239,9 +224,9 @@ export const de = {
     },
     kernelInfo: {
       "datagen.list_of_tuples":
-        "Baut eine Liste aus 200.000 kleinen Tupeln, 300-mal",
+        "Baut eine Liste aus 200.000 kleinen Tupeln, 260-mal",
       "datagen.list_to_tuple":
-        "Wandelt Listen mit 1000 Elementen 220.000-mal in Tupel um",
+        "Wandelt Listen mit 1000 Elementen 170.000-mal in Tupel um",
       "datagen.map_put":
         "Fügt 2000 Ganzzahlschlüssel einzeln in eine Map ein, 4900-mal",
       "datagen.binary_append":
@@ -253,7 +238,7 @@ export const de = {
       "dataproc.sort":
         "Sortiert eine Liste mit 20.000 zufälligen Ganzzahlen, 600-mal",
       "dataproc.map_foldl":
-        "Wendet map und dann fold auf 20.000 Ganzzahlen an, 6100-mal",
+        "Wendet map und dann fold auf 20.000 Ganzzahlen an, 4500-mal",
       "dataproc.map_update":
         "Erhöht jeden Wert einer Map mit 500 Schlüsseln 24.000-mal",
       "dataproc.binary_match":
@@ -261,15 +246,15 @@ export const de = {
       "dataproc.int_to_list":
         "Wandelt 20.000 Ganzzahlen in Zeichenketten und zurück, 2000-mal",
       "dataproc.term_to_binary":
-        "Kodiert und dekodiert einen großen verschachtelten Term, 5100-mal",
+        "Kodiert und dekodiert einen großen verschachtelten Term, 4300-mal",
       "dataproc.comprehension":
         "Comprehension, die 20.000 Ganzzahlen filtert und verdoppelt, 15.000-mal",
       "dataproc.small_map":
-        "Aktualisiert eine kleine Zustands-Map 92 Millionen Mal",
+        "Aktualisiert eine kleine Zustands-Map 80 Millionen Mal",
       "file.small_files":
         "Schreibt, liest und löscht 500 kleine Dateien, 11-mal",
       "file.large_write":
-        "Schreibt eine 16-MB-Datei in Blöcken zu 64 KB, 250-mal",
+        "Schreibt eine 16-MB-Datei in Blöcken zu 64 KB, 200-mal",
       "file.large_read": "Liest eine 16-MB-Datei in Blöcken zu 64 KB, 370-mal",
       "file.read_line":
         "Liest eine Textdatei mit 20.000 Zeilen zeilenweise, 52-mal",
@@ -282,7 +267,7 @@ export const de = {
       "gc.long_lived_churn":
         "Hält ein gleitendes Fenster aus 10.000 lebenden Elementen inmitten von Müll, 370-mal",
       "gc.explicit_collect":
-        "Erzwingt Garbage Collection mit 10.000 lebenden Tupeln, 7100-mal",
+        "Erzwingt Garbage Collection mit 10.000 lebenden Tupeln, 5100-mal",
       "msg.ping_pong":
         "Schickt eine Nachricht 2 Millionen Mal zwischen zwei Prozessen hin und her",
       "msg.fan_in": "100 Prozesse senden je 1000 Nachrichten an einen, 25-mal",

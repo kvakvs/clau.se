@@ -40,55 +40,55 @@ export const fr = {
         id: "otp",
         property: "OTP 29",
         title: "Syntaxe Erlang moderne",
-        text: "Préprocesseur et parseur pour Erlang/OTP 29 : macros, records, records natifs, maps, bitstrings, comprehensions, maybe et spécifications de types.",
+        text: "Prétraite et analyse le source Erlang/OTP 29, records natifs compris.",
       },
       {
         id: "llvm",
         property: "LLVM",
         title: "Backend LLVM",
-        text: "Compile en LLVM IR vérifié, en bitcode ou en objets natifs avec O0, O2 ou Os, avec une optimisation à l'édition de liens optionnelle entre modules.",
+        text: "Compile via LLVM en O2, avec optimisation à l'édition de liens entre modules.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Exécutables natifs",
-        text: "Lie les modules Erlang, le sous-ensemble de la bibliothèque qu'ils utilisent et le runtime en un programme autonome avec Clang, en une seule commande. Les escripts se compilent aussi.",
+        text: "Une commande du source Erlang à un programme autonome. Les escripts aussi.",
       },
       {
         id: "processes",
         property: "spawn · send · receive",
         title: "Processus Erlang",
-        text: "Processus légers dotés de leur propre tas et ramasse-miettes sur plusieurs threads ordonnanceurs, avec receive sélectif, liens et moniteurs.",
+        text: "Processus légers avec ramasse-miettes par processus sur plusieurs threads ordonnanceurs.",
       },
       {
         id: "library",
         property: "ets · dets · json",
         title: "Bibliothèque OTP",
-        text: "Les propres modules stdlib, kernel et ERTS de Clause, avec les exports, résultats et erreurs d'OTP 29, de lists et maps aux tables ETS et aux fichiers dets qu'OTP peut ouvrir.",
+        text: "Les propres stdlib et kernel de Clause, avec les exports, résultats et erreurs d'OTP 29.",
       },
       {
         id: "ports",
         property: "gen_tcp · file · os",
         title: "Ports et E/S",
-        text: "Fichiers, entrée et sortie standard, sous-processus et sockets TCP/UDP via des ports, servis par un unique thread d'E/S événementiel.",
+        text: "Fichiers, sous-processus et sockets TCP/UDP sur un unique thread d'E/S événementiel.",
       },
       {
         id: "inference",
         property: "--print-types",
         title: "Inférence de types",
-        text: "Infère des types de fonctions par clause ; en O2, ils suppriment des vérifications à l'exécution et sélectionnent des variantes spécialisées par type, avec une version générique de repli.",
+        text: "En O2, les types inférés suppriment des vérifications à l'exécution et sélectionnent du code spécialisé.",
       },
       {
         id: "transforms",
         property: "parse_transform",
         title: "Parse transforms",
-        text: "Applique les parse transforms comme le fait erlc, en les exécutant pendant la compilation sur un Erlang/OTP 29 installé sur l'hôte ; les exécutables n'ont jamais besoin d'OTP.",
+        text: "Exécute les parse transforms à la compilation ; les exécutables n'ont jamais besoin d'OTP.",
       },
       {
         id: "targets",
         property: "7 cibles",
         title: "Multiplateforme",
-        text: "Exécution native validée sous Windows x64 et Linux x86-64 ; runtime testé sur x86 32 bits et, en émulation, sur ARM. Objets pour sept cibles, Apple Silicon compris.",
+        text: "Fonctionne sous Windows x64 et Linux x86-64 ; objets pour sept cibles.",
       },
     ],
     detailsTitle: "Fonctionnalités en détail",
@@ -97,48 +97,37 @@ export const fr = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Prétraitement : macros, include, include_lib (y compris depuis des répertoires d'applications versionnés), compilation conditionnelle et fonctionnalités du langage",
-          "Parse transforms exécutées sur un Erlang/OTP 29 de l'hôte, ms_transform et qlc d'OTP compris ; --print-abstr affiche les formes du format abstrait",
-          "Syntaxe Erlang/OTP 29 : expressions, motifs, records, bitstrings, types et spécifications, structures de contrôle et comprehensions",
-          "Vérification de la syntaxe, affichage du code expansé et arbre syntaxique indenté",
-          "Diagnostics sur le code source de plusieurs fichiers d'entrée",
+          "Syntaxe Erlang/OTP 29 : records, maps, bitstrings, comprehensions, types et spécifications",
+          "Macros, inclusions et compilation conditionnelle",
+          "Parse transforms sur un Erlang/OTP 29 de l'hôte, ms_transform et qlc compris",
         ],
       },
       {
         id: "language",
         title: "Sémantique Erlang",
         items: [
-          "Filtrage par motif et guards dans les clauses de fonctions, case, if, receive et les correspondances dans le corps",
-          "maybe, et comprehensions de listes, de binaries et de maps",
-          "Records avec mises à jour et record_info/2 ; records natifs, qualifiés et anonymes",
-          "Funs avec captures, funs nommés, appels dynamiques et apply",
-          "Exceptions : error, exit, throw, catch, try ... of ... catch ... after, et traces de pile",
-          "Attributs de module : vérification des callbacks de -behaviour, -import, attributs informatifs et génération de module_info/0,1",
+          "Filtrage par motif et gardes dans les clauses, case, if et receive",
+          "Records, funs, maybe et comprehensions de listes, binaires et maps",
+          "Exceptions avec try, catch et traces de pile",
         ],
       },
       {
         id: "compiler",
         title: "Compilateur",
         items: [
-          "Analyse sémantique : vérification du sous-ensemble, liaison des variables, résolution des appels, types déclarés et inférés",
-          "Inférence de types avec des types de fonctions par clause ; les spécifications qui les contredisent sont signalées",
-          "LLVM O0, O2 et Os ; objets, IR et bitcode par module ; listings d'IR et d'assembleur annotés avec le code Erlang",
-          "Chemins rapides en ligne pour l'allocation, les tests de type, l'accès aux tuples, listes et maps, les binaries, les closures et l'arithmétique sur les flottants",
-          "O2 supprime les vérifications de type prouvées par l'inférence et sélectionne des variantes spécialisées par type",
-          "Optimisation à l'édition de liens entre modules avec --lto ; les exports inaccessibles sont omis des exécutables",
-          "Vrais appels terminaux et récursion profonde sur une pile explicite par processus",
-          "Un message notimpl explicite pour du code Erlang valide qui nécessite une fonctionnalité pas encore implémentée",
+          "Inférence de types avec des types de fonctions par clause",
+          "LLVM O0, O2 et Os, avec optimisation à l'édition de liens entre modules",
+          "O2 supprime les vérifications de types prouvées par l'inférence",
+          "Vrais appels terminaux et récursion profonde",
         ],
       },
       {
         id: "runtime",
         title: "Runtime",
         items: [
-          "Bibliothèque runtime en C++23 sans LLVM, liée à chaque programme",
-          "Tous les types de termes Erlang, y compris les entiers en précision arbitraire",
-          "Processus, messages, receive sélectif, liens, moniteurs, noms enregistrés et minuteries sur plusieurs threads ordonnanceurs",
-          "Tas par processus avec ramasse-miettes par copie, binaries partagés hors tas et limites de mémoire optionnelles",
-          "Ports pour les fichiers, les E/S standard, les sous-processus et les sockets TCP/UDP sur un unique thread d'E/S événementiel",
+          "Runtime C++23 avec tous les types de termes Erlang, entiers en précision arbitraire compris",
+          "Processus, receive sélectif, liens, moniteurs et timers sur plusieurs ordonnanceurs",
+          "Tas par processus avec un ramasse-miettes par copie",
           "Tables ETS concurrentes en C++",
         ],
       },
@@ -146,24 +135,20 @@ export const fr = {
         id: "library",
         title: "Bibliothèque OTP",
         items: [
-          "Les propres versions de Clause des modules OTP 29, avec les listes d'exports, les résultats et les motifs d'erreur d'OTP ; les fonctions pas encore implémentées lèvent not_implemented",
-          "stdlib : lists, maps, string, unicode, binary, io_lib, json, rand, calendar, les modules de collections, sofs, graph et digraph",
-          "ets avec spécifications de filtrage et fichiers de tables, dets avec des fichiers identiques octet par octet à ceux qu'écrit OTP, et ms_transform",
-          "re sur PCRE2, zlib et le module erlang",
-          "kernel : file, gen_tcp, gen_udp, inet, os et code",
-          "Les modules ERTS qu'appellent kernel et stdlib d'OTP",
+          "Les propres modules OTP 29 de Clause, avec les exports, résultats et raisons d'erreur d'OTP",
+          "stdlib : lists, maps, string, binary, json, rand et les modules de collections",
+          "ets, dets avec des fichiers tels qu'OTP les écrit, re et zlib",
+          "kernel : file, gen_tcp, gen_udp, inet et os",
         ],
       },
       {
         id: "tooling",
         title: "Projets et outils",
         items: [
-          "Projets TOML avec cibles nommées, découverte des sources et options par cible",
-          "Caches de compilation SQLite pour les résultats de compilation, la sortie des parse transforms et les résultats d'inférence",
-          "Projets de départ commentés avec clau --new-project",
-          "Une seule commande clau, du code Erlang à l'exécutable natif ; les escripts se compilent aussi",
-          "Tables de lignes de débogage avec -g (CodeView ou DWARF 5) et profilage optionnel avec --profile",
-          "Testé par rapport à l'Erlang/OTP de référence, avec des exécutions sous sanitizers sous Linux et des benchmarks face à OTP",
+          "Une seule commande clau du source Erlang à un exécutable natif",
+          "Projets TOML avec caches de compilation SQLite",
+          "Informations de débogage avec -g (CodeView ou DWARF 5) et profilage avec --profile",
+          "Testé face à l'Erlang/OTP de référence et comparé à OTP par des benchmarks",
         ],
       },
     ],
@@ -239,9 +224,9 @@ export const fr = {
     },
     kernelInfo: {
       "datagen.list_of_tuples":
-        "Construit une liste de 200 000 petits tuples, 300 fois",
+        "Construit une liste de 200 000 petits tuples, 260 fois",
       "datagen.list_to_tuple":
-        "Convertit des listes de 1000 éléments en tuples, 220 000 fois",
+        "Convertit des listes de 1000 éléments en tuples, 170 000 fois",
       "datagen.map_put":
         "Insère 2000 clés entières dans une map, une à une, 4900 fois",
       "datagen.binary_append":
@@ -252,7 +237,7 @@ export const fr = {
         "Construit 20 000 chaînes à partir d'entiers et d'atomes, 1000 fois",
       "dataproc.sort": "Trie une liste de 20 000 entiers aléatoires, 600 fois",
       "dataproc.map_foldl":
-        "Applique map puis fold à 20 000 entiers, 6100 fois",
+        "Applique map puis fold à 20 000 entiers, 4500 fois",
       "dataproc.map_update":
         "Incrémente chaque valeur d'une map de 500 clés, 24 000 fois",
       "dataproc.binary_match":
@@ -260,15 +245,15 @@ export const fr = {
       "dataproc.int_to_list":
         "Convertit 20 000 entiers en chaînes et inversement, 2000 fois",
       "dataproc.term_to_binary":
-        "Encode et décode un grand terme imbriqué, 5100 fois",
+        "Encode et décode un grand terme imbriqué, 4300 fois",
       "dataproc.comprehension":
         "Comprehension qui filtre et double 20 000 entiers, 15 000 fois",
       "dataproc.small_map":
-        "Met à jour 92 millions de fois une petite map d'état",
+        "Met à jour 80 millions de fois une petite map d'état",
       "file.small_files":
         "Écrit, relit et supprime 500 petits fichiers, 11 fois",
       "file.large_write":
-        "Écrit un fichier de 16 Mo par blocs de 64 Ko, 250 fois",
+        "Écrit un fichier de 16 Mo par blocs de 64 Ko, 200 fois",
       "file.large_read": "Lit un fichier de 16 Mo par blocs de 64 Ko, 370 fois",
       "file.read_line":
         "Lit ligne par ligne un fichier texte de 20 000 lignes, 52 fois",
@@ -281,7 +266,7 @@ export const fr = {
       "gc.long_lived_churn":
         "Garde une fenêtre glissante de 10 000 éléments vivants parmi les déchets, 370 fois",
       "gc.explicit_collect":
-        "Force le ramasse-miettes avec 10 000 tuples vivants, 7100 fois",
+        "Force le ramasse-miettes avec 10 000 tuples vivants, 5100 fois",
       "msg.ping_pong":
         "Renvoie un message entre deux processus 2 millions de fois",
       "msg.fan_in":

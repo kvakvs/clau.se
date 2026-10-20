@@ -40,55 +40,55 @@ export const sv = {
         id: "otp",
         property: "OTP 29",
         title: "Modern Erlang-syntax",
-        text: "Preprocessor och parser för Erlang/OTP 29: makron, records, native records, maps, bitsträngar, comprehensions, maybe och typspecifikationer.",
+        text: "Förbehandlar och parsar Erlang/OTP 29-källkod, inklusive native records.",
       },
       {
         id: "llvm",
         property: "LLVM",
         title: "LLVM-backend",
-        text: "Kompilerar till verifierad LLVM IR, bitkod eller objektfiler med O0, O2 eller Os, med valfri länktidsoptimering över moduler.",
+        text: "Kompilerar via LLVM med O2 och länktidsoptimering över moduler.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Körbara program",
-        text: "Länkar Erlang-moduler, den delmängd av biblioteket som de använder och runtime till ett fristående program med Clang, med ett enda kommando. Även escripts kan kompileras.",
+        text: "Ett kommando från Erlang-källkod till ett fristående program. Även escripts.",
       },
       {
         id: "processes",
         property: "spawn · send · receive",
         title: "Erlang-processer",
-        text: "Lättviktsprocesser med egna heapar och skräpsamling på flera schemaläggartrådar, med selektiv receive, länkar och monitorer.",
+        text: "Lättviktsprocesser med skräpsamling per process på flera schemaläggartrådar.",
       },
       {
         id: "library",
         property: "ets · dets · json",
         title: "OTP-bibliotek",
-        text: "Clauses egna stdlib-, kernel- och ERTS-moduler med samma exporter, resultat och fel som OTP 29, från lists och maps till ETS-tabeller och dets-filer som OTP kan öppna.",
+        text: "Clauses egna stdlib och kernel med samma exporter, resultat och fel som OTP 29.",
       },
       {
         id: "ports",
         property: "gen_tcp · file · os",
         title: "Portar och I/O",
-        text: "Filer, standard-in- och utmatning, underprocesser och TCP/UDP-sockets via portar, hanterade av en händelsestyrd I/O-tråd.",
+        text: "Filer, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd.",
       },
       {
         id: "inference",
         property: "--print-types",
         title: "Typhärledning",
-        text: "Härleder funktionstyper per klausul; med O2 tar de bort kontroller vid körning och väljer typspecialiserade varianter med en generisk variant som reserv.",
+        text: "Med O2 tar härledda typer bort kontroller vid körning och väljer specialiserad kod.",
       },
       {
         id: "transforms",
         property: "parse_transform",
         title: "Parse transforms",
-        text: "Tillämpar parse transforms som erlc gör och kör dem under kompileringen på en Erlang/OTP 29 installerad på värddatorn; de körbara programmen behöver aldrig OTP.",
+        text: "Kör parse transforms under kompileringen; de körbara programmen behöver aldrig OTP.",
       },
       {
         id: "targets",
         property: "7 plattformar",
         title: "Plattformsoberoende",
-        text: "Körning validerad på Windows x64 och Linux x86-64; runtime testad på 32-bitars x86 och, under emulering, på ARM. Objektfiler för sju plattformar, inklusive Apple Silicon.",
+        text: "Körs på Windows x64 och Linux x86-64; objektfiler för sju plattformar.",
       },
     ],
     detailsTitle: "Funktioner i detalj",
@@ -97,73 +97,58 @@ export const sv = {
         id: "frontend",
         title: "Frontend",
         items: [
-          "Förbehandling: makron, include, include_lib (även från versionerade applikationskataloger), villkorlig kompilering och språkfunktioner",
-          "Parse transforms körs på en Erlang/OTP 29 på värddatorn, inklusive OTP:s ms_transform och qlc; --print-abstr skriver ut formerna i det abstrakta formatet",
-          "Erlang/OTP 29-syntax: uttryck, mönster, records, bitsträngar, typer och specifikationer, kontrollflöde och comprehensions",
-          "Syntaxkontroll, utskrift av expanderad källkod och ett indenterat syntaxträd",
-          "Diagnostik i källkoden över flera indatafiler",
+          "Erlang/OTP 29-syntax: records, maps, bitsträngar, comprehensions, typer och specifikationer",
+          "Makron, includes och villkorlig kompilering",
+          "Parse transforms på en Erlang/OTP 29 på värddatorn, inklusive ms_transform och qlc",
         ],
       },
       {
         id: "language",
         title: "Erlang-semantik",
         items: [
-          "Mönstermatchning och guards i funktionsklausuler, case, if, receive och matchningar i funktionskroppar",
-          "maybe samt comprehensions för listor, binaries och maps",
-          "Records med uppdateringar och record_info/2; native records samt kvalificerade och anonyma records",
-          "Funs med infångade variabler, namngivna funs, dynamiska anrop och apply",
-          "Undantag: error, exit, throw, catch, try ... of ... catch ... after samt stackspår",
-          "Modulattribut: kontroll av callbacks för -behaviour, -import, informativa attribut och genererad module_info/0,1",
+          "Mönstermatchning och guards i klausuler, case, if och receive",
+          "Records, funs, maybe och list-, binär- och map-comprehensions",
+          "Undantag med try, catch och stackspår",
         ],
       },
       {
         id: "compiler",
         title: "Kompilator",
         items: [
-          "Semantisk analys: kontroll av delmängden, variabelbindningar, anropsupplösning, deklarerade och härledda typer",
-          "Typhärledning med funktionstyper per klausul; specifikationer som motsäger dem rapporteras",
-          "LLVM O0, O2 och Os; objektfiler, IR och bitkod per modul; IR- och assemblerlistningar med Erlang-källkod",
-          "Snabba kodvägar direkt i koden för allokering, typtester, åtkomst till tupler, listor och maps, binaries, closures och flyttalsaritmetik",
-          "O2 tar bort typkontroller som härledningen bevisat och väljer typspecialiserade varianter",
-          "Länktidsoptimering över moduler med --lto; onåbara exporter utelämnas från körbara program",
-          "Riktiga svansanrop och djup rekursion på en explicit stack per process",
-          "Ett tydligt notimpl-meddelande för giltig Erlang som kräver en funktion som ännu inte finns",
+          "Typhärledning med funktionstyper per klausul",
+          "LLVM O0, O2 och Os, med länktidsoptimering över moduler",
+          "O2 tar bort typkontroller som härledningen bevisar",
+          "Riktiga svansanrop och djup rekursion",
         ],
       },
       {
         id: "runtime",
         title: "Runtime",
         items: [
-          "Runtime-bibliotek i C++23 utan LLVM, länkat i varje program",
-          "Alla Erlangs termtyper, inklusive heltal med godtycklig precision",
-          "Processer, meddelanden, selektiv receive, länkar, monitorer, registrerade namn och timrar på flera schemaläggartrådar",
-          "Heap per process med kopierande skräpsamlare, delade binaries utanför heapen och valfria minnesgränser",
-          "Portar för filer, standard-I/O, underprocesser och TCP/UDP-sockets på en händelsestyrd I/O-tråd",
-          "ETS-tabeller med samtidig åtkomst i C++",
+          "C++23-runtime med alla Erlang-termtyper, inklusive heltal med godtycklig precision",
+          "Processer, selektiv receive, länkar, monitorer och timers på flera schemaläggare",
+          "Heapar per process med kopierande skräpsamlare",
+          "Samtidiga ETS-tabeller i C++",
         ],
       },
       {
         id: "library",
         title: "OTP-bibliotek",
         items: [
-          "Clauses egna versioner av OTP 29-moduler med OTP:s exportlistor, resultat och felorsaker; funktioner som ännu inte är implementerade ger not_implemented",
-          "stdlib: lists, maps, string, unicode, binary, io_lib, json, rand, calendar, samlingsmodulerna, sofs, graph och digraph",
-          "ets med matchningsspecifikationer och tabellfiler, dets med filer som byte för byte motsvarar dem OTP skriver, samt ms_transform",
-          "re över PCRE2, zlib och modulen erlang",
-          "kernel: file, gen_tcp, gen_udp, inet, os och code",
-          "De ERTS-moduler som OTP:s kernel och stdlib anropar",
+          "Clauses egna OTP 29-moduler med OTP:s exporter, resultat och felorsaker",
+          "stdlib: lists, maps, string, binary, json, rand och samlingsmodulerna",
+          "ets, dets med filer som OTP skriver dem, re och zlib",
+          "kernel: file, gen_tcp, gen_udp, inet och os",
         ],
       },
       {
         id: "tooling",
         title: "Projekt och verktyg",
         items: [
-          "TOML-projekt med namngivna mål, hittande av källfiler och inställningar per mål",
-          "SQLite-byggcacher för kompileringsresultat, utdata från parse transforms och härledningsresultat",
-          "Kommenterade startprojekt med clau --new-project",
-          "Ett clau-kommando från Erlang-källkod till körbart program; även escripts kan kompileras",
-          "Felsökningsradtabeller med -g (CodeView eller DWARF 5) och valfri profilering med --profile",
-          "Testad mot referensversionen av Erlang/OTP, med sanitizer-körningar på Linux och prestandatester mot OTP",
+          "Ett clau-kommando från Erlang-källkod till ett körbart program",
+          "TOML-projekt med SQLite-byggcache",
+          "Felsökningsinformation med -g (CodeView eller DWARF 5) och profilering med --profile",
+          "Testad mot referensimplementationen Erlang/OTP och jämförd med OTP i benchmarks",
         ],
       },
     ],
@@ -240,9 +225,9 @@ export const sv = {
     },
     kernelInfo: {
       "datagen.list_of_tuples":
-        "Bygger en lista med 200 000 små tupler, 300 gånger",
+        "Bygger en lista med 200 000 små tupler, 260 gånger",
       "datagen.list_to_tuple":
-        "Gör om listor med 1000 element till tupler, 220 000 gånger",
+        "Gör om listor med 1000 element till tupler, 170 000 gånger",
       "datagen.map_put":
         "Lägger in 2000 heltalsnycklar i en map, en i taget, 4900 gånger",
       "datagen.binary_append":
@@ -254,7 +239,7 @@ export const sv = {
       "dataproc.sort":
         "Sorterar en lista med 20 000 slumpmässiga heltal, 600 gånger",
       "dataproc.map_foldl":
-        "Kör map och sedan fold över 20 000 heltal, 6100 gånger",
+        "Kör map och sedan fold över 20 000 heltal, 4500 gånger",
       "dataproc.map_update":
         "Ökar varje värde i en map med 500 nycklar, 24 000 gånger",
       "dataproc.binary_match":
@@ -262,15 +247,15 @@ export const sv = {
       "dataproc.int_to_list":
         "Gör om 20 000 heltal till strängar och tillbaka, 2000 gånger",
       "dataproc.term_to_binary":
-        "Kodar och avkodar en stor nästlad term, 5100 gånger",
+        "Kodar och avkodar en stor nästlad term, 4300 gånger",
       "dataproc.comprehension":
         "Comprehension som filtrerar och dubblar 20 000 heltal, 15 000 gånger",
       "dataproc.small_map":
-        "Uppdaterar en liten tillståndsmap 92 miljoner gånger",
+        "Uppdaterar en liten tillståndsmap 80 miljoner gånger",
       "file.small_files":
         "Skriver, läser tillbaka och raderar 500 små filer, 11 gånger",
       "file.large_write":
-        "Skriver en fil på 16 MB i block om 64 KB, 250 gånger",
+        "Skriver en fil på 16 MB i block om 64 KB, 200 gånger",
       "file.large_read": "Läser en fil på 16 MB i block om 64 KB, 370 gånger",
       "file.read_line":
         "Läser en textfil med 20 000 rader rad för rad, 52 gånger",
@@ -282,7 +267,7 @@ export const sv = {
       "gc.long_lived_churn":
         "Behåller ett glidande fönster med 10 000 levande element bland skräp, 370 gånger",
       "gc.explicit_collect":
-        "Tvingar fram skräpsamling med 10 000 levande tupler, 7100 gånger",
+        "Tvingar fram skräpsamling med 10 000 levande tupler, 5100 gånger",
       "msg.ping_pong":
         "Studsar ett meddelande mellan två processer 2 miljoner gånger",
       "msg.fan_in":
