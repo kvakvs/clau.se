@@ -43,16 +43,16 @@ export const fr = {
         text: "Prétraite et analyse le source Erlang/OTP 29, records natifs compris.",
       },
       {
-        id: "llvm",
-        property: "LLVM",
-        title: "Backend LLVM",
-        text: "Compile via LLVM en O2, avec optimisation à l'édition de liens entre modules.",
+        id: "benchmarks",
+        property: "{ratio} {side}",
+        title: "Vitesse face à OTP",
+        text: "Moyenne géométrique de {count} noyaux de test, Clause -O2 face au JIT de BEAM.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Exécutables natifs",
-        text: "Une commande du source Erlang à un programme autonome. Les escripts aussi.",
+        text: "Une commande du source Erlang à un programme autonome, compilé via LLVM avec optimisation à l'édition de liens. Les escripts aussi.",
       },
       {
         id: "processes",
@@ -303,6 +303,8 @@ export const fr = {
     historyTitle: "Progression",
     historyNote:
       "Moyenne géométrique du temps de Clause divisé par celui d'OTP pour chaque jour d'exécution enregistré.",
+    pinnedSince:
+      "Les exécutions antérieures au {date} n'étaient pas épinglées à un ensemble de processeurs ; une partie de l'évolution de ce jour-là vient donc de l'épinglage.",
     date: "Date",
     commit: "Commit",
     sizesTitle: "Taille des exécutables",
@@ -315,6 +317,14 @@ export const fr = {
     setupTitle: "Configuration",
     machine: "Machine",
     cpus: "{count} processeurs logiques",
+    cpuSet: "Ensemble de processeurs",
+    cpuSetPerformance:
+      "Cœurs de performance {list}, {count} sur {total} processeurs logiques",
+    cpuSetList: "Processeurs {list}, {count} sur {total} processeurs logiques",
+    pinningPerformance:
+      "OTP et Clause s'exécutent sur les mêmes processeurs : chaque programme de benchmark est épinglé aux cœurs de performance du processeur, si bien que sur un processeur hybride aucun noyau (kernel) ne tombe sur un cœur d'efficacité plus lent. Les deux gardent un ordonnanceur actif par processeur de cet ensemble, sans le lier à un processeur précis de l'ensemble.",
+    pinningList:
+      "OTP et Clause s'exécutent sur les mêmes processeurs : chaque programme de benchmark est épinglé à l'ensemble de processeurs ci-dessus. Les deux gardent un ordonnanceur actif par processeur de cet ensemble, sans le lier à un processeur précis de l'ensemble.",
     otpVersion: "Erlang/OTP",
     clauseCommit: "Commit Clause",
     runAt: "Exécution",

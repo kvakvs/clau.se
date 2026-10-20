@@ -43,16 +43,16 @@ export const es = {
         text: "Preprocesa y analiza código fuente Erlang/OTP 29, records nativos incluidos.",
       },
       {
-        id: "llvm",
-        property: "LLVM",
-        title: "Backend LLVM",
-        text: "Compila mediante LLVM con O2, con optimización en tiempo de enlace entre módulos.",
+        id: "benchmarks",
+        property: "{ratio} {side}",
+        title: "Velocidad frente a OTP",
+        text: "Media geométrica de {count} kernels de prueba, Clause -O2 frente al JIT de BEAM.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Ejecutables nativos",
-        text: "Un comando del código fuente Erlang a un programa autónomo. Escripts también.",
+        text: "Un comando del código fuente Erlang a un programa autónomo, compilado mediante LLVM con optimización en tiempo de enlace. Escripts también.",
       },
       {
         id: "processes",
@@ -302,6 +302,8 @@ export const es = {
     historyTitle: "Progreso",
     historyNote:
       "Media geométrica del tiempo de Clause dividido por el de OTP en cada día con ejecuciones registradas.",
+    pinnedSince:
+      "Las ejecuciones anteriores al {date} no estaban fijadas a un conjunto de CPU, por lo que parte del cambio de ese día se debe a la fijación.",
     date: "Fecha",
     commit: "Commit",
     sizesTitle: "Tamaño de los ejecutables",
@@ -314,6 +316,14 @@ export const es = {
     setupTitle: "Configuración",
     machine: "Máquina",
     cpus: "{count} CPU lógicas",
+    cpuSet: "Conjunto de CPU",
+    cpuSetPerformance:
+      "Núcleos de rendimiento {list}, {count} de {total} CPU lógicas",
+    cpuSetList: "CPU {list}, {count} de {total} CPU lógicas",
+    pinningPerformance:
+      "OTP y Clause se ejecutan en las mismas CPU: cada programa de benchmark está fijado a los núcleos de rendimiento del procesador, de modo que en una CPU híbrida ningún kernel acaba en un núcleo de eficiencia más lento. Ambos mantienen un planificador activo por cada CPU del conjunto, sin vincularlo a ninguna CPU concreta dentro de él.",
+    pinningList:
+      "OTP y Clause se ejecutan en las mismas CPU: cada programa de benchmark está fijado al conjunto de CPU indicado arriba. Ambos mantienen un planificador activo por cada CPU del conjunto, sin vincularlo a ninguna CPU concreta dentro de él.",
     otpVersion: "Erlang/OTP",
     clauseCommit: "Commit de Clause",
     runAt: "Ejecución",

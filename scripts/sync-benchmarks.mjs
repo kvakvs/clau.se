@@ -7,8 +7,8 @@
 // benchmarks/history/reports/<host>/<day>-<hash>.txt; the newest one (by day,
 // over every host) is used. benchmarks/history/<host>.json adds the Clause/OTP
 // geometric mean of each earlier run day of the same host, and the executable
-// sizes of the latest run days that recorded them. The host name is
-// not published.
+// sizes of the latest run days that recorded them, and the first run day
+// pinned to a CPU set. The host name is not published.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -67,6 +67,7 @@ const data = {
   otp: header("OTP:").split(";")[0],
   commit: header("Clause HEAD:").split(" ")[0],
   runs: Number.parseInt(header("Runs per program and system:"), 10) || null,
+  cpus: cpuSet(header("CPUs:"), latest.host),
   kernels,
   programs,
   history: history(latest.host),
@@ -108,6 +109,23 @@ function table(title) {
     rows.push({ name, values });
   }
   return rows;
+}
+
+// The CPU set every program of the run was pinned to, from a header such as
+// "performance: 0-15 (mask 0xffff), 16 of 32 logical CPUs"; null when the run
+// was not pinned. `since` is the first run day pinned to a CPU set.
+function cpuSet(text, host) {
+  const match = /^(\S+): (\S+) \(mask 0x[0-9a-f]+\), (\d+) of \d+/.exec(text);
+  if (!match) return null;
+  const pinned = readHistory(host).find(
+    (r) => r.cpus && !r.cpus.startsWith("unpinned"),
+  );
+  return {
+    set: match[1],
+    list: match[2],
+    count: Number(match[3]),
+    since: pinned ? String(pinned.run_date).slice(0, 10) : null,
+  };
 }
 
 function readHistory(host) {

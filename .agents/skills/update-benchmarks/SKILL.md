@@ -1,14 +1,17 @@
 ---
 name: update-benchmarks
-description: Refresh the clau.se benchmarks page from the newest benchmark report of ../clau (content/benchmarks.json via pnpm sync-benchmarks), check that the page text still matches the numbers, and translate changed strings into all site languages. Use when the user runs /update-benchmarks or asks to update the benchmarks page.
+description: Refresh the clau.se benchmarks page and the front page speed card from the newest benchmark report of ../clau (content/benchmarks.json via pnpm sync-benchmarks), check that the page text still matches the numbers, and translate changed strings into all site languages. Use when the user runs /update-benchmarks or asks to update the benchmarks page.
 disable-model-invocation: true
 ---
 
 # Update the benchmarks page from ../clau
 
 The page is `app/[lang]/benchmarks/`, with strings in `benchmarks.*` of
-`messages/<locale>.ts` and data in `content/benchmarks.json`. The data is
-written by `pnpm sync-benchmarks` from the newest report in
+`messages/<locale>.ts` and data in `content/benchmarks.json`. The front
+page (`app/[lang]/page.tsx`) shows the same average in its `benchmarks`
+card (`home.cards`, id `benchmarks`); both read the kernel geometric mean
+from `lib/benchmarks.ts`. The data is written by `pnpm sync-benchmarks`
+from the newest report in
 `../clau/benchmarks/history/reports/<host>/<day>-<hash>.txt` (newest by file
 name over every host) plus the per-day history in
 `../clau/benchmarks/history/<host>.json`. The reports are gitignored, so they
@@ -28,10 +31,15 @@ Keep these when editing the page or its strings:
   latest report's Clause -O2 times differ from OTP's.
 - The geometric mean card states whether Clause is on average slower or faster
   than the BEAM JIT (`slowerOnAverage` / `fasterOnAverage`).
+- The front page `benchmarks` card, second in `home.cards`, shows the same
+  geometric mean as "1.23× faster" or "1.23× slower": its `property` is
+  `{ratio} {side}`, filled with the ratio and `benchmarks.barFaster` /
+  `barSlower`, its `text` takes `{count}` kernels, and the card links to
+  the benchmarks page. Its title and text stay neutral, true on either side.
 - Unstable runs (spread above `NOISY_SPREAD` percent of the median) are marked
   with the 🔺 emoji, not an asterisk.
 - Explain in the headnotes, the 'baseline' is the previous Clause commit (newest
-  commit at least one day older than HEAD, or --baseline REV), built at -O2 to 
+  commit at least one day older than HEAD, or --baseline REV), built at -O2 to
   catch regressions.
 - Both the kernel table and the "whole programs" table show the Clause/OTP ratio
   with the `Bar` component on a shared log scale (`Axis`):
@@ -44,6 +52,11 @@ Keep these when editing the page or its strings:
   group titles in `benchmarks.groups`. A program without a title there shows
   its raw name.
 - The host name is never published (`sync-benchmarks` leaves it out).
+- Runs are pinned to a CPU set (the report's `CPUs:` line, `cpus` in the
+  JSON): Setup shows the set and explains that OTP and Clause run on the
+  same CPUs (`pinningPerformance` / `pinningList`), and the history note
+  says runs before `cpus.since` were not pinned (`pinnedSince`). Check these
+  still match `../clau/benchmarks/run.py` when its `--cpus` handling changes.
 - The size comparisons for `clau.exe` in different build modes, and for `bench_*` executables
   should have their own table showing the historical change of the sizes (hopefully towards
   being smaller with every new benchmark). A vertical bar SVG chart will suit here, adding
@@ -62,6 +75,7 @@ Keep these when editing the page or its strings:
    Compare the timestamp with the current time. Stop if there is no report,
    if it is older than 3 hours, or if it equals `runAt` in the committed
    `content/benchmarks.json` (nothing new).
+
 2. **Sync.** Run `pnpm sync-benchmarks`, then `git diff --stat
 content/benchmarks.json`. Note the Clause commit, run count, new or removed
    kernels and programs, and the old and new geometric mean of the kernel
@@ -78,10 +92,15 @@ content/benchmarks.json`. Note the Clause commit, run count, new or removed
      report (run count, units, what is measured);
    - `home.status` mentions the benchmarks page: check it still reads right
      if the overall picture changed (for example Clause now faster on
-     average).
+     average);
+   - the front page `benchmarks` card in `home.cards`: the numbers fill in
+     at build, but check its `title` and `text` still describe what is
+     measured (kernel geometric mean, Clause -O2 against the BEAM JIT) and do
+     not claim a side.
 
    Keep unchanged strings byte-identical. If no string needs a change, skip
    step 4.
+
 4. **Translate.** For each locale `sv`, `es`, `uk`, `fr`, `de`, `pt`, update
    `messages/<locale>.ts` with the changed or new strings only, keeping the
    same keys and order as `en.ts`. Follow `.agents/translation.md`; program
@@ -99,6 +118,7 @@ content/benchmarks.json`. Note the Clause commit, run count, new or removed
    Do not open a browser.
 
 6. **Report.** Report timestamp and Clause commit, geometric mean before and
-   after, kernels that changed side, new or removed kernels and programs,
+   after (and what the front page card now reads, for example "1.07×
+   slower"), kernels that changed side, new or removed kernels and programs,
    strings changed and locales updated, gate results. Do not commit or
    deploy unless the user asks; suggest `/deploy` when done.

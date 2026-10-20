@@ -43,16 +43,16 @@ export const de = {
         text: "Präprozessor und Parser für Erlang/OTP 29-Quellcode, native Records eingeschlossen.",
       },
       {
-        id: "llvm",
-        property: "LLVM",
-        title: "LLVM-Backend",
-        text: "Kompiliert über LLVM mit O2, mit modulübergreifender Link-Time-Optimierung.",
+        id: "benchmarks",
+        property: "{ratio} {side}",
+        title: "Geschwindigkeit gegenüber OTP",
+        text: "Geometrisches Mittel von {count} Benchmark-Kernels, Clause -O2 gegenüber dem BEAM-JIT.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Native Programme",
-        text: "Ein Befehl vom Erlang-Quellcode zum eigenständigen Programm. Auch Escripts.",
+        text: "Ein Befehl vom Erlang-Quellcode zum eigenständigen Programm, über LLVM mit Link-Time-Optimierung kompiliert. Auch Escripts.",
       },
       {
         id: "processes",
@@ -303,6 +303,8 @@ export const de = {
     historyTitle: "Fortschritt",
     historyNote:
       "Geometrisches Mittel der Zeit von Clause geteilt durch die von OTP an jedem erfassten Lauftag.",
+    pinnedSince:
+      "Läufe vor dem {date} waren nicht an eine CPU-Menge gebunden; ein Teil der Änderung an diesem Tag geht daher auf die Bindung zurück.",
     date: "Datum",
     commit: "Commit",
     sizesTitle: "Größe der ausführbaren Dateien",
@@ -315,6 +317,14 @@ export const de = {
     setupTitle: "Testumgebung",
     machine: "Maschine",
     cpus: "{count} logische CPUs",
+    cpuSet: "CPU-Menge",
+    cpuSetPerformance:
+      "Performance-Kerne {list}, {count} von {total} logischen CPUs",
+    cpuSetList: "CPUs {list}, {count} von {total} logischen CPUs",
+    pinningPerformance:
+      "OTP und Clause laufen auf denselben CPUs: Jedes Benchmark-Programm ist an die Performance-Kerne des Prozessors gebunden, sodass auf einer Hybrid-CPU kein Kernel auf einem langsameren Effizienz-Kern landet. Beide halten einen Scheduler pro CPU dieser Menge online, ohne ihn innerhalb der Menge an eine bestimmte CPU zu binden.",
+    pinningList:
+      "OTP und Clause laufen auf denselben CPUs: Jedes Benchmark-Programm ist an die oben genannte CPU-Menge gebunden. Beide halten einen Scheduler pro CPU dieser Menge online, ohne ihn innerhalb der Menge an eine bestimmte CPU zu binden.",
     otpVersion: "Erlang/OTP",
     clauseCommit: "Clause-Commit",
     runAt: "Lauf",

@@ -41,16 +41,16 @@ export const en = {
         text: "Preprocesses and parses Erlang/OTP 29 source, native records included.",
       },
       {
-        id: "llvm",
-        property: "LLVM",
-        title: "LLVM backend",
-        text: "Compiles through LLVM at O2, with link-time optimization across modules.",
+        id: "benchmarks",
+        property: "{ratio} {side}",
+        title: "Speed against OTP",
+        text: "Geometric mean of {count} benchmark kernels, Clause -O2 against the BEAM JIT.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Native executables",
-        text: "One command from Erlang source to a standalone program. Escripts too.",
+        text: "One command from Erlang source to a standalone program, compiled through LLVM with link-time optimization. Escripts too.",
       },
       {
         id: "processes",
@@ -289,6 +289,8 @@ export const en = {
     historyTitle: "Progress",
     historyNote:
       "Geometric mean of Clause's time divided by OTP's on each recorded run day.",
+    pinnedSince:
+      "Runs before {date} were not pinned to a CPU set, so part of the change on that day comes from the pinning.",
     date: "Date",
     commit: "Commit",
     sizesTitle: "Executable sizes",
@@ -301,6 +303,14 @@ export const en = {
     setupTitle: "Setup",
     machine: "Machine",
     cpus: "{count} logical CPUs",
+    cpuSet: "CPU set",
+    cpuSetPerformance:
+      "Performance cores {list}, {count} of {total} logical CPUs",
+    cpuSetList: "CPUs {list}, {count} of {total} logical CPUs",
+    pinningPerformance:
+      "OTP and Clause run on the same CPUs: every benchmark program is pinned to the performance cores of the processor, so on a hybrid CPU no kernel lands on a slower efficiency core. Both keep one scheduler online per CPU of that set, unbound within it.",
+    pinningList:
+      "OTP and Clause run on the same CPUs: every benchmark program is pinned to the CPU set above. Both keep one scheduler online per CPU of that set, unbound within it.",
     otpVersion: "Erlang/OTP",
     clauseCommit: "Clause commit",
     runAt: "Run",

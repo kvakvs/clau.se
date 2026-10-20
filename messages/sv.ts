@@ -43,16 +43,16 @@ export const sv = {
         text: "Förbehandlar och parsar Erlang/OTP 29-källkod, inklusive native records.",
       },
       {
-        id: "llvm",
-        property: "LLVM",
-        title: "LLVM-backend",
-        text: "Kompilerar via LLVM med O2 och länktidsoptimering över moduler.",
+        id: "benchmarks",
+        property: "{ratio} {side}",
+        title: "Hastighet mot OTP",
+        text: "Geometriskt medelvärde av {count} testkärnor, Clause -O2 mot BEAM JIT.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Körbara program",
-        text: "Ett kommando från Erlang-källkod till ett fristående program. Även escripts.",
+        text: "Ett kommando från Erlang-källkod till ett fristående program, kompilerat via LLVM med länktidsoptimering. Även escripts.",
       },
       {
         id: "processes",
@@ -301,6 +301,8 @@ export const sv = {
     historyTitle: "Utveckling",
     historyNote:
       "Geometriskt medelvärde av Clauses tid delad med OTP:s för varje dag med registrerade körningar.",
+    pinnedSince:
+      "Körningar före {date} var inte låsta till en processoruppsättning, så en del av förändringen den dagen kommer från låsningen.",
     date: "Datum",
     commit: "Commit",
     sizesTitle: "Storlek på körbara filer",
@@ -313,6 +315,14 @@ export const sv = {
     setupTitle: "Testmiljö",
     machine: "Maskin",
     cpus: "{count} logiska processorer",
+    cpuSet: "Processoruppsättning",
+    cpuSetPerformance:
+      "Prestandakärnor {list}, {count} av {total} logiska processorer",
+    cpuSetList: "Processorer {list}, {count} av {total} logiska processorer",
+    pinningPerformance:
+      "OTP och Clause körs på samma processorer: varje benchmarkprogram är låst till processorns prestandakärnor, så på en hybridprocessor hamnar ingen kärna (kernel) på en långsammare effektivitetskärna. Båda håller en schemaläggare aktiv per processor i uppsättningen, obunden inom den.",
+    pinningList:
+      "OTP och Clause körs på samma processorer: varje benchmarkprogram är låst till processoruppsättningen ovan. Båda håller en schemaläggare aktiv per processor i uppsättningen, obunden inom den.",
     otpVersion: "Erlang/OTP",
     clauseCommit: "Clause-commit",
     runAt: "Körning",

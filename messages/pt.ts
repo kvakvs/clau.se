@@ -43,16 +43,16 @@ export const pt = {
         text: "Pré-processa e analisa código-fonte Erlang/OTP 29, incluindo records nativos.",
       },
       {
-        id: "llvm",
-        property: "LLVM",
-        title: "Backend LLVM",
-        text: "Compila através do LLVM em O2, com otimização em tempo de ligação entre módulos.",
+        id: "benchmarks",
+        property: "{ratio} {side}",
+        title: "Velocidade face ao OTP",
+        text: "Média geométrica de {count} kernels de teste, Clause -O2 face ao JIT da BEAM.",
       },
       {
         id: "executables",
         property: "clau -o app",
         title: "Executáveis nativos",
-        text: "Um comando do código-fonte Erlang a um programa autónomo. Escripts também.",
+        text: "Um comando do código-fonte Erlang a um programa autónomo, compilado através do LLVM com otimização em tempo de ligação. Escripts também.",
       },
       {
         id: "processes",
@@ -302,6 +302,8 @@ export const pt = {
     historyTitle: "Progresso",
     historyNote:
       "Média geométrica do tempo do Clause dividido pelo do OTP em cada dia com execuções registadas.",
+    pinnedSince:
+      "As execuções anteriores a {date} não estavam fixadas a um conjunto de CPUs, pelo que parte da alteração desse dia se deve à fixação.",
     date: "Data",
     commit: "Commit",
     sizesTitle: "Tamanho dos executáveis",
@@ -314,6 +316,14 @@ export const pt = {
     setupTitle: "Configuração",
     machine: "Máquina",
     cpus: "{count} CPUs lógicos",
+    cpuSet: "Conjunto de CPUs",
+    cpuSetPerformance:
+      "Núcleos de desempenho {list}, {count} de {total} CPUs lógicos",
+    cpuSetList: "CPUs {list}, {count} de {total} CPUs lógicos",
+    pinningPerformance:
+      "O OTP e o Clause correm nos mesmos CPUs: cada programa de benchmark está fixado aos núcleos de desempenho do processador, pelo que num CPU híbrido nenhum kernel acaba num núcleo de eficiência mais lento. Ambos mantêm um escalonador ativo por cada CPU do conjunto, sem o vincular a um CPU concreto dentro dele.",
+    pinningList:
+      "O OTP e o Clause correm nos mesmos CPUs: cada programa de benchmark está fixado ao conjunto de CPUs indicado acima. Ambos mantêm um escalonador ativo por cada CPU do conjunto, sem o vincular a um CPU concreto dentro dele.",
     otpVersion: "Erlang/OTP",
     clauseCommit: "Commit do Clause",
     runAt: "Execução",

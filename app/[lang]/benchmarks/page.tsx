@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { formatTimes, kernelGeomean, kernels } from "@/lib/benchmarks";
 import { cn } from "@/lib/cn";
 import { isLocale } from "@/lib/i18n";
 import { getMessages } from "@/messages";
@@ -7,14 +8,13 @@ import data from "@/content/benchmarks.json";
 
 type Props = { params: Promise<{ lang: string }> };
 
-type Kernel = (typeof data.kernels)[number];
 type Group = keyof ReturnType<typeof getMessages>["benchmarks"]["groups"];
 
-// Bars span Clause/OTP ratios from 1/4 to 16 on a log2 scale; 1 is the axis.
+// Bars span Clause/OTP ratios from 1/4 to 2 on a log2 scale; 1 is the axis.
 // The left side leaves room for the "slower" label of red bars.
 const MIN_LOG = -2;
-const MAX_LOG = 4;
-const AXIS_TICKS = [0.25, 0.5, 1, 2, 4, 8, 16];
+const MAX_LOG = 1;
+const AXIS_TICKS = [0.25, 0.5, 1, 2];
 // A spread above this percentage of the median marks a noisy kernel.
 const NOISY_SPREAD = 50;
 // Build modes of the executable size table, as the compiler flags read.
@@ -42,20 +42,18 @@ export default async function BenchmarksPage({ params }: Props) {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     });
-  const times = (ratio: number) => `${number(ratio, ratio < 10 ? 2 : 1)}×`;
+  const times = (ratio: number) => formatTimes(lang, ratio);
   const megabytes = (bytes: number) =>
     t.megabytes.replace("{value}", number(bytes / 1e6, 2));
 
-  const kernels = data.kernels.filter(
-    (k): k is Kernel & { otp: number; clause: number } =>
-      k.otp !== null && k.clause !== null && k.otp > 0,
-  );
-  const geomean = Math.exp(
-    kernels.reduce((sum, k) => sum + Math.log(k.clause / k.otp), 0) /
-      kernels.length,
-  );
+  const geomean = kernelGeomean;
   const fasterCount = kernels.filter((k) => k.clause < k.otp).length;
   const first = data.history[0];
+  // Run days before the first pinned one ran wherever the OS placed them.
+  const pinnedSince =
+    data.cpus?.since && first && first.date < data.cpus.since
+      ? data.cpus.since
+      : null;
   // Kernel names are <program>.<kernel>; rows are grouped by program.
   const groups = new Map<string, typeof kernels>();
   for (const k of kernels) {
@@ -254,7 +252,10 @@ export default async function BenchmarksPage({ params }: Props) {
         <h2 id="history" className="text-2xl font-semibold">
           {t.historyTitle}
         </h2>
-        <p className="mt-2 text-sm text-muted">{t.historyNote}</p>
+        <p className="mt-2 text-sm text-muted">
+          {t.historyNote}
+          {pinnedSince && <> {t.pinnedSince.replace("{date}", pinnedSince)}</>}
+        </p>
         <table className="mt-4 w-full max-w-xl border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
@@ -399,6 +400,20 @@ export default async function BenchmarksPage({ params }: Props) {
               .filter(Boolean)
               .join(", ")}
           </dd>
+          {data.cpus && (
+            <>
+              <dt className="text-muted">{t.cpuSet}</dt>
+              <dd>
+                {(data.cpus.set === "performance"
+                  ? t.cpuSetPerformance
+                  : t.cpuSetList
+                )
+                  .replace("{list}", data.cpus.list)
+                  .replace("{count}", String(data.cpus.count))
+                  .replace("{total}", String(data.host.cpus ?? ""))}
+              </dd>
+            </>
+          )}
           <dt className="text-muted">{t.otpVersion}</dt>
           <dd>{data.otp}</dd>
           <dt className="text-muted">{t.clauseCommit}</dt>
@@ -406,6 +421,13 @@ export default async function BenchmarksPage({ params }: Props) {
           <dt className="text-muted">{t.runAt}</dt>
           <dd className="tabular-nums">{data.runAt.slice(0, 10)}</dd>
         </dl>
+        {data.cpus && (
+          <p className="mt-6 max-w-3xl text-sm text-muted">
+            {data.cpus.set === "performance"
+              ? t.pinningPerformance
+              : t.pinningList}
+          </p>
+        )}
         <p className="mt-6 max-w-3xl text-sm text-muted">
           {t.reproduce}{" "}
           <a
