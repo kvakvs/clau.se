@@ -238,50 +238,65 @@ export const pt = {
       socket: "Sockets em loopback",
     },
     kernelInfo: {
-      "datagen.list_of_tuples": "Constrói uma lista de 200 000 tuplos pequenos",
+      "datagen.list_of_tuples":
+        "Constrói uma lista de 200 000 tuplos pequenos, 300 vezes",
       "datagen.list_to_tuple":
-        "Converte listas de 1000 elementos em tuplos, 100 vezes",
-      "datagen.map_put": "Insere 2000 chaves inteiras num map, uma a uma",
+        "Converte listas de 1000 elementos em tuplos, 220 000 vezes",
+      "datagen.map_put":
+        "Insere 2000 chaves inteiras num map, uma a uma, 4900 vezes",
       "datagen.binary_append":
-        "Acrescenta 10 000 inteiros de 32 bits a um binary crescente",
+        "Acrescenta 10 000 inteiros de 32 bits a um binary crescente, 23 000 vezes",
       "datagen.bigint_factorial":
-        "Calcula o fatorial de 3000 com inteiros grandes",
+        "Calcula o fatorial de 3000 com inteiros grandes, 330 vezes",
       "datagen.string_build":
-        "Constrói 20 000 cadeias a partir de inteiros e átomos",
-      "dataproc.sort": "Ordena uma lista de 20 000 inteiros aleatórios",
-      "dataproc.map_foldl": "Aplica map e depois fold a 20 000 inteiros",
+        "Constrói 20 000 cadeias a partir de inteiros e átomos, 1000 vezes",
+      "dataproc.sort":
+        "Ordena uma lista de 20 000 inteiros aleatórios, 600 vezes",
+      "dataproc.map_foldl":
+        "Aplica map e depois fold a 20 000 inteiros, 6100 vezes",
       "dataproc.map_update":
-        "Incrementa duas vezes cada valor de um map de 500 chaves",
+        "Incrementa cada valor de um map de 500 chaves, 24 000 vezes",
       "dataproc.binary_match":
-        "Soma 20 000 inteiros de 32 bits extraídos de um binary",
-      "dataproc.int_to_list": "Converte 20 000 inteiros em cadeias e de volta",
+        "Soma 20 000 inteiros de 32 bits extraídos de um binary, 49 000 vezes",
+      "dataproc.int_to_list":
+        "Converte 20 000 inteiros em cadeias e de volta, 2000 vezes",
       "dataproc.term_to_binary":
-        "Codifica e descodifica um termo aninhado grande",
+        "Codifica e descodifica um termo aninhado grande, 5100 vezes",
       "dataproc.comprehension":
-        "Comprehension que filtra e duplica 20 000 inteiros",
-      "dataproc.small_map": "Atualiza 20 000 vezes um pequeno map de estado",
-      "file.small_files": "Escreve, relê e apaga 500 ficheiros pequenos",
-      "file.large_write": "Escreve um ficheiro de 16 MB em blocos de 64 KB",
-      "file.large_read": "Lê um ficheiro de 16 MB em blocos de 64 KB",
+        "Comprehension que filtra e duplica 20 000 inteiros, 15 000 vezes",
+      "dataproc.small_map":
+        "Atualiza 92 milhões de vezes um pequeno map de estado",
+      "file.small_files":
+        "Escreve, relê e apaga 500 ficheiros pequenos, 11 vezes",
+      "file.large_write":
+        "Escreve um ficheiro de 16 MB em blocos de 64 KB, 250 vezes",
+      "file.large_read":
+        "Lê um ficheiro de 16 MB em blocos de 64 KB, 370 vezes",
       "file.read_line":
-        "Lê linha a linha um ficheiro de texto de 20 000 linhas",
-      "file.read_file": "Lê um ficheiro inteiro de 16 MB numa só chamada",
+        "Lê linha a linha um ficheiro de texto de 20 000 linhas, 52 vezes",
+      "file.read_file":
+        "Lê um ficheiro inteiro de 16 MB numa só chamada, 330 vezes",
       "gc.short_processes":
-        "Lança 5000 processos efémeros que geram lixo cada um",
+        "Lança 5000 processos efémeros que geram lixo cada um, 69 vezes",
       "gc.grow_shrink":
-        "Faz crescer o heap com uma lista de 200 000 elementos e larga-a",
+        "Faz crescer o heap com uma lista de 200 000 elementos e larga-a, 300 vezes",
       "gc.long_lived_churn":
-        "Mantém uma janela deslizante de dados vivos no meio de lixo",
-      "gc.explicit_collect": "Força a recolha de lixo com 10 000 tuplos vivos",
-      "msg.ping_pong": "Troca uma mensagem entre dois processos 50 000 vezes",
-      "msg.fan_in": "100 processos enviam 1000 mensagens cada um a um só",
-      "msg.ring": "Passa um testemunho 50 vezes por um anel de 1000 processos",
+        "Mantém uma janela deslizante de 10 000 elementos vivos no meio de lixo, 370 vezes",
+      "gc.explicit_collect":
+        "Força a recolha de lixo com 10 000 tuplos vivos, 7100 vezes",
+      "msg.ping_pong":
+        "Troca uma mensagem entre dois processos 2 milhões de vezes",
+      "msg.fan_in":
+        "100 processos enviam 1000 mensagens cada um a um só, 25 vezes",
+      "msg.ring":
+        "Passa um testemunho 3050 vezes por um anel de 1000 processos",
       "msg.large_message":
-        "Envia uma lista de 100 000 elementos a outro processo e de volta",
-      "socket.tcp_echo": "Eco de 2000 mensagens de 1 KB por TCP em loopback",
-      "socket.tcp_connect": "Abre e fecha 300 ligações TCP em loopback",
+        "Envia uma lista de 100 000 elementos a outro processo e de volta, 560 vezes",
+      "socket.tcp_echo": "Eco de 30 000 mensagens de 1 KB por TCP em loopback",
+      "socket.tcp_connect":
+        "Abre 900 ligações TCP em loopback, com eco de 25 mensagens de 1 KB em cada",
       "socket.udp_round_trip":
-        "Ida e volta de um datagrama de 1 KB, 2000 vezes, por UDP",
+        "Ida e volta de um datagrama de 1 KB, 27 900 vezes, por UDP em loopback",
     },
     programInfo: {
       bench_datagen:

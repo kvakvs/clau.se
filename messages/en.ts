@@ -235,48 +235,57 @@ export const en = {
       socket: "Loopback sockets",
     },
     kernelInfo: {
-      "datagen.list_of_tuples": "Builds a list of 200,000 small tuples",
+      "datagen.list_of_tuples":
+        "Builds a list of 200,000 small tuples, 300 times",
       "datagen.list_to_tuple":
-        "Converts 1,000-element lists to tuples, 100 times",
-      "datagen.map_put": "Inserts 2,000 integer keys into a map one by one",
+        "Converts 1,000-element lists to tuples, 220,000 times",
+      "datagen.map_put":
+        "Inserts 2,000 integer keys into a map one by one, 4,900 times",
       "datagen.binary_append":
-        "Appends 10,000 32-bit integers to a growing binary",
+        "Appends 10,000 32-bit integers to a growing binary, 23,000 times",
       "datagen.bigint_factorial":
-        "Computes the factorial of 3,000 with big integers",
-      "datagen.string_build": "Builds 20,000 strings from integers and atoms",
-      "dataproc.sort": "Sorts a list of 20,000 random integers",
-      "dataproc.map_foldl": "Maps, then folds a list of 20,000 integers",
-      "dataproc.map_update": "Increments every value of a 500-key map twice",
+        "Computes the factorial of 3,000 with big integers, 330 times",
+      "datagen.string_build":
+        "Builds 20,000 strings from integers and atoms, 1,000 times",
+      "dataproc.sort": "Sorts a list of 20,000 random integers, 600 times",
+      "dataproc.map_foldl":
+        "Maps, then folds a list of 20,000 integers, 6,100 times",
+      "dataproc.map_update":
+        "Increments every value of a 500-key map, 24,000 times",
       "dataproc.binary_match":
-        "Sums 20,000 32-bit integers matched out of a binary",
-      "dataproc.int_to_list": "Converts 20,000 integers to strings and back",
-      "dataproc.term_to_binary": "Encodes and decodes a large nested term",
+        "Sums 20,000 32-bit integers matched out of a binary, 49,000 times",
+      "dataproc.int_to_list":
+        "Converts 20,000 integers to strings and back, 2,000 times",
+      "dataproc.term_to_binary":
+        "Encodes and decodes a large nested term, 5,100 times",
       "dataproc.comprehension":
-        "List comprehension filtering and doubling 20,000 integers",
-      "dataproc.small_map": "Updates a small state map 20,000 times",
-      "file.small_files": "Writes, reads back and deletes 500 small files",
-      "file.large_write": "Writes a 16 MB file in 64 KB chunks",
-      "file.large_read": "Reads a 16 MB file in 64 KB chunks",
-      "file.read_line": "Reads a 20,000-line text file line by line",
-      "file.read_file": "Reads a whole 16 MB file in one call",
+        "List comprehension filtering and doubling 20,000 integers, 15,000 times",
+      "dataproc.small_map": "Updates a small state map 92 million times",
+      "file.small_files":
+        "Writes, reads back and deletes 500 small files, 11 times",
+      "file.large_write": "Writes a 16 MB file in 64 KB chunks, 250 times",
+      "file.large_read": "Reads a 16 MB file in 64 KB chunks, 370 times",
+      "file.read_line": "Reads a 20,000-line text file line by line, 52 times",
+      "file.read_file": "Reads a whole 16 MB file in one call, 330 times",
       "gc.short_processes":
-        "Spawns 5,000 short-lived processes that each make garbage",
+        "Spawns 5,000 short-lived processes that each make garbage, 69 times",
       "gc.grow_shrink":
-        "Grows the heap with a 200,000-element list, then drops it",
+        "Grows the heap with a 200,000-element list, then drops it, 300 times",
       "gc.long_lived_churn":
-        "Keeps a sliding window of live data among garbage",
+        "Keeps a sliding window of 10,000 live elements among garbage, 370 times",
       "gc.explicit_collect":
-        "Forces garbage collection with 10,000 live tuples",
-      "msg.ping_pong": "Bounces one message between two processes 50,000 times",
-      "msg.fan_in": "100 processes each send 1,000 messages to one",
-      "msg.ring": "Passes a token around a 1,000-process ring 50 times",
+        "Forces garbage collection with 10,000 live tuples, 7,100 times",
+      "msg.ping_pong":
+        "Bounces one message between two processes 2 million times",
+      "msg.fan_in": "100 processes each send 1,000 messages to one, 25 times",
+      "msg.ring": "Passes a token around a 1,000-process ring 3,050 times",
       "msg.large_message":
-        "Sends a 100,000-element list to another process and back",
-      "socket.tcp_echo": "Echoes 2,000 messages of 1 KB over loopback TCP",
+        "Sends a 100,000-element list to another process and back, 560 times",
+      "socket.tcp_echo": "Echoes 30,000 messages of 1 KB over loopback TCP",
       "socket.tcp_connect":
-        "Opens and closes 300 TCP connections over loopback",
+        "Opens 900 TCP connections over loopback, echoing 25 messages of 1 KB on each",
       "socket.udp_round_trip":
-        "Bounces a 1 KB datagram 2,000 times over loopback UDP",
+        "Bounces a 1 KB datagram 27,900 times over loopback UDP",
     },
     programInfo: {
       bench_datagen:

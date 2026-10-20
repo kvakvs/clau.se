@@ -239,52 +239,64 @@ export const es = {
     },
     kernelInfo: {
       "datagen.list_of_tuples":
-        "Construye una lista de 200 000 tuplas pequeñas",
+        "Construye una lista de 200 000 tuplas pequeñas, 300 veces",
       "datagen.list_to_tuple":
-        "Convierte listas de 1000 elementos en tuplas, 100 veces",
-      "datagen.map_put": "Inserta 2000 claves enteras en un map, una a una",
+        "Convierte listas de 1000 elementos en tuplas, 220 000 veces",
+      "datagen.map_put":
+        "Inserta 2000 claves enteras en un map, una a una, 4900 veces",
       "datagen.binary_append":
-        "Añade 10 000 enteros de 32 bits a un binary creciente",
+        "Añade 10 000 enteros de 32 bits a un binary creciente, 23 000 veces",
       "datagen.bigint_factorial":
-        "Calcula el factorial de 3000 con enteros grandes",
+        "Calcula el factorial de 3000 con enteros grandes, 330 veces",
       "datagen.string_build":
-        "Construye 20 000 cadenas a partir de enteros y átomos",
-      "dataproc.sort": "Ordena una lista de 20 000 enteros aleatorios",
-      "dataproc.map_foldl": "Aplica map y luego fold a 20 000 enteros",
+        "Construye 20 000 cadenas a partir de enteros y átomos, 1000 veces",
+      "dataproc.sort":
+        "Ordena una lista de 20 000 enteros aleatorios, 600 veces",
+      "dataproc.map_foldl":
+        "Aplica map y luego fold a 20 000 enteros, 6100 veces",
       "dataproc.map_update":
-        "Incrementa dos veces cada valor de un map de 500 claves",
+        "Incrementa cada valor de un map de 500 claves, 24 000 veces",
       "dataproc.binary_match":
-        "Suma 20 000 enteros de 32 bits extraídos de un binary",
-      "dataproc.int_to_list": "Convierte 20 000 enteros en cadenas y de vuelta",
+        "Suma 20 000 enteros de 32 bits extraídos de un binary, 49 000 veces",
+      "dataproc.int_to_list":
+        "Convierte 20 000 enteros en cadenas y de vuelta, 2000 veces",
       "dataproc.term_to_binary":
-        "Codifica y decodifica un término anidado grande",
+        "Codifica y decodifica un término anidado grande, 5100 veces",
       "dataproc.comprehension":
-        "Comprehension que filtra y duplica 20 000 enteros",
-      "dataproc.small_map": "Actualiza 20 000 veces un map de estado pequeño",
-      "file.small_files": "Escribe, relee y borra 500 archivos pequeños",
-      "file.large_write": "Escribe un archivo de 16 MB en bloques de 64 KB",
-      "file.large_read": "Lee un archivo de 16 MB en bloques de 64 KB",
+        "Comprehension que filtra y duplica 20 000 enteros, 15 000 veces",
+      "dataproc.small_map":
+        "Actualiza 92 millones de veces un map de estado pequeño",
+      "file.small_files":
+        "Escribe, relee y borra 500 archivos pequeños, 11 veces",
+      "file.large_write":
+        "Escribe un archivo de 16 MB en bloques de 64 KB, 250 veces",
+      "file.large_read":
+        "Lee un archivo de 16 MB en bloques de 64 KB, 370 veces",
       "file.read_line":
-        "Lee línea a línea un archivo de texto de 20 000 líneas",
-      "file.read_file": "Lee un archivo entero de 16 MB en una sola llamada",
+        "Lee línea a línea un archivo de texto de 20 000 líneas, 52 veces",
+      "file.read_file":
+        "Lee un archivo entero de 16 MB en una sola llamada, 330 veces",
       "gc.short_processes":
-        "Lanza 5000 procesos efímeros que generan basura cada uno",
+        "Lanza 5000 procesos efímeros que generan basura cada uno, 69 veces",
       "gc.grow_shrink":
-        "Hace crecer el heap con una lista de 200 000 elementos y la suelta",
+        "Hace crecer el heap con una lista de 200 000 elementos y la suelta, 300 veces",
       "gc.long_lived_churn":
-        "Mantiene una ventana deslizante de datos vivos entre basura",
+        "Mantiene una ventana deslizante de 10 000 elementos vivos entre basura, 370 veces",
       "gc.explicit_collect":
-        "Fuerza la recolección de basura con 10 000 tuplas vivas",
-      "msg.ping_pong": "Rebota un mensaje entre dos procesos 50 000 veces",
-      "msg.fan_in": "100 procesos envían 1000 mensajes cada uno a uno solo",
-      "msg.ring": "Pasa un testigo 50 vueltas por un anillo de 1000 procesos",
+        "Fuerza la recolección de basura con 10 000 tuplas vivas, 7100 veces",
+      "msg.ping_pong":
+        "Rebota un mensaje entre dos procesos 2 millones de veces",
+      "msg.fan_in":
+        "100 procesos envían 1000 mensajes cada uno a uno solo, 25 veces",
+      "msg.ring": "Pasa un testigo 3050 vueltas por un anillo de 1000 procesos",
       "msg.large_message":
-        "Envía una lista de 100 000 elementos a otro proceso y de vuelta",
+        "Envía una lista de 100 000 elementos a otro proceso y de vuelta, 560 veces",
       "socket.tcp_echo":
-        "Hace eco de 2000 mensajes de 1 KB por TCP en loopback",
-      "socket.tcp_connect": "Abre y cierra 300 conexiones TCP en loopback",
+        "Hace eco de 30 000 mensajes de 1 KB por TCP en loopback",
+      "socket.tcp_connect":
+        "Abre 900 conexiones TCP en loopback con eco de 25 mensajes de 1 KB en cada una",
       "socket.udp_round_trip":
-        "Rebota un datagrama de 1 KB 2000 veces por UDP en loopback",
+        "Rebota un datagrama de 1 KB 27 900 veces por UDP en loopback",
     },
     programInfo: {
       bench_datagen:

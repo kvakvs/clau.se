@@ -166,13 +166,17 @@ function sizes(host) {
   };
 }
 
-// Geometric mean of Clause time / OTP time per recorded run day.
+// Geometric mean of Clause time / OTP time per recorded run day. Records from
+// before the benchmarks' rescaling keep only their per-kernel ratios.
 function history(host) {
   return readHistory(host)
     .map((record) => {
-      const logs = Object.entries(record.clause_us ?? {})
-        .filter(([name, clause]) => clause > 0 && record.otp_us?.[name] > 0)
-        .map(([name, clause]) => Math.log(clause / record.otp_us[name]));
+      const ratios = record.clause_us
+        ? Object.entries(record.clause_us)
+            .filter(([name, clause]) => clause > 0 && record.otp_us?.[name] > 0)
+            .map(([name, clause]) => clause / record.otp_us[name])
+        : Object.values(record.otp_ratio ?? {});
+      const logs = ratios.filter((r) => r > 0).map((r) => Math.log(r));
       return {
         date: String(record.run_date).slice(0, 10),
         commit: String(record.commit).slice(0, 8),

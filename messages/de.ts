@@ -238,53 +238,64 @@ export const de = {
       socket: "Loopback-Sockets",
     },
     kernelInfo: {
-      "datagen.list_of_tuples": "Baut eine Liste aus 200.000 kleinen Tupeln",
+      "datagen.list_of_tuples":
+        "Baut eine Liste aus 200.000 kleinen Tupeln, 300-mal",
       "datagen.list_to_tuple":
-        "Wandelt Listen mit 1000 Elementen 100-mal in Tupel um",
-      "datagen.map_put": "Fügt 2000 Ganzzahlschlüssel einzeln in eine Map ein",
+        "Wandelt Listen mit 1000 Elementen 220.000-mal in Tupel um",
+      "datagen.map_put":
+        "Fügt 2000 Ganzzahlschlüssel einzeln in eine Map ein, 4900-mal",
       "datagen.binary_append":
-        "Hängt 10.000 32-Bit-Ganzzahlen an ein wachsendes Binary an",
+        "Hängt 10.000 32-Bit-Ganzzahlen an ein wachsendes Binary an, 23.000-mal",
       "datagen.bigint_factorial":
-        "Berechnet die Fakultät von 3000 mit großen Ganzzahlen",
+        "Berechnet die Fakultät von 3000 mit großen Ganzzahlen, 330-mal",
       "datagen.string_build":
-        "Baut 20.000 Zeichenketten aus Ganzzahlen und Atomen",
-      "dataproc.sort": "Sortiert eine Liste mit 20.000 zufälligen Ganzzahlen",
-      "dataproc.map_foldl": "Wendet map und dann fold auf 20.000 Ganzzahlen an",
+        "Baut 20.000 Zeichenketten aus Ganzzahlen und Atomen, 1000-mal",
+      "dataproc.sort":
+        "Sortiert eine Liste mit 20.000 zufälligen Ganzzahlen, 600-mal",
+      "dataproc.map_foldl":
+        "Wendet map und dann fold auf 20.000 Ganzzahlen an, 6100-mal",
       "dataproc.map_update":
-        "Erhöht jeden Wert einer Map mit 500 Schlüsseln zweimal",
+        "Erhöht jeden Wert einer Map mit 500 Schlüsseln 24.000-mal",
       "dataproc.binary_match":
-        "Summiert 20.000 32-Bit-Ganzzahlen, per Matching aus einem Binary",
+        "Summiert 20.000 32-Bit-Ganzzahlen, per Matching aus einem Binary, 49.000-mal",
       "dataproc.int_to_list":
-        "Wandelt 20.000 Ganzzahlen in Zeichenketten und zurück",
+        "Wandelt 20.000 Ganzzahlen in Zeichenketten und zurück, 2000-mal",
       "dataproc.term_to_binary":
-        "Kodiert und dekodiert einen großen verschachtelten Term",
+        "Kodiert und dekodiert einen großen verschachtelten Term, 5100-mal",
       "dataproc.comprehension":
-        "Comprehension, die 20.000 Ganzzahlen filtert und verdoppelt",
-      "dataproc.small_map": "Aktualisiert eine kleine Zustands-Map 20.000-mal",
-      "file.small_files": "Schreibt, liest und löscht 500 kleine Dateien",
-      "file.large_write": "Schreibt eine 16-MB-Datei in Blöcken zu 64 KB",
-      "file.large_read": "Liest eine 16-MB-Datei in Blöcken zu 64 KB",
-      "file.read_line": "Liest eine Textdatei mit 20.000 Zeilen zeilenweise",
-      "file.read_file": "Liest eine ganze 16-MB-Datei mit einem Aufruf",
+        "Comprehension, die 20.000 Ganzzahlen filtert und verdoppelt, 15.000-mal",
+      "dataproc.small_map":
+        "Aktualisiert eine kleine Zustands-Map 92 Millionen Mal",
+      "file.small_files":
+        "Schreibt, liest und löscht 500 kleine Dateien, 11-mal",
+      "file.large_write":
+        "Schreibt eine 16-MB-Datei in Blöcken zu 64 KB, 250-mal",
+      "file.large_read": "Liest eine 16-MB-Datei in Blöcken zu 64 KB, 370-mal",
+      "file.read_line":
+        "Liest eine Textdatei mit 20.000 Zeilen zeilenweise, 52-mal",
+      "file.read_file":
+        "Liest eine ganze 16-MB-Datei mit einem Aufruf, 330-mal",
       "gc.short_processes":
-        "Startet 5000 kurzlebige Prozesse, die jeweils Müll erzeugen",
+        "Startet 5000 kurzlebige Prozesse, die jeweils Müll erzeugen, 69-mal",
       "gc.grow_shrink":
-        "Lässt den Heap mit einer 200.000-Elemente-Liste wachsen, verwirft sie",
+        "Lässt den Heap mit einer 200.000-Elemente-Liste wachsen, verwirft sie, 300-mal",
       "gc.long_lived_churn":
-        "Hält ein gleitendes Fenster lebender Daten inmitten von Müll",
+        "Hält ein gleitendes Fenster aus 10.000 lebenden Elementen inmitten von Müll, 370-mal",
       "gc.explicit_collect":
-        "Erzwingt Garbage Collection mit 10.000 lebenden Tupeln",
+        "Erzwingt Garbage Collection mit 10.000 lebenden Tupeln, 7100-mal",
       "msg.ping_pong":
-        "Schickt eine Nachricht 50.000-mal zwischen zwei Prozessen hin und her",
-      "msg.fan_in": "100 Prozesse senden je 1000 Nachrichten an einen",
-      "msg.ring": "Reicht ein Token 50-mal durch einen Ring aus 1000 Prozessen",
+        "Schickt eine Nachricht 2 Millionen Mal zwischen zwei Prozessen hin und her",
+      "msg.fan_in": "100 Prozesse senden je 1000 Nachrichten an einen, 25-mal",
+      "msg.ring":
+        "Reicht ein Token 3050-mal durch einen Ring aus 1000 Prozessen",
       "msg.large_message":
-        "Sendet eine Liste mit 100.000 Elementen an einen Prozess und zurück",
-      "socket.tcp_echo": "Echo von 2000 Nachrichten zu 1 KB über Loopback-TCP",
+        "Sendet eine Liste mit 100.000 Elementen an einen Prozess und zurück, 560-mal",
+      "socket.tcp_echo":
+        "Echo von 30.000 Nachrichten zu 1 KB über Loopback-TCP",
       "socket.tcp_connect":
-        "Öffnet und schließt 300 TCP-Verbindungen über Loopback",
+        "Öffnet 900 TCP-Verbindungen über Loopback mit je 25 Echos zu 1 KB",
       "socket.udp_round_trip":
-        "2000 UDP-Roundtrips eines 1-KB-Datagramms über Loopback",
+        "27.900 UDP-Roundtrips eines 1-KB-Datagramms über Loopback",
     },
     programInfo: {
       bench_datagen:

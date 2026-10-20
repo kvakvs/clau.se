@@ -239,50 +239,63 @@ export const sv = {
       socket: "Loopback-sockets",
     },
     kernelInfo: {
-      "datagen.list_of_tuples": "Bygger en lista med 200 000 små tupler",
+      "datagen.list_of_tuples":
+        "Bygger en lista med 200 000 små tupler, 300 gånger",
       "datagen.list_to_tuple":
-        "Gör om listor med 1000 element till tupler, 100 gånger",
-      "datagen.map_put": "Lägger in 2000 heltalsnycklar i en map, en i taget",
+        "Gör om listor med 1000 element till tupler, 220 000 gånger",
+      "datagen.map_put":
+        "Lägger in 2000 heltalsnycklar i en map, en i taget, 4900 gånger",
       "datagen.binary_append":
-        "Lägger till 10 000 32-bitars heltal i en växande binary",
+        "Lägger till 10 000 32-bitars heltal i en växande binary, 23 000 gånger",
       "datagen.bigint_factorial":
-        "Beräknar fakulteten av 3000 med stora heltal",
-      "datagen.string_build": "Bygger 20 000 strängar av heltal och atomer",
-      "dataproc.sort": "Sorterar en lista med 20 000 slumpmässiga heltal",
-      "dataproc.map_foldl": "Kör map och sedan fold över 20 000 heltal",
+        "Beräknar fakulteten av 3000 med stora heltal, 330 gånger",
+      "datagen.string_build":
+        "Bygger 20 000 strängar av heltal och atomer, 1000 gånger",
+      "dataproc.sort":
+        "Sorterar en lista med 20 000 slumpmässiga heltal, 600 gånger",
+      "dataproc.map_foldl":
+        "Kör map och sedan fold över 20 000 heltal, 6100 gånger",
       "dataproc.map_update":
-        "Ökar varje värde i en map med 500 nycklar två gånger",
+        "Ökar varje värde i en map med 500 nycklar, 24 000 gånger",
       "dataproc.binary_match":
-        "Summerar 20 000 32-bitars heltal matchade ur en binary",
-      "dataproc.int_to_list": "Gör om 20 000 heltal till strängar och tillbaka",
-      "dataproc.term_to_binary": "Kodar och avkodar en stor nästlad term",
+        "Summerar 20 000 32-bitars heltal matchade ur en binary, 49 000 gånger",
+      "dataproc.int_to_list":
+        "Gör om 20 000 heltal till strängar och tillbaka, 2000 gånger",
+      "dataproc.term_to_binary":
+        "Kodar och avkodar en stor nästlad term, 5100 gånger",
       "dataproc.comprehension":
-        "Comprehension som filtrerar och dubblar 20 000 heltal",
-      "dataproc.small_map": "Uppdaterar en liten tillståndsmap 20 000 gånger",
-      "file.small_files": "Skriver, läser tillbaka och raderar 500 små filer",
-      "file.large_write": "Skriver en fil på 16 MB i block om 64 KB",
-      "file.large_read": "Läser en fil på 16 MB i block om 64 KB",
-      "file.read_line": "Läser en textfil med 20 000 rader rad för rad",
-      "file.read_file": "Läser en hel fil på 16 MB i ett anrop",
+        "Comprehension som filtrerar och dubblar 20 000 heltal, 15 000 gånger",
+      "dataproc.small_map":
+        "Uppdaterar en liten tillståndsmap 92 miljoner gånger",
+      "file.small_files":
+        "Skriver, läser tillbaka och raderar 500 små filer, 11 gånger",
+      "file.large_write":
+        "Skriver en fil på 16 MB i block om 64 KB, 250 gånger",
+      "file.large_read": "Läser en fil på 16 MB i block om 64 KB, 370 gånger",
+      "file.read_line":
+        "Läser en textfil med 20 000 rader rad för rad, 52 gånger",
+      "file.read_file": "Läser en hel fil på 16 MB i ett anrop, 330 gånger",
       "gc.short_processes":
-        "Startar 5000 kortlivade processer som var och en skapar skräp",
+        "Startar 5000 kortlivade processer som var och en skapar skräp, 69 gånger",
       "gc.grow_shrink":
-        "Växer heapen med en lista på 200 000 element och släpper den",
+        "Växer heapen med en lista på 200 000 element och släpper den, 300 gånger",
       "gc.long_lived_churn":
-        "Behåller ett glidande fönster av levande data bland skräp",
+        "Behåller ett glidande fönster med 10 000 levande element bland skräp, 370 gånger",
       "gc.explicit_collect":
-        "Tvingar fram skräpsamling med 10 000 levande tupler",
+        "Tvingar fram skräpsamling med 10 000 levande tupler, 7100 gånger",
       "msg.ping_pong":
-        "Studsar ett meddelande mellan två processer 50 000 gånger",
-      "msg.fan_in": "100 processer skickar var och en 1000 meddelanden till en",
-      "msg.ring": "Skickar en token 50 varv runt en ring av 1000 processer",
+        "Studsar ett meddelande mellan två processer 2 miljoner gånger",
+      "msg.fan_in":
+        "100 processer skickar var och en 1000 meddelanden till en, 25 gånger",
+      "msg.ring": "Skickar en token 3050 varv runt en ring av 1000 processer",
       "msg.large_message":
-        "Skickar en lista med 100 000 element till en process och tillbaka",
-      "socket.tcp_echo": "Ekar 2000 meddelanden på 1 KB över TCP via loopback",
+        "Skickar en lista med 100 000 element till en process och tillbaka, 560 gånger",
+      "socket.tcp_echo":
+        "Ekar 30 000 meddelanden på 1 KB över TCP via loopback",
       "socket.tcp_connect":
-        "Öppnar och stänger 300 TCP-anslutningar via loopback",
+        "Öppnar 900 TCP-anslutningar via loopback och ekar 25 meddelanden på 1 KB i varje",
       "socket.udp_round_trip":
-        "Studsar ett datagram på 1 KB 2000 gånger över UDP via loopback",
+        "Studsar ett datagram på 1 KB 27 900 gånger över UDP via loopback",
     },
     programInfo: {
       bench_datagen:
