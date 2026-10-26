@@ -2,7 +2,7 @@
 name: update-pages
 description: Refresh the clau.se front page (intro, status, feature cards, feature details) and the documentation summaries from the current state of ../clau (docs/, README.md, .agents/00-finished.md, .agents/01-todo.md), then translate every changed string into all site languages. Use when the user runs /update-pages or asks to update the front page or features from the project.
 disable-model-invocation: true
-argument-hint: "[docs] [full]"
+argument-hint: "[full]"
 ---
 
 # Update the front page from ../clau
@@ -12,12 +12,14 @@ does, what works now and what is still missing. Edits the dictionaries in
 `messages/`, never the page components, unless a new kind of content needs
 markup.
 
-Arguments (`$ARGUMENTS`, any order):
+Arguments (`$ARGUMENTS`):
 
-- `docs`: also bring the translated documentation in `content/docs/<locale>/`
-  up to date after the sync (step 7).
 - `full`: ignore the last recorded source commit and review all text against
-  the whole project, not only what changed since. Implies `docs`.
+  the whole project, not only what changed since.
+
+The documentation pages and their translations are a separate skill,
+`/update-docs` (`.agents/skills/update-docs/`); this one only syncs the
+English copy it reads (step 2).
 
 ## Sources
 
@@ -60,12 +62,6 @@ All in `messages/en.ts` first; it is the source of truth:
   stdlib), never by function lists; details already in the docs stay there.
 - `docs.featured.*.text`: one-line summaries of the featured doc pages, if
   their content changed (prerequisites, build steps, options).
-- The paragraphs of documentation (typically first) which state implementation
-  date, referring to plan steps - should not be displayed in the web.
-  `pnpm sync-docs` strips them (`stripPlanReferences` in
-  `scripts/sync-docs.mjs`): paragraph lead-ins such as `Plan 11 step 41T
-(paths).` and parenthetical references such as `(plan step 37)`,
-  `(OPT0.2A)`. Extend its patterns when a new form shows up in the copy.
 
 Only claim what `docs/` or `00-finished.md` shows as delivered. Items that are
 open in `01-todo.md` or listed as unfinished are not features, those can only be mentioned as planned; at most they appear in `home.status` as remaining work. When a source says a feature is
@@ -95,8 +91,9 @@ of this skill: it is refreshed with `/update-benchmarks`
 --short -- ...`): read them, but mention to the user that the source is
    dirty. If nothing changed and not `full`, report that and stop.
 
-2. **Sync the docs.** Run `pnpm sync-docs`, then `pnpm docs-status`, and keep
-   the list of outdated and missing translations for the report.
+2. **Sync the docs.** Follow steps 1–3 of `.agents/skills/update-docs/SKILL.md`
+   (its `sync` mode: sync, check the copy, status) and keep the list of
+   outdated and missing translations for the report.
 3. **Read the sources.** With `full` or on the first run read all of them.
    Otherwise read the diffs from step 1 and as much of the surrounding files
    as needed to judge them; always reread `00-finished.md` (summary table and
@@ -124,12 +121,7 @@ of this skill: it is refreshed with `/update-benchmarks`
 6. **Record the source commit.** Write `content/home-meta.json` with the
    short `git -C ../clau rev-parse --short HEAD` and today's date
    (`updatedAt`), formatted like `content/docs-meta.json`.
-7. **Docs translations (only with `docs` or `full`).** For each file that step 2 listed
-   as outdated or missing, translate or update it per `.agents/translation.md`
-   (one subagent per locale), stamp it with `pnpm -s docs-stamp <locale>
-<file>.md...`, then rerun `pnpm docs-status` until it shows no `ERROR` and
-   no outdated files. Without `docs` or `full`, only report the outdated list.
-8. **Quality gates.** Run, stopping at the first failure and fixing it:
+7. **Quality gates.** Run, stopping at the first failure and fixing it:
 
    ```powershell
    pnpm exec prettier --write messages content/home-meta.json
@@ -141,6 +133,7 @@ of this skill: it is refreshed with `/update-benchmarks`
    A dictionary that lost or gained a key fails `typecheck` (`satisfies
 Messages`). Do not open a browser.
 
-9. **Report.** Source commit range used, English changes, locales updated,
+8. **Report.** Source commit range used, English changes, locales updated,
    docs sync result and outdated translations left, gate results. Do not
-   commit or deploy unless the user asks; suggest `/deploy` when done.
+   commit or deploy unless the user asks; suggest `/update-docs` when
+   translations are outdated or missing, and `/deploy` when done.

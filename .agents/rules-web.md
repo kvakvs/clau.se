@@ -143,10 +143,11 @@ scripts/             build helper scripts (e.g. docs sync)
 
 ## Documentation Pages
 
-- Source of truth is `../clau/docs` (plus the project README, split into Getting
-  started / Building / Using pages). It is outside this repository, so
-  `pnpm sync-docs` copies it into `content/docs/en/` and records the source
-  commit, a dirty flag and the sync date in `content/docs-meta.json`. Commit the
+- Source of truth is `../clau/docs` and `../clau/docs/libraries` (plus the
+  project README's Quick start, as the Getting started page). It is outside
+  this repository, so `pnpm sync-docs` copies it into `content/docs/en/` and
+  records the source commit, a dirty flag and the sync date in
+  `content/docs-meta.json`. Commit the
   copy. Never import from `../clau` directly in app code; never edit
   `content/docs/en/` by hand.
 - `sync-docs` leaves out internal plan step references (paragraph lead-ins like
@@ -162,6 +163,8 @@ scripts/             build helper scripts (e.g. docs sync)
 - Heading anchors come from the English original by position
   (`lib/doc-structure.ts`, `components/markdown.tsx`), so translations must keep
   the same headings, code blocks and link targets.
+- The `/update-docs` skill (`.agents/skills/update-docs/`) runs the sync and
+  brings the translations up to date.
 - Front page text (intro, status, feature cards and details) is refreshed from
   `../clau` docs and progress notes with the `/update-pages` skill
   (`.agents/skills/update-pages/`), which also translates the changed strings and

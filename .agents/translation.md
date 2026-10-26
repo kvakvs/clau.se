@@ -18,8 +18,9 @@ Translations: `content/docs/<locale>/<same file name>.md` for `sv`, `es`, `uk`,
 
 When the English original changes, `pnpm docs-status` lists the translation as
 `outdated` and the site shows an "out of date" notice. Update the translation
-(compare with `git diff` of `content/docs/en/<file>.md` since the stamped
-`sourceCommit`), then stamp again.
+from the English diff since it was made, then stamp again. The stamped
+`sourceCommit` is a `../clau` commit; diff `content/docs/en/<file>.md` from the
+site commit whose `content/docs-meta.json` names it (`/update-docs` step 4).
 
 ## Structure must match the original
 
