@@ -60,8 +60,8 @@ tasks are in `runtime/src/scheduler/ports.cpp`, the builtins in
   ([busy ports](#busy-ports)).
 - `port_close/1`, `port_connect/2`, `port_command/2,3`; the messages
   `Port ! {Pid, {command, Data}}`, `{Pid, close}`, `{Pid, {connect, New}}`.
-- `link/1`, `unlink/1`, `monitor(port, P)`, `exit/2` on ports; `register/2` of
-  a port.
+- `link/1`, `unlink/1`, `monitor(port, P)`, `exit/2` on ports; `register/2` of a
+  port.
 - `port_control/3`, `port_call/3`: `badarg` for drivers without control; the
   `file` and socket drivers are driven by `port_control/3`.
 - `open_port({fd, In, Out}, Opts)`, `open_port({spawn, Command}, Opts)`,
@@ -109,8 +109,10 @@ supports control, reports input and errors as events and closes. Drivers:
 - `tcp_inet`, `udp_inet`: sockets of the project library's `gen_tcp`, `gen_udp`
   and `inet` on Boost.Asio; connects, accepts and receives are asynchronous
   ([sockets](#sockets)).
+- `clause_registry` (Windows): the registry of `win32reg`
+  ([the registry](#the-registry)).
 
-The internal drivers of `file` and the sockets are opened with
+The internal drivers of `file`, the sockets and the registry are opened with
 `{spawn_driver, Name}` under Clause names, and their `port_control/3` operations
 are a Clause protocol: programs use the library modules, not OTP's
 `prim_inet`/`efile` protocols.
@@ -144,8 +146,8 @@ every port kind, so a port costs no thread of its own:
 `runtime/src/ports/io*.cpp` hold the port I/O (`detail::IoService`): its methods
 only post work to the I/O thread, where all I/O state lives. The I/O thread
 hands input over as it was read: raw bytes, the end of input, a read error, a
-program's exit status. Socket events (messages, accepted connections) are
-handed over the same way.
+program's exit status. Socket events (messages, accepted connections) are handed
+over the same way.
 
 The prototype `tests/prototypes/poller/` (`run.py --wsl`) shows the wakeup on
 Windows (completion port) and WSL Linux (`poll()`): an idle scheduler thread
@@ -233,9 +235,10 @@ stdout are pipes of the port:
   are quoted by the rules of `CommandLineToArgvW`.
 - `{env, [{Name, Value | false}]}` sets or removes variables of the child,
   `{cd, Dir}` its directory, `stderr_to_stdout` merges stderr into the port;
-  otherwise the child shares the program's stderr. `in` opens no stdin pipe and
-  `out` no stdout pipe (the null device instead). `hide` and `overlapped_io`
-  have no effect.
+  otherwise the child shares the program's stderr. `in` alone opens no stdin
+  pipe and `out` alone no stdout pipe (the null device instead); with both or
+  neither the port has both, as in OTP. `hide` and `overlapped_io` have no
+  effect.
 - A program that cannot be started raises `error:Reason` with the POSIX reason
   (`enoent`, `eacces`, `enoexec`); bad names and options raise `badarg`.
 - Output is queued and written by the I/O thread, with the port's busy limits
@@ -262,11 +265,22 @@ stdout are pipes of the port:
   `{fd, 0, 1}` port: `io:get_line/1,2` writes the prompt, then returns the next
   line with its newline, the rest of the input without one at its end, then
   `eof`; `io:get_chars/2,3` returns up to `N` characters, then `eof`. Requests
-  of several processes are answered in arrival order. Input is returned as bytes
-  (one list element per byte).
+  of several processes are answered in arrival order. Input is decoded as UTF-8
+  into characters, as OTP reads its terminal; the server keeps OTP's noshell
+  `standard_io` options (`binary`, `encoding`, `echo`, `log`; `io:getopts/0,1`,
+  `io:setopts/1,2`): binary mode returns binaries, `echo`
+  writes consumed input to standard output, `get_password` is `{error, enotsup}`
+  without a shell, as OTP's.
+- File servers answer `getopts` and `setopts` as OTP's file I/O server
+  (`binary`/`list` and `encoding`; `file:open/2` takes `{encoding, E}`): I/O
+  requests (`io:get_line`, `get_chars`, `put_chars`, `get_until`) encode and
+  decode the device encoding, and `file:read/2`, `read_line/1` on an encoded file
+  answer as latin1 `get_chars`/`get_line` requests (`no_translation` above 255,
+  which stops the server). Output of `io:format/3`, `io:put_chars/2`, `io:nl/1`
+  to any pid is an I/O protocol `put_chars` request.
 - The library's `file` module drives the runtime's file driver,
   `{spawn_driver, "clause_file"}`, with `port_control/3`. Its operations
-  (`ports/file.cpp`: open, read, write, position, read_line, close, and the path
+  (`ports/file.cpp`: open, read, write, position, read_line, sync, close, and the path
   operations read_file, write_file, delete, rename, list_dir, make_dir, del_dir
   and read_file_info, `ports/file_info.cpp`; get_cwd, set_cwd, read_link,
   read_link_info, make_link and make_symlink, `ports/file_paths.cpp`) are
@@ -275,10 +289,19 @@ stdout are pipes of the port:
   end of file). The protocol is Clause's own. read_line reads 64 KB ahead and
   returns lines from that buffer; any other operation on the file first seeks
   back over the bytes it has not returned, so positions stay exact.
-- `file:open/2` returns an I/O server pid that owns a file port and is linked to
-  the opener (modes `read`, `write`, `append`, `exclusive`, `binary`; other
-  modes are ignored, as OTP ignores options it does not use; `write` truncates
-  unless `append` is also given).
+- Path operations make OTP's system calls and no more: a path's status is read
+  only once an open or a delete failed (to answer `eisdir` or `eperm`), delete
+  unlinks a file and never removes a directory, and read_file reads a file up to
+  the size its descriptor reports, as OTP does, with no read probing for its end.
+- `port_control/3` hands a binary or `[]` to the driver in place (other iodata
+  is flattened first), and a reply becomes the result binary without a copy:
+  replies are `ByteBuffer`s (`runtime/include/byte_buffer.hpp`), byte vectors
+  that grow without zeroing, so a read fills its reply's bytes once.
+- `file:open/2` returns an I/O server pid that owns a file port and closes when
+  the opener ends, as OTP's (on Windows the file is shared for reading, writing
+  and deletion, as OTP opens it, so an open file can be deleted or renamed) (modes `read`, `write`, `append`, `exclusive`,
+  `binary`, `raw`; other modes are ignored, as OTP ignores options it does not
+  use; `write` truncates unless `append` is also given).
 - `file:write_file/3` opens with its modes plus `binary` and `write`;
   `file:read_file_info/1,2` return OTP's `#file_info{}` from the path's status
   (following links), with times as local or universal date and time or POSIX
@@ -287,6 +310,51 @@ stdout are pipes of the port:
   reports them. `read/2`, `read_line/1`, `write/2`, `position/2` and
   `io:get_line/2`, `io:get_chars/3` on it are requests to that server; after
   `close/1` requests return `{error, terminated}` and `close/1` stays `ok`.
+- Positioned I/O and file changes: `pread/2,3` and
+  `pwrite/2,3` position and then read or write on a file server (`cur` reads
+  on, the position moves), as OTP's server does; a `raw` file takes integer
+  offsets only (`badarg` otherwise) and keeps its position. `truncate/1` cuts at
+  the position; `advise/4` takes OTP's advice atoms (`posix_fadvise` on Linux,
+  ignored elsewhere, as OTP); `allocate/3` reserves space (`fallocate`, macOS
+  `F_PREALLOCATE`, `{error, enotsup}` on Windows), its arguments checked first
+  (`badarg` for non-numbers, `einval` for negatives and floats). As OTP's file
+  server, a server whose write, positioned write, sync, truncate or advice
+  fails replies with the error and exits, so later requests get
+  `{error, terminated}`; a raw file goes on. `write_file_info/2,3` and
+  `change_mode/2`, `change_owner/2,3`, `change_group/2`, `change_time/2,3`
+  change owner, permissions and times in prim_file's order (Windows: owners
+  ignored, only the read-only attribute from the owner write bit, the creation
+  time set too). `sendfile/2,5` read a raw file in chunks (at most 1 MiB,
+  `chunk_size`) and send them with `gen_tcp:send/2` or the given fun, OTP's
+  fallback: Clause has no native sendfile. `format_error/1` gives OTP's texts,
+  POSIX ones from `erl_posix_msg:message/1`.
+- Lines and failed reads: `read_line/1` and `io:get_line`
+  read a CRLF ending as LF (the position counts the CR), as OTP; a file server
+  whose read fails replies with the error and exits, and one whose line read
+  fails exits without a reply (the caller gets `{error, terminated}`), as OTP's.
+- `compressed` and `compressed_one`: writing goes through
+  a gzip deflate stream (zlib, window bits 31) finished at close, also when the
+  server stops or its opener ends; reading inflates a file that starts with
+  gzip's magic bytes (`compressed` reads concatenated members as one,
+  `compressed_one` stops after the first) and reads any other file as it is.
+  Positions count uncompressed bytes: forward by reading or writing zeros,
+  backward only when reading (from the start again), `eof` is `einval`.
+  Reading a written file or writing a read one is `ebadf`; `allocate/3` and,
+  on raw files, positioned I/O are `enotsup`; a file server stops after
+  `truncate`, `advise` and `sync` (`enotsup`) as OTP's. Reading and writing at
+  once or appending is `{error, einval}`.
+- `{zstd, Options}`: as `compressed`, through a zstd
+  context made with `Options` (`{error, badarg}` when it refuses them): each
+  write is a frame of its own and closing adds an empty one, as OTP's layer
+  writes; reading decompresses the frames read in 8 KiB chunks.
+- `ram`: the file is its iodata contents in memory,
+  served by a process like other files and closed with its opener; modes
+  `read`, `write` and `binary` only (`read` when neither is given, anything
+  else `badarg`, `raw` with `ram` raises `badarg`). Reads, writes, positions,
+  `pread`/`pwrite` (the position kept), `truncate`, `sync`, `advise` and
+  `allocate` answer as OTP's ram file driver: writes past the end fill the gap
+  with zeros, offsets and sizes past signed 32 bits are `einval`, writing a
+  read-only file is `ebadf`, truncating it `eacces`.
 - OTP's I/O protocol: the standard input server and every open file's server
   answer `{io_request, From, ReplyAs, Request}` with
   `{io_reply, ReplyAs, Reply}`, which `io:request/1,2` and `io:requests/1,2`
@@ -304,27 +372,26 @@ stdout are pipes of the port:
   makes a file's server reply `{error, Function}` and exit with the failure, as
   OTP's does; the opener lives on (OTP's file server is not linked to it). Input
   requests on standard input write their prompt.
-- Directories, links and copies: `get_cwd/0` spells the current directory as
-  OTP does (forward slashes, a lowercase drive letter), `get_cwd/1` takes a
-  Windows drive (`enotsup` elsewhere); `set_cwd/1` changes it for the whole
-  program; `read_link/1`, `read_link_all/1` (`einval` for a path that is not a
-  link), `read_link_info/1,2` (a final link's own status: POSIX `lstat`, on
-  Windows the target's fields with type `symlink`), `make_link/2`,
-  `make_symlink/2` (needs a privilege on Windows: `eperm`, as OTP),
-  `list_dir_all/1`, `del_dir_r/1`, `copy/2,3` (names, `{Name, Modes}` or open
-  files; `{ok, BytesCopied}`), `raw_read_file_info/1`, `read_file/2`,
-  `delete/2`, `native_name_encoding/0` (`utf8`). `del_dir/1` answers `enoent`
-  for a missing path and `enotdir` for a file. `consult/1` and the
-  `eval`/`script` family stay stubs: they need OTP's generated parser.
-- Clause's `file` is the file layer; OTP's `filelib` and `filename` are plain
-  Erlang that runs on it when a program's search path holds OTP's sources
-  (`filelib:fold_files/5` needs `re`); `erl_prim_loader` is provided over
-  `file` with OTP's bare `error` answers and a loader path of `["."]`
-  (`set_path/1`), its loading and archive functions declined until plan step
-  71; `prim_file` and `prim_buffer` stay missing, so OTP's `raw_file_io*`
-  callers never enter a program.
+- Directories, links and copies: `get_cwd/0` spells the current directory as OTP
+  does (forward slashes, a lowercase drive letter), `get_cwd/1` takes a Windows
+  drive (`enotsup` elsewhere); `set_cwd/1` changes it for the whole program;
+  `read_link/1`, `read_link_all/1` (`einval` for a path that is not a link),
+  `read_link_info/1,2` (a final link's own status: POSIX `lstat`, on Windows the
+  target's fields with type `symlink`), `make_link/2`, `make_symlink/2` (needs a
+  privilege on Windows: `eperm`, as OTP), `list_dir_all/1`, `del_dir_r/1`,
+  `copy/2,3` (names, `{Name, Modes}` or open files; `{ok, BytesCopied}`),
+  `raw_read_file_info/1`, `read_file/2`, `delete/2`, `native_name_encoding/0`
+  (`utf8`). `del_dir/1` answers `enoent` for a missing path and `enotdir` for a
+  file.
+- Clause's `file` is the file layer; Clause's `filelib` and `filename` run on
+  it (`filelib:fold_files/5` uses `re`); `erl_prim_loader` is provided over `file`
+  with OTP's bare `error` answers and a loader path of `["."]` (`set_path/1`),
+  its loading and archive functions declined; `prim_file` and
+  `prim_buffer` stay missing, so OTP's `raw_file_io*` callers never enter a
+  program.
 - Errors follow OTP: `{error, enoent}`, `eexist`, `eisdir` (a directory opened
-  or read as a file), `einval` (a negative position), `ebadf` (reading a
+  or read as a file), `einval` (a negative position; `badarg` for one that is
+  no location), `ebadf` (reading a
   write-only or writing a read-only file), `badarg` for bad names and data. File
   names are strings, binaries or atoms, encoded as UTF-8.
 
@@ -333,16 +400,52 @@ stdout are pipes of the port:
 A socket is a port, as with OTP's `inet_drv` backend: `is_port(Socket)` is true
 and active-mode messages are `{tcp, Socket, Data}`, `{tcp_closed, Socket}`,
 `{tcp_error, Socket, Reason}`, `{udp, Socket, Address, Port, Data}`. The subset:
-`gen_tcp:connect/3,4`, `listen/2`, `accept/1,2`, `send/2`, `recv/2,3`,
-`close/1`, `controlling_process/2`, `shutdown/2`; `gen_udp:open/1,2`, `send/4`,
-`recv/2,3`, `close/1`; `inet:setopts/2`, `inet:port/1`, `inet:peername/1`,
-`inet:sockname/1`; modes `{active, true | false | once}`, `binary`/`list`,
-`{packet, 0 | 1 | 2 | 4 | raw}`, `{reuseaddr, Bool}`, `{backlog, N}`,
+`gen_tcp:connect/2,3,4` (a host and port, or a socket address map),
+`listen/2`, `accept/1,2`, `send/2`, `recv/2,3`, `close/1`,
+`controlling_process/2`, `shutdown/2`; `gen_udp:open/1,2`, `connect/2,3`,
+`send/2,3,4,5` (OTP's destination forms and ancillary data), `recv/2,3`,
+`close/1`; `inet:setopts/2`, `getopts/2`, `getstat/1,2`, `info/1`, `i/0,1,2`,
+`monitor/1`, `cancel_monitor/1`, `port/1`, `peername/1`, `peernames/1,2`,
+`sockname/1`, `socknames/1,2`; modes `{active, true | false | once}`,
+`binary`/`list` (`{mode, M}`), `{packet, 0 | 1 | 2 | 4 | raw}`, `{backlog, N}`,
 `{ip, Address}`/`{ifaddr, Address}`, `inet`/`inet6`; IPv4 and IPv6 addresses as
-tuples, host names as strings or atoms (`loopback` included). The tuning options
-`nodelay`, `keepalive`, `send_timeout`, `send_timeout_close`, `delay_send` and
-`exit_on_close` are accepted and not applied; any other option is
-`exit(badarg)`, as for an invalid one in OTP.
+tuples, host names as strings or atoms (`loopback` included).
+
+Options beyond the data mode (`ports/socket_options.cpp`,
+`library/kernel/clause_socket_options.erl`) are driver records of a code and a
+value, given when a socket opens (set before it binds or connects) or by
+`setopts/2`; every option of a `setopts/2` call is checked before any is set.
+The system's options (`reuseaddr`, `keepalive`, `dontroute`, `linger`,
+`broadcast`, `sndbuf`, `recbuf`, `nodelay`, `tos`, `tclass`, `ipv6_v6only`,
+`multicast_ttl`, `multicast_loop`, `multicast_if`, `add_membership`,
+`drop_membership`, `exclusiveaddruse` on Windows, `priority` and `reuseport`
+where the system has them) go to `setsockopt` and are read back with
+`getsockopt`; the options OTP's `inet_drv` keeps itself (`buffer`, `header`,
+`deliver`, `exit_on_close`, `send_timeout`, watermarks, `packet_size`, ...) are
+kept with inet_drv's defaults and not applied ([differences](differences.md)).
+As inet_drv, a receive buffer raises `buffer` until that is set, and
+`getopts/2` leaves out the options a socket type lacks (`broadcast` of a TCP
+socket, `nodelay` of a UDP one, `tclass` of IPv4) and refuses unknown ones with
+`{error, einval}`. An accepted connection takes over its listening socket's
+options. `send/5` with ancillary data sets `tos`, `tclass` or `ttl` for that
+datagram alone; on Windows it is `{error, einval}`, as OTP.
+
+Each socket counts its traffic as inet_drv does for `getstat/1,2`: packets
+received are reads (TCP) or datagrams, packets sent are `send` calls (with
+their packet header) or datagrams, with inet_drv's running averages;
+`send_pend` is the output queued and not written. `getstatus` gives inet_drv's
+status flags (`open`, `connected`, `connecting`, `listen`, `accepting`), which
+`info/1` and `i/0,1,2` print with OTP's names and module column (`inet_tcp`,
+`inet6_udp`, ...). Queries of a closed socket answer `{error, einval}`, as OTP.
+
+The `socket` module (`library/kernel/socket.erl`) uses the
+same driver ports in passive binary mode. A stream socket can be bound before
+it listens or connects (operation 22 opens and binds the system socket, which
+`listen` turns into the acceptor or `connect` connects); a datagram socket is
+bound by `udp_open`, implicitly at its first send. A connection's end answers
+every waiting `recv` (also one asking for more bytes than remain). `socket`
+keeps the bytes a recv did not take in its own buffer, so `recv/2,3,4` gives
+OTP's `{error, {timeout, Data}}` and `{error, {closed, Data}}`.
 
 Implementation (`runtime/src/ports/sockets.cpp`):
 
@@ -370,19 +473,33 @@ Implementation (`runtime/src/ports/sockets.cpp`):
 - Socket ports are scheduled like other ports ([port tasks](#port-tasks)): a
   socket's messages wait in its port until the port's task delivers them.
 - Addresses and hosts: `inet:parse_address/1,2`, `parse_strict_address/1,2`,
-  `parse_ipv4_address/1`, `parse_ipv4strict_address/1`,
-  `parse_ipv6_address/1`, `parse_ipv6strict_address/1` (OTP's relaxed forms:
-  short and octal or hexadecimal IPv4 fields, `::`, IPv4 tails, `%scope` of
-  `fe80::` and `ff02::`), `ntoa/1` (OTP's spelling: lowercase hexadecimal, the
-  first longest zero run as `::`), `is_ipv4_address/1`, `is_ipv6_address/1`,
-  `is_ip_address/1` are Erlang; `gethostname/0` (a socket operation),
-  `getaddr/2`, `getaddrs/2` (the system resolver, `getaddrinfo`) and
-  `gethostbyname/1,2` (`h_name` is the name asked, no aliases) answer through a
-  socket port opened for the query.
-- Clause's `gen_tcp`, `gen_udp` and `inet` are the network layer and grow toward
-  OTP's export lists as programs need; OTP's `socket` and `net` modules (the
-  socket NIF API) are missing, so are `prim_socket`, `prim_net`, `prim_inet`
-  and `socket_registry`.
+  `parse_ipv4_address/1`, `parse_ipv4strict_address/1`, `parse_ipv6_address/1`,
+  `parse_ipv6strict_address/1` (OTP's relaxed forms: short and octal or
+  hexadecimal IPv4 fields, `::`, IPv4 tails, `%scope` of `fe80::` and `ff02::`),
+  `ntoa/1` (OTP's spelling: lowercase hexadecimal, the first longest zero run as
+  `::`), `is_ipv4_address/1`, `is_ipv6_address/1`, `is_ip_address/1` are Erlang;
+  `gethostname/0` (a socket operation), `getaddr/2`, `getaddrs/2` (the system
+  resolver, `getaddrinfo`) and `gethostbyname/1,2` (`h_name` is the name asked,
+  no aliases) answer through a socket port opened for the query.
+- Services, reverse lookups and interfaces (`inet:getservbyname/2`,
+  `getservbyport/2`, `gethostbyaddr/1`, `getifaddrs/0,1`) are `clause_net`
+  builtins shared with `net` ([network names](builtins.md#network-names)).
+- Clause's `gen_tcp`, `gen_udp`, `inet` and `net` are the network layer; OTP's
+  `socket` module (the socket NIF API) is missing, so are `prim_socket`,
+  `prim_net`, `prim_inet` and `socket_registry`.
+
+## The registry
+
+`win32reg` opens `{spawn_driver, "clause_registry"}` on
+Windows (`runtime/src/ports/registry_windows.cpp`). The driver keeps OTP's
+registry driver's state (the access asked for, the current key and its root,
+initially `HKEY_CLASSES_ROOT`) and answers OTP's nine commands as synchronous
+`port_control/3` operations with the replies OTP's driver sends as port data:
+`o`, `e` and the errno name (registry damage is `eio`, a deleted key `einval`,
+other Windows errors as the C runtime maps them), `k` and a key name, `v`, the
+type, name and data (strings without their trailing zero, DWORDs big-endian),
+`s` and the current key. Listings return every reply, each preceded by its
+32-bit size. Names and strings use the ANSI code page, as OTP's driver.
 
 ## Not provided
 

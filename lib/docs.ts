@@ -37,7 +37,7 @@ export type Doc = {
 export const featuredDocs = [
   { id: "gettingStarted", slug: "getting-started" },
   { id: "building", slug: "building" },
-  { id: "using", slug: "usage" },
+  { id: "using", slug: "compile" },
   { id: "interpreting", slug: null, related: ["validation", "features"] },
   { id: "differences", slug: "differences" },
 ] as const;

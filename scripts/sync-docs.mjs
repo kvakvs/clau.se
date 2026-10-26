@@ -2,11 +2,11 @@
 //
 // Usage: pnpm sync-docs [path-to-clau]   (default: ../clau)
 //
-// docs/*.md are copied without their internal plan step references (see
-// stripPlanReferences). The project README.md is split into the
-// "Getting started", "Building the compiler" (with "Testing") and "Using the
-// compiler" pages; its links are rewritten to be relative to docs/ like the
-// other files.
+// docs/*.md and docs/libraries/*.md are copied into one flat directory without
+// their internal plan step references (see stripPlanReferences); links are
+// rewritten to be relative to docs/, as if every page lived there. The
+// "Quick start" section of the project README.md becomes the "Getting started"
+// page, its links rewritten the same way.
 // Translations in content/docs/<locale>/ are left alone; run
 // `pnpm docs-status` afterwards to see which of them are now outdated.
 
@@ -20,12 +20,12 @@ const sourceDocs = path.join(source, "docs");
 const target = path.join(root, "content", "docs", "en");
 const metaFile = path.join(root, "content", "docs-meta.json");
 
-// README "Build" section is split before this line: everything above it
-// lists prerequisites, everything from it on describes the build itself.
-const BUILD_MARKER = /^(?:Configure and build f|F)rom the repository root:/m;
+// Subdirectories of docs/ whose pages are served next to the top-level ones.
+const SUBDIRS = ["libraries"];
 
 // The notes name the internal plan steps (and their dates) that delivered each
-// part: "Plan 11 step 41T (`path`). Text", "(plan step 37)", "(OPT0.2A)".
+// part: "Plan 11 step 41T (`path`). Text", "(plan step 37)", "(OPT0.2A)",
+// "(plan 21, LIB80)", "(LIB80D)".
 // Visitors cannot follow those, so paragraph lead-ins and parenthetical
 // references are removed; source paths of a lead-in are kept as "Source:".
 // Headings and code blocks are left alone, so anchors and structure stay.
@@ -34,7 +34,7 @@ const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|[A-Z]{2,5}(?:\d+[A-Z0-9]*(?:\.\d+[A-Z
 // References wrap across lines, so words are separated by any whitespace.
 const STEP_IDS = String.raw`${STEP_ID}(?:(?:\s+(?:and|or)\s+|–)${STEP_ID})*`;
 const STEP_REF = String.raw`(?:[Pp]lan(?:\s+\d+)?\s+)?(?:[Ss]teps?\s+)?${STEP_IDS}(?:\s+\(part\)|\s+follow-up)?`;
-const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+\s+step\s+)?OPT\d+\.\d+[A-Z]?(?:\s+\(part\)|\s+follow-up)?)`;
+const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+(?:\s+step|,)\s+)?(?:OPT[A-Z0-9]*\.\d+[A-Z0-9]*|LIB\d+[A-Z0-9]*)(?:\s+\(part\)|\s+follow-up)?)`;
 const LEAD_IN = new RegExp(
   String.raw`^(?:Decision of )?(?:[Pp]lan(?: \d+)? )?[Ss]teps? ${STEP_IDS}(?: \(([^()]*)\))?(?:[.:]\s*|, (?=[a-z]))`,
 );
@@ -67,10 +67,10 @@ const INLINE_RULES = [
   ],
   // "(plan step 41T, [lists module](#lists-module))", "(step 57G3; ..."
   [new RegExp(String.raw`\(${PLAIN_REF}[,;]\s+`, "g"), "("],
-  // "Stub until plan 21 LIB4E: ...", "... stubs until plan 21 LIB4E"
+  // "Stub until plan 21 LIB4E: ...", "... declined until plan step 71"
   [
     new RegExp(
-      String.raw`\s+until\s+[Pp]lan\s+\d+\s+(?:[Ss]teps?\s+)?${STEP_IDS}`,
+      String.raw`\s+until\s+[Pp]lan(?:\s+\d+)?\s+(?:[Ss]teps?\s+)?${STEP_IDS}`,
       "g",
     ),
     "",
@@ -79,6 +79,8 @@ const INLINE_RULES = [
   [new RegExp(String.raw`(?:,|\s+of)\s+${PLAIN_REF}\)`, "g"), ")"],
   // "(plan step 37)", "(OPT0.2A)", "(step 41N)"
   [new RegExp(String.raw`\s*\(${PLAIN_REF}\)`, "g"), ""],
+  // "(plan 21)", what is left of "(plan 21, LIB80)"
+  [/\s*\([Pp]lan \d+\)/g, ""],
   // "([OPT0.5A](../.agents/20-opt.md))"
   [
     new RegExp(
@@ -105,34 +107,32 @@ if (!fs.existsSync(sourceDocs)) {
 fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(target, { recursive: true });
 
-const docFiles = fs.readdirSync(sourceDocs).filter((f) => f.endsWith(".md"));
-for (const file of docFiles) {
-  const text = fs.readFileSync(path.join(sourceDocs, file), "utf8");
-  fs.writeFileSync(path.join(target, file), stripPlanReferences(text));
+// { dir, file }: dir is the subdirectory of docs/ ("" for docs/ itself).
+const docFiles = [];
+for (const dir of ["", ...SUBDIRS]) {
+  const from = path.join(sourceDocs, dir);
+  if (!fs.existsSync(from)) continue;
+  for (const file of fs.readdirSync(from).filter((f) => f.endsWith(".md"))) {
+    if (docFiles.some((d) => d.file === file)) {
+      console.error(`docs/${dir}/${file}: another page is named ${file}`);
+      process.exit(1);
+    }
+    docFiles.push({ dir, file });
+  }
+}
+for (const { dir, file } of docFiles) {
+  const text = fs.readFileSync(path.join(sourceDocs, dir, file), "utf8");
+  fs.writeFileSync(
+    path.join(target, file),
+    stripPlanReferences(rewriteLinks(text, path.posix.join("docs", dir))),
+  );
 }
 
 const sections = splitSections(
   fs.readFileSync(path.join(source, "README.md"), "utf8"),
 );
-const build = sections.get("Build") ?? "";
-const usage = sections.get("Usage") ?? "";
-// Sections appended to a page under their own heading, when the README has them.
-const subsection = (title) => {
-  const body = sections.get(title);
-  return body?.trim() ? `\n## ${title}\n\n${body}` : "";
-};
-
-const markerAt = build.search(BUILD_MARKER);
 const derived = {
-  "getting-started.md": [
-    "Getting started",
-    markerAt >= 0 ? build.slice(0, markerAt) : "",
-  ],
-  "building.md": [
-    "Building the compiler",
-    (markerAt >= 0 ? build.slice(markerAt) : build) + subsection("Testing"),
-  ],
-  "usage.md": ["Using the compiler", usage + subsection("Projects")],
+  "getting-started.md": ["Getting started", sections.get("Quick start") ?? ""],
 };
 
 for (const [file, [title, body]] of Object.entries(derived)) {
@@ -140,11 +140,11 @@ for (const [file, [title, body]] of Object.entries(derived)) {
     console.warn(`README section for ${file} not found; skipped`);
     continue;
   }
-  if (docFiles.includes(file)) {
+  if (docFiles.some((d) => d.file === file)) {
     console.warn(`docs/${file} exists; README-derived page overrides it`);
   }
   const text = stripPlanReferences(
-    `# ${title}\n\n${rewriteReadmeLinks(body.trim())}\n`,
+    `# ${title}\n\n${rewriteLinks(body.trim(), ".")}\n`,
   );
   fs.writeFileSync(path.join(target, file), text);
 }
@@ -184,16 +184,20 @@ function splitSections(markdown) {
   return result;
 }
 
-// README links are relative to the repository root; make them relative to docs/.
-function rewriteReadmeLinks(markdown) {
+// Makes the relative links of a file in `from` (a directory relative to the
+// repository root) relative to docs/; links to pages of SUBDIRS point at their
+// flattened copies.
+function rewriteLinks(markdown, from) {
   return markdown.replace(/\]\(([^)\s]+)\)/g, (match, href) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#")) {
       return match;
     }
-    const relative = href.startsWith("docs/")
-      ? href.slice("docs/".length)
-      : `../${href}`;
-    return `](${relative})`;
+    const [target, hash] = href.split("#", 2);
+    let resolved = path.posix.normalize(path.posix.join(from, target));
+    const page = /^docs\/([^/]+)\/([^/]+\.md)$/.exec(resolved);
+    if (page && SUBDIRS.includes(page[1])) resolved = `docs/${page[2]}`;
+    const relative = path.posix.relative("docs", resolved) || ".";
+    return `](${relative}${hash === undefined ? "" : `#${hash}`})`;
   });
 }
 

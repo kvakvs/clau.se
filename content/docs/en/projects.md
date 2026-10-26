@@ -26,6 +26,7 @@ disable_features = ["compr_assign"]
 ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
+shell = false
 cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
@@ -42,6 +43,8 @@ my_dependency = "vendor/my_dependency"
   Explicit files must end in `.erl`, or `.abstr` for abstract format forms
   ([transforms](transforms.md#interchange)); headers are dependencies, not
   inputs.
+- `[[targets.asn1]]` groups compile ASN.1 specifications (`sources`, `options`,
+  `outdir`) into modules that join the target ([ASN.1](asn1.md#inputs)).
 - `parse_transforms` (module names) and `transform_paths` (directories or
   patterns of precompiled `.beam` files) in `options` apply parse transforms to
   the target's modules ([transforms](transforms.md#options)).
@@ -51,6 +54,9 @@ my_dependency = "vendor/my_dependency"
 - `keep_exports = true` in `options` keeps every export of the target's
   executable callable, as `--keep-exports` does for every selected target
   ([export liveness](executables.md#export-liveness)). It must be a boolean.
+- `shell = true` in `options` links the interactive shell into the target's
+  executable, as `--shell` does ([interactive shell](library.md#interactive-shell)).
+  It must be a boolean.
 - `cache_inference_in_dirs` (directory wildcards) in `options` adds directories
   whose modules keep their inference results in the build cache
   ([inference cache](#inference-cache)).
@@ -342,17 +348,17 @@ inferring them again.
 Lookups by name do not probe every candidate directory. One index per `clau`
 invocation, shared by all targets, keeps the entry names of each searched
 directory: listed once, non-recursively, when a lookup first needs it, or
-recorded by the recursive walks that expand `**` in `sources`,
-`source_dirs`, `source_search_paths`, `include_dirs` and `transform_paths`, so
-no directory is listed twice. It answers the misses of the module search (the
-library, then `source_search_paths`), transform sources, literal `sources` found
-through `source_search_paths`, and include resolution (the including file's
-directory, the working directory, include directories in order, then
-`include_lib` applications); a candidate the index holds is still opened or
-checked as before, so precedence, `ignore_dirs` and error reports do not change.
-Include names with directory parts (`sub/x.hrl`) are looked up in the directory
-they name; names with `..` steps, absolute names, relative directories and
-listings that fail are probed as before.
+recorded by the recursive walks that expand `**` in `sources`, `source_dirs`,
+`source_search_paths`, `include_dirs` and `transform_paths`, so no directory is
+listed twice. It answers the misses of the module search (the library, then
+`source_search_paths`), transform sources, literal `sources` found through
+`source_search_paths`, and include resolution (the including file's directory,
+the working directory, include directories in order, then `include_lib`
+applications); a candidate the index holds is still opened or checked as before,
+so precedence, `ignore_dirs` and error reports do not change. Include names with
+directory parts (`sub/x.hrl`) are looked up in the directory they name; names
+with `..` steps, absolute names, relative directories and listings that fail are
+probed as before.
 
 - File name keys fold ASCII case on Windows and macOS, whose volumes ignore case
   by default, so `Foo.hrl` still finds `foo.hrl`; elsewhere keys are exact.

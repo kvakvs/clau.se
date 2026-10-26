@@ -21,9 +21,10 @@ the first process, the main process, and runs the executor until it ends:
 - Each process owns its heap and stack. Arguments of a new process are copied
   into its heap
   ([copying between heaps](runtime-heap.md#copying-between-heaps)).
-- A process ends when its first call returns or raises. An ended process's
-  context, heap and stack are released at once; its pid stays a valid term and
-  `is_process_alive/1` returns false for it.
+- A process ends when its first call returns or raises. An ended process
+  leaves the process table at once; its pid stays a valid term and
+  `is_process_alive/1` returns false for it. Its context, heap and stack are
+  freed once the worker that ended it leaves the executor mutex.
 - A process waiting in a `receive` is in no queue; a send to it queues it again
   ([receive](#receive)).
 - When the main process ends, the program ends with its outcome
@@ -44,10 +45,11 @@ the first process, the main process, and runs the executor until it ends:
 ## Workers
 
 The executor runs processes on `RuntimeOptions::schedulers` worker threads: the
-thread that started the program and one more thread per further worker.
-Programs take the count from `--schedulers N` (1 to 1,024,
+thread that started the program and one more thread per further worker. Programs
+take the count from `--schedulers N` (1 to 1,024,
 [runtime options](executables.md#runtime-options)); the default is one worker
-per logical processor, as OTP's `+S`.
+per logical processor the program may run on (its affinity mask, as OTP's
+online schedulers), or per CPU of `--scheduler-cpus`.
 
 - Each worker has its own run queue, as each ERTS scheduler does: a process
   stays with the worker it last ran on, so its heap stays in that core's caches.
@@ -61,20 +63,34 @@ per logical processor, as OTP's `+S`.
   empty queue steals one process from the longest queue holding at least two, or
   the only process of a sleeping worker, which it runs before that worker wakes.
 - Wakeups are lazy, as ERTS keeps processes that talk to each other on one
-  scheduler: a running process that wakes a process of a sleeping, empty
-  worker queues it on its own worker, which takes it when its slice ends;
-  another worker is woken only when a queue then holds more than one process.
-  The timer and I/O threads, port tasks and workers between slices queue a
-  process for its own worker, or for an idle worker when its own one is busy.
-- One executor mutex guards the run queues, the waiting processes, the timers,
-  the registered names, the links and monitors of every process, and every
-  process that is not running. A running process's heap, stack, mailbox and
-  failure channel belong to its worker alone; Erlang code runs without the lock.
+  scheduler: a running process that wakes a process of a sleeping, empty worker
+  queues it on its own worker, which takes it when its slice ends; another
+  worker is woken only when a queue then holds more than one process. The timer
+  and I/O threads, port tasks and workers between slices queue a process for its
+  own worker, or for an idle worker when its own one is busy.
+- One executor mutex guards the waiting processes, the timers, the registered
+  names, the links and monitors of every process, and every process that is not
+  running. A running process's heap, stack, mailbox and failure channel belong
+  to its worker alone; Erlang code runs without the lock. The run queues and
+  the workers' idle state have a lock of their own, taken after the executor
+  mutex; idle workers sleep on it (process creation and teardown).
+- A spawn builds the new process's context and copies its call into it without
+  any lock. One that neither links nor monitors then publishes it in the
+  process table and queues it under their own locks only, never taking the
+  executor mutex; `spawn_link`, `spawn_monitor` and the monitoring
+  `spawn_opt`/`spawn_request` forms publish, link or monitor and queue under the
+  executor mutex. A worker frees the contexts of ended processes right after it
+  leaves the mutex for its next slice.
+- A process costs six allocations over its life (process creation cost): its
+  context, the context's runtime bindings with its scheduling state, its heap
+  storage and first heap block, its arrivals and its lifetime token. The first
+  64 stack words and four mailbox list nodes live inside the context, the
+  monitor maps are made by the first monitor, and the runtime's registries
+  (contexts, persistent term reclamation) keep no node per process.
 - Links, monitors and names change under the lock at once, also for a process
-  running elsewhere. A message to a process running on another worker cannot go
-  into its heap yet: it is copied into a buffer of its own and delivered, after
-  earlier buffered ones, when the receiver's slice ends
-  ([message buffers](runtime-heap.md#message-buffers)). An exit signal of
+  running elsewhere. A message waits in a buffer among the receiver's arrivals
+  until the receiver takes it ([arrival buffers](#arrival-buffers)). An exit
+  signal of
   `exit/2` or `exit_signal/2` to such a process does nothing and its process
   ends its slice (`builtins::Blocked`); it waits until the target's slice ends,
   then runs first and repeats the builtin with the same arguments. The target is
@@ -100,11 +116,15 @@ Wakeups and shutdown need no further mechanism, because every change of a
 process's scheduling state happens under the executor mutex:
 
 - A message, `'EXIT'` or `'DOWN'` for a waiting process queues it in the same
-  critical section that delivers it, waking a worker as above. A process that
-  is still in the slice in which it began to wait cannot get a message then (its
+  critical section that delivers it, waking a worker as above. A process that is
+  still in the slice in which it began to wait cannot get a message then (its
   senders wait for the slice to end), so the delivery always finds it parked.
-- A worker that finds no runnable process sleeps until another worker, a send or
-  the timer thread queues one, or the program ends. Workers never read the clock
+  A posted message ([arrival buffers](#arrival-buffers)) is not lost either:
+  parking checks the arrivals under their lock, and a post that finds the
+  receiver parked wakes it under the executor mutex.
+- A worker that finds no runnable process sleeps until another worker, a send, a
+  spawn or the timer thread queues one, or the program ends; it looks at the
+  queues and sleeps under the run queues' lock, which every queueing takes. Workers never read the clock
   for timers; parking a process with a timeout earlier than every other wakes
   only the timer thread.
 - A message and an expiring timeout of one receive may race: whichever comes
@@ -121,6 +141,27 @@ process's scheduling state happens under the executor mutex:
   monitored, monitored processes ending as their watcher wakes, a program ending
   while processes spin, wait and flood each other, and a halt in another
   process.
+
+### CPU binding
+
+Workers are unbound by default: the OS places them on any CPU of the program's
+affinity mask, as OTP's default `+sbt u`. `--scheduler-cpus SET`
+([runtime options](executables.md#runtime-options)) binds worker N to the N-th
+CPU of the set, round-robin when there are more workers, like OTP's
+`+sbt`/`+sct`; the timer and I/O threads stay unbound.
+
+- `performance` is the fastest core class: Windows cores of the highest
+  `EfficiencyClass`, Linux `/sys/devices/cpu_core/cpus` (Intel hybrid) or the
+  CPUs of the largest `cpu_capacity`; on a CPU whose cores are alike, every CPU.
+  `all` is every CPU of the affinity mask. A list (`0-15`, `2,4,6`, CPUs up to
+  1023) must name only CPUs of the affinity mask:
+  `--scheduler-cpus: CPU N is not available to the program`, exit 70.
+- Windows numbers the CPUs of the process's processor group (at most 64);
+  `performance` reads group 0.
+- macOS has no thread affinity: the option is accepted, `performance` counts the
+  first performance level (`hw.perflevel0.logicalcpu`) for the default worker
+  count, and binding only raises each worker to the `USER_INTERACTIVE` QoS
+  class, which macOS serves on the P-cores first.
 
 ### Receive timeouts
 
@@ -186,7 +227,7 @@ process does not write one: its uncaught exception is the program's
 
 | `Dest` | Effect |
 | --- | --- |
-| A pid of a live process | `Msg` is copied flat into the receiver's heap ([copying between heaps](runtime-heap.md#copying-between-heaps)), as OTP copies messages, a large one into a block the receiver takes over ([message hand-off](runtime-heap.md#message-buffers)), and appended to its signal inbox |
+| A pid of a live process | `Msg` is copied flat into the receiver's heap ([copying between heaps](runtime-heap.md#copying-between-heaps)), as OTP copies messages, a large one into a block the receiver takes over ([message hand-off](runtime-heap.md#message-buffers)), and appended to its signal inbox; to a receiver running on another worker, into a buffer among its arrivals that it takes when it next looks ([arrival buffers](#arrival-buffers)) |
 | A pid of a process that has ended | Nothing; the send succeeds |
 | A [registered name](#registered-names) | As for its pid; `badarg` when no live process has the name |
 | `{Name, nonode@nohost}` of two atoms | As for the pid registered as `Name`; nothing when there is none |
@@ -200,11 +241,57 @@ process does not write one: its uncaught exception is the program's
   ([runtime heap](runtime-heap.md#roots-and-safe-points)).
 - The receiver's mailbox (`Mailbox`) keeps a signal inbox, where sends append,
   and a message queue that receive scans from a saved position: arrived messages
-  move behind the queue when a receive examines them.
+  move behind the queue when a receive examines them. Both lists reuse up to 64
+  spare nodes of the mailbox, so a send and receive of a message allocate no
+  node from the C++ heap.
 - When the receiver's heap refuses the copy (an optional cap such as
-  `--max-heap`, or the host out of memory), nothing is delivered and the sending
-  process fails as a runtime failure (exit 70), like any process that exceeds a
-  cap.
+  `--max-heap`, or the host out of memory), nothing is delivered and the
+  sending process fails as a runtime failure (exit 70), like any process that
+  exceeds a cap; a receiver that refuses a message from its arrivals fails
+  itself.
+
+### Arrival buffers
+
+A send to a process running on another worker takes no lock at all (process
+creation and teardown):
+
+- The runtime's process table (`ProcessTable`) is an open-addressed array of
+  atomic slots that a send on a worker reads without any lock: pid numbers are
+  never reused, so an erased slot stays a tombstone until an insert rebuilds
+  the array. Inserts and erases take a writer lock and also hold the executor
+  lock, under which lookups need nothing more.
+- Each process has its arrivals (`Arrivals`): a lock-free list senders push
+  messages onto, with a copy of the executor's running state of the process.
+  The sender looks up the receiver's arrivals and reads that state; a sender
+  whose last send to the same receiver found it not running skips the lookup.
+- The sender walks the message once, before any lock
+  ([single message walk](runtime-heap.md#message-buffers)). To a running
+  receiver, it copies the message right behind a list node, in one allocation
+  (a large message or one holding off-heap binaries into a `MessageBuffer`),
+  and pushes it; the receiver later copies those words into its heap and
+  relocates their pointers. Any other receiver gets the message under the
+  executor lock as before: copied into its heap, or pushed behind
+  its arrivals when it began a slice meanwhile or still has arrivals, so a
+  sender's messages never pass each other and the sender never copies a
+  backlog under the lock. Either answer of a race is correct.
+- The receiver takes its arrivals into its heap and signal inbox, oldest
+  first: 64 at a time when its receive has examined every message and would
+  wait, so a flood reaches the heap as fast as the receive consumes it (OTP
+  keeps such messages in heap fragments until they are needed); all of them
+  when it hibernates, and before anything else is delivered to it under the
+  executor lock (a message, `'EXIT'`, `'DOWN'`, port or alias message), so each
+  sender's messages keep their order relative to its other signals.
+  `process_info` takes them before it counts or lists messages. Timer messages
+  and other messages for a running process wait among the arrivals too.
+- A process parks under the executor lock only after a sequentially consistent
+  check that no arrival waits; a push that finds it parked takes the executor
+  lock and wakes it.
+- The arrivals of an ended process, and replaced table arrays, are freed only
+  once every worker has passed a slice boundary after they were retired, or
+  waits for work (quiescent reclamation): a worker records the reclamation
+  epoch at each slice boundary, and a send holds what it found only within its
+  slice.
+- A self-send goes straight into the sender's own signal inbox.
 
 ## Receive
 
@@ -228,13 +315,13 @@ mailbox:
 - `after T -> Body`: `T` is evaluated first, before the scan. When the receive
   would wait, `T` must be `infinity` or an integer in 0..4294967295
   (milliseconds), else `error:timeout_value`, after which the next receive scans
-  from the oldest message; a message that matches at once never
-  checks it, as in OTP. `after 0` runs `Body` as soon as every message has been
-  examined. A finite timeout starts when the receive first waits and is not
-  restarted by messages that match no clause; when it expires, `Body` runs from
-  the bindings before the receive and the next receive scans from the oldest
-  message. A message that arrives before the timeout expires is taken. A receive
-  with only `after` is a sleep (`timer:sleep/1`'s idiom).
+  from the oldest message; a message that matches at once never checks it, as in
+  OTP. `after 0` runs `Body` as soon as every message has been examined. A
+  finite timeout starts when the receive first waits and is not restarted by
+  messages that match no clause; when it expires, `Body` runs from the bindings
+  before the receive and the next receive scans from the oldest message. A
+  message that arrives before the timeout expires is taken. A receive with only
+  `after` is a sleep (`timer:sleep/1`'s idiom).
 - Generated code: a loop head peeks at the next unexamined message
   (`CLAUSE_receive_v1` `peek`, into a root slot), clause selection takes a
   matched message (`take`) before its body or skips an unmatched one (`skip`)
@@ -383,8 +470,8 @@ Sources: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
   `{min_bin_vheap_size, N}`, `{max_heap_size, S}`, `{message_queue_data, M}`,
   `{async_dist, B}`; `{min_heap_size, N}` sets the child's
   [minimum heap](runtime-heap.md#sizing-and-budget), the other tuning options
-  are checked and accepted, not applied. A
-  node other than `nonode@nohost` is `badarg`.
+  are checked and accepted, not applied. A node other than `nonode@nohost` is
+  `badarg`.
 - `spawn_request/1..5` spawns at once and sends `{Tag, ReqId, ok, Pid}`
   (`{Tag, ReqId, error, Reason}` on failure, `badopt` for an invalid option) as
   `{reply_tag, Tag}` and `{reply, yes | no | error_only | success_only}` ask;
@@ -410,8 +497,8 @@ monitors take no options.
 
 A Clause program is one node that is not distributed, `nonode@nohost`, and
 answers as such an OTP node (`builtins/erlang/node.cpp`): `nodes/0` is `[]`,
-`nodes(this | known)` `[nonode@nohost]`, other types `[]`; `nodes/2`
-gives `{nonode@nohost, #{connection_id => undefined, node_type =>
+`nodes(this | known)` `[nonode@nohost]`, other types `[]`; `nodes/2` gives
+`{nonode@nohost, #{connection_id => undefined, node_type =>
 this}}` for the keys asked. `is_alive/0` is `false`, `monitor_node/2,3` raise
 `error:notalive` and `disconnect_node/1` returns `ignored`.
 
@@ -458,11 +545,11 @@ talks to its connected process with messages.
 
 `erlang:suspend_process/1,2` and `erlang:resume_process/1` (`scheduler/suspension.cpp`): each suspend is one hold of the target in the
 executor, so a suspended process runs again only when every suspend of every
-suspender is resumed; messages and signals still reach it (an exit signal
-still ends it), and `process_info(Pid, status)` reports `suspended`. The end
-of a suspender resumes its suspends. A synchronous suspend of a process running
-on another worker waits for its time slice to end; `asynchronous` returns at
-once, `{asynchronous, Tag}` also sends the caller `{Tag, suspended}`, and
+suspender is resumed; messages and signals still reach it (an exit signal still
+ends it), and `process_info(Pid, status)` reports `suspended`. The end of a
+suspender resumes its suspends. A synchronous suspend of a process running on
+another worker waits for its time slice to end; `asynchronous` returns at once,
+`{asynchronous, Tag}` also sends the caller `{Tag, suspended}`, and
 `unless_suspending` answers `false` when the caller already suspends the
 process. Suspending or resuming the caller itself, a process that has ended, a
 non-pid or bad options are `badarg`, as is resuming a process the caller does

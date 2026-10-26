@@ -48,8 +48,9 @@ Follows OTP's
     L, column C)` when an earlier behaviour also requires it (an optional
     callback counts when exported);
   - `behaviour M undefined` when `M` is not in the batch or has no
-    `behaviour_info/1` (OTP behaviours such as `gen_server` are not in the
-    Clause [library](library.md)), plus OTP's module-name errors for names that
+    `behaviour_info/1` (an OTP behaviour the Clause [library](library.md) does
+    not provide yet, such as `application`), plus OTP's module-name errors for
+    names that
     cannot be modules (`the module name must not be empty`,
     `... must be an atom`, ...).
 - Warnings do not fail compilation. `-compile` options `nowarn_behaviours` (the
@@ -174,11 +175,11 @@ context. Analysis is deterministic.
 
 Walks are iterative with a module budget of 1,000,000 work units, or 32 per
 expression when that is more (generated parsers such as OTP's `erl_parse` need
-about 10 per expression). Service resolution
-has a budget of the same size; it scans the module's `-compile` and `-import`
-forms for a name's auto-import state once per name, not once per call (each of
-`erl_parse`'s thousands of clauses calls `hd/1`). Exhaustion or any semantic
-error clears the module's binding and normalization tables.
+about 10 per expression). Service resolution has a budget of the same size; it
+scans the module's `-compile` and `-import` forms for a name's auto-import state
+once per name, not once per call (each of `erl_parse`'s thousands of clauses
+calls `hd/1`). Exhaustion or any semantic error clears the module's binding and
+normalization tables.
 
 ## Types and specifications
 
@@ -216,9 +217,28 @@ Inference is separate from declared types and never trusts specs.
   nor named by a fun) takes the join of its call sites' argument facts as inputs
   (`semantic/types/inference_inputs`), matched by each clause's head patterns;
   recursive calls count too. Inputs start at `none()` (a function nothing calls
-  never runs and infers `none()`) and grow over passes of the batch: 8 passes
-  join, later ones widen like recursive results; inputs that have not settled
-  after 16 passes become `term()` (reported as widened).
+  never runs and infers `none()`) and grow over passes of the batch. Each input
+  climbs a ladder by how often it changed: its first 4 changes join, the next 2
+  widen like recursive results, the next 2 also cut containers inside a
+  container to `term()`, and a further change gives `term()` (reported as
+  widened). Inputs that have not settled after 63 passes become `term()`
+  (reported as widened). A recursive component is costly once one solve spends
+  more than 2^17 lattice joins (nested ones counted) and more than 1/16 of the
+  most joins one pass spent so far; when its members' inputs change again, they
+  become `term()` at once (reported as widened), so its later solves no longer
+  follow its callers' input churn.
+- Passes after the first walk only the components something they read changed
+  for (`semantic/types/inference_incremental`): a component keeps its summaries
+  and expression facts while its members' inputs, every summary it read (calls,
+  `fun F/A`, `apply`) and the inputs of callees it evaluated again are
+  unchanged, and the pass and re-analysis budgets would answer it the same way
+  (the re-analysis budget is as spent as at its last walk's start, or would
+  grant or refuse everything again); its work still counts toward the pass
+  budget. The results equal walking every
+  component. The final pass with `term()` inputs walks all of them. After a
+  pass, only the inputs of functions walked in it or called by a function walked
+  in it are joined again from their calls; the others' argument facts and inputs
+  are as at the last join.
 - Literals have exact facts: integers of any size and characters are singletons,
   atoms singleton atoms, floats `float()`, strings nonempty lists of their
   characters (`[]` for `""`), and `-`/`+` of a literal number keep its fact.
@@ -257,9 +277,9 @@ Inference is separate from declared types and never trusts specs.
   always raises infers `none()`.
 - Identity/projection functions keep exact argument relations, propagated
   through nested local and remote calls with fresh variables per call.
-- Containers (`semantic/types/inference_containers`): a list `[E1, ..., En | T]`
-  joins its elements in front of the tail's fact (a proper list when the tail is
-  one, `nonempty_improper_list(H, T)` when it is no list,
+- Containers (`semantic/types/inference_containers`): a list
+  `[E1, ..., En | T]` joins its elements in front of the tail's fact (a proper
+  list when the tail is one, `nonempty_improper_list(H, T)` when it is no list,
   `nonempty_maybe_improper_list()` when it is unknown or may be improper: a cell
   is never empty, also in a pattern such as `[H | _]`); `++`, `--`, `hd/1`,
   `tl/1`, `element/2`, `setelement/3`, `tuple_to_list/1` and `map_get/2` read
@@ -330,22 +350,22 @@ Inference is separate from declared types and never trusts specs.
   join of its facts at the end of each clause that completes, so
   `case X of forever -> ...; N when is_integer(N), N >= 0 -> ... end` leaves `X`
   as `non_neg_integer() | forever`.
-- `try` and `maybe`: a `try` is the join of its `of` clauses' values
-  (its body's without `of`) and its catch clauses' values; the `after` body adds
-  nothing. `of` clauses start from the facts at the end of the body and match
-  its value like `case` clauses (an impossible clause adds nothing); catch
-  clauses and the `after` body start from the facts before the `try`, a class
-  pattern matching `error | exit | throw`. A `maybe` is the join of its body's
-  value, its `else` clauses' values and, without `else`, the values its `?=`
-  matches can fail on: the matched value's fact without the pattern's shape when
-  the pattern matches all of its shape (new variables used once, literal atoms
-  and integers, `[]`, tuples of them), else the whole fact. Each `?=` pattern
-  meets its value and publishes its variables for the rest of the body; a `?=`
-  that can never match stops the body. `else` clauses start from the facts
-  before the `maybe` and match the joined failing values like `case` clauses.
-  The facts after a `try` join those at the end of its body (without `of`) and
-  of each completing clause; after a `maybe`, those at the end of its body, of
-  each completing `else` clause and, without `else`, those before it.
+- `try` and `maybe`: a `try` is the join of its `of` clauses' values (its body's
+  without `of`) and its catch clauses' values; the `after` body adds nothing.
+  `of` clauses start from the facts at the end of the body and match its value
+  like `case` clauses (an impossible clause adds nothing); catch clauses and the
+  `after` body start from the facts before the `try`, a class pattern matching
+  `error | exit | throw`. A `maybe` is the join of its body's value, its `else`
+  clauses' values and, without `else`, the values its `?=` matches can fail on:
+  the matched value's fact without the pattern's shape when the pattern matches
+  all of its shape (new variables used once, literal atoms and integers, `[]`,
+  tuples of them), else the whole fact. Each `?=` pattern meets its value and
+  publishes its variables for the rest of the body; a `?=` that can never match
+  stops the body. `else` clauses start from the facts before the `maybe` and
+  match the joined failing values like `case` clauses. The facts after a `try`
+  join those at the end of its body (without `of`) and of each completing
+  clause; after a `maybe`, those at the end of its body, of each completing
+  `else` clause and, without `else`, those before it.
 - Uses (`semantic/types/inference_uses`): an operation that raises unless an
   operand has a type proves that type for the variable it read, after the
   operation returns: arithmetic and unary `-`/`+` a `number()`, `div`, `rem`,
@@ -421,8 +441,12 @@ Inference is separate from declared types and never trusts specs.
   selected function types' result.
 - A `receive` is the join of its clauses and its `after` body, which a timeout
   of `infinity` never runs.
-- A recursive component starts every member's result at `none()` and re-infers
-  all members until no result changes; each round joins the new result with the
+- A recursive component starts every member's result at `none()` in its first
+  solve, and in later passes from the summaries its last solve ended with:
+  there the first walk of each member replaces its summary with what the walk
+  found (the earlier summary only serves as the assumption of calls before
+  that), so stale function types never stay. It re-infers members until no
+  result changes; each round joins the new result with the
   previous one (widens it after the first 8 rounds,
   [inference domain](#inference-domain)), and a pending recursive call adds
   nothing to a join. A function that can never return stays `none()`. A
@@ -444,7 +468,12 @@ Inference is separate from declared types and never trusts specs.
 - A round walks only members that read a summary changed since their last walk:
   each walk notes the summaries it reads (calls, call results, `fun F/A`), a
   changed summary marks its readers, and a member not marked keeps its
-  expression facts. The first round walks every member.
+  expression facts. The first round walks every member. A member keeps its
+  last walk across solves: a solve takes that walk's result again, with its
+  expression facts and work, while the members it read have the same results
+  and function types, and everything else it read is unchanged and would be
+  answered alike, as for a kept component in incremental passes. The results
+  equal walking it.
 - A shared work budget bounds inference; exhaustion loses precision and falls
   back to generic code, never rejects a program.
 - Specifications that contradict inference are diagnosed
@@ -550,7 +579,7 @@ their built-in names.
 | Nothing | `none()` | Identity | A function that never returns stays `none()` |
 | Anything | `term()` | Absorbs every fact | `dynamic()` and `any()` are `term()` |
 | Integers | `42`, `1 \| 3 \| 7` | Union of singletons | More than 8 singletons become their range |
-| Integer range | `1..10`, `0..255` | Smallest range holding both | A bound that moved between rounds goes to the next threshold: a lower one to 1, then 0, then unbounded; an upper one to -1, then unbounded |
+| Integer range | `1..10`, `0..255` | Smallest range holding both | A bound that moved between rounds goes to the next threshold: a lower one to 1, then 0, then unbounded; an upper one to -1, then unbounded. Bounds inside containers widen too, where the previous fact has a tuple (of that size and tag), map (of those keys) or list in the same place |
 | Unbounded integers | `pos_integer()` (1 and up), `non_neg_integer()` (0 and up), `neg_integer()` (-1 and down), `integer()` | Smallest interval holding both, printed by its category | — |
 | Floats | `float()` | — | — |
 | Numbers | `number()` | A range or category of integers joined with `float()` | Singleton integers with `float()` stay `1 \| float()` |
@@ -575,10 +604,14 @@ their built-in names.
 - Narrowing (`Lattice::meet`) is the meet of facts, the values both hold (or
   more, but `none()` only when they share none). An empty meet means the path
   cannot run.
+- Facts are nodes of a graph that never change, so the graph keeps the answer
+  of every join of two facts, meet and inclusion test (`within`) for the rest
+  of the batch: nearly all of them repeat. A kept answer still counts the
+  joins it ran for [cost-aware give-up](#inference), so results do not depend
+  on it; one computed while the node budget widened a fact is not kept.
 
 At `-O2` with type specialization, lowering uses these facts to remove checks
-([specialization](specialization.md#proofs)); specifications never become
-facts.
+([specialization](specialization.md#proofs)); specifications never become facts.
 
 ### Inference cache
 
@@ -697,9 +730,17 @@ sum() -> 1 + 2.
   `-spec` must resolve and whose body produces such a value; `clauses.erl`
   function types, call selection and evaluation per call within and past their
   budgets; `dependent.erl` [dependent facts](#dependent-facts); `trees.erl` and
-  `parsers.erl` recursions over trees and generated-parser shapes.
+  `parsers.erl` recursions over trees and generated-parser shapes;
+  `widening.erl` counters inside containers that widen and settle.
 - `tests/fixtures/inference/contracts/` holds the specification checks (CTest
   `inference_contracts`).
+- `tests/fixtures/inference/budgets/walkers.erl` is a compiler pass in
+  Erlang's usual shape (a large state record threaded through mutually
+  recursive walkers whose results are unions of many records). CTest
+  `inference_walkers` (`tests/compiler/inference/walkers.py`) keeps its
+  passes, work steps, lattice joins and the walker group's solves, rounds and
+  member walks within budgets about a quarter above today's counts, and runs
+  the program.
 
 ### Printing types
 

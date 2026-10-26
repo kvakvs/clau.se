@@ -15,7 +15,7 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3`, the order `maps` funs run in (`intersect_with/3`, `merge_with/3`, ...), `proplists:get_keys/1`, `sets` of version 2 (`to_list/1`, `fold/3`) | Internal order (atom-table order for atom keys, hash order above 32 keys); an iterator is a position or a `{K, V, Next}` chain | Canonical key order; an iterator continues over a key list | [builtins](builtins.md#erts-internal) |
 | Map printing (`erlang:display/1`, `~w`, `~p`) | Internal layout order (atom-table order for atom keys, hash order above 32 keys) | Map-key order, as OTP's `~kw` | [terms](terms.md#printing) |
 | Order of `digraph:vertices/1`, `edges/1`, `source_vertices/1`, `sink_vertices/1` and of `digraph_utils`' orderings and components where they start from those lists | The vertex and edge tables' hash order | Clause's hash order ([ETS](#ets)); paths and neighbour lists follow edge insertion in both | [builtins](builtins.md#digraph) |
-| Order of `maps:keys/1`, `values/1`, `to_list/1`, `fold/3`, of the members `json:encode/1` writes, and of `graph`'s vertex lists and traversals | The map's internal order (atom-table order for atom keys, hash order above 32 keys) | Key order | [library](library.md) |
+| Order of `maps:keys/1`, `values/1`, `to_list/1`, `fold/3`, of the members `json:encode/1` writes, of the fields `erl_parse:abstract/1,2` gives a map, and of `graph`'s vertex lists and traversals | The map's internal order (atom-table order for atom keys, hash order above 32 keys) | Key order | [library](library.md) |
 | Native record printing (`erlang:display/1`) | Fields in atom-table index order | Definition order, as `~w` | [native records](native-records.md#printing-and-order) |
 | `==` between native records whose fields differ only as integer/float | The compiler may fold it to `=:=` (false) | Numeric comparison (true) | [native records](native-records.md#printing-and-order) |
 | External native record construction of a module that is not loaded | Fails until the defining module is loaded | Every batch module is loaded at startup; a module outside the batch always fails | [native records](native-records.md#differences-kept) |
@@ -29,6 +29,7 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 
 | Difference | OTP | Clause | Owner |
 | --- | --- | --- | --- |
+| `timer` one-shot and interval timers other than sends to local pids | Run by the `timer_server` process, started under `kernel_sup` on first use; `exit_after/2,3` signals come from it | No timer server: each timer is a process of its own, which sends `exit_after`'s signal; `cancel/1` returns before that process has seen the cancellation | [builtins](builtins.md#timer) |
 | Pid numbers | The first user process is about `<0.80.0>`; numbers are reused after the pid table wraps | The first process is `<0.1.0>`; numbers come from one sequence and are never reused | [terms](terms.md#pids-and-references) |
 | Code after `spawn(Fun)` of a fun of another arity | The compiler's type analysis may treat the code after the call as unreachable and drop it, so the caller returns the pid at once | The caller goes on; only the new process fails with `{badarity, {Fun, []}}` | [processes](processes.md#builtins) |
 | Stack of a `function_clause` raised by a `lists` builtin (`lists:sublist/2`, `lists:max/1`, ...) | The top frame is the Erlang function, often an internal helper (`lists:sublist_2/2`), with its arguments | The caller is on top: builtins push no frame | [builtins](builtins.md#lists-module) |
@@ -36,6 +37,7 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `binary:compile_pattern/1` result | `{bm, Ref}` or `{ac, Ref}` with an opaque reference | `{bm, [Pattern]}` or `{ac, Patterns}` | [builtins](builtins.md#binary-module) |
 | `binary:referenced_byte_size/1` of a sub-binary | The size of the binary it refers into | Its own size | [builtins](builtins.md#binary-module) |
 | Memory of replaced or erased persistent terms | Reclaimed by a literal-area collector process that has every process copy the value out, in the background | Each process copies it out at its next slice (parked ones at once, by the `put`/`erase`), then the area is freed; no collector process | [runtime](runtime.md#persistent-terms) |
+| Persistent terms sent in messages | Stay shared, like literals: the receiver's heap does not grow | Copied into the receiver's heap like any other term | [runtime](runtime.md#persistent-terms) |
 | `persistent_term:info/0` and `get/0` | Include the terms OTP's `kernel` and `stdlib` store at boot (26 on OTP 29) | Only the program's own terms | [builtins](builtins.md#persistent-terms) |
 | `code:is_loaded/1`, `code:which/1`, `code:all_loaded/0` of a compiled module | The `.beam` file it was loaded from | `preloaded`: every module is linked into the executable | [builtins](builtins.md#code-module) |
 | `priority` option of `send/3`, `link/2`, `exit/3`, `exit_signal/3` | Priority messages and signals overtake ordinary ones | Accepted; delivered as ordinary messages and signals | [processes](processes.md#builtins) |
@@ -58,14 +60,18 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `erl_prim_loader:get_path/0` | The boot code path | `["."]` until `set_path/1` | [ports](ports.md#standard-io-and-files) |
 | `file:read_link_info/1,2` of a symbolic link on Windows | The link's own reparse-point data | The target's size and times with type `symlink` | [ports](ports.md#standard-io-and-files) |
 | `inet:gethostbyname/1,2` | The resolver's canonical name and aliases (`inet_res`, hosts file, native) | The name asked and no aliases; addresses from the system resolver | [ports](ports.md#sockets) |
-| `socket`, `net` modules | The socket NIF API | Missing: a reference is a compile-time error; use `gen_tcp`, `gen_udp`, `inet` | [library](library.md) |
+| `socket` module | The socket NIF API | Missing: a reference is a compile-time error; use `gen_tcp`, `gen_udp`, `inet` | [library](library.md) |
+| `net:getifaddrs/1,2` with a namespace, `inet:getifaddrs([{netns, _}])` | `net` calls itself without end (OTP 29); `inet` reads the namespace on Linux | `{error, enotsup}` | [builtins](builtins.md#network-names) |
 | `zlib` output lists | One binary per internal chunk, nested where a stream ended and restarted | One binary per call, `[]` when there is none; the bytes are OTP's | [builtins](builtins.md#zlib-module) |
 | `zlib:safeInflate/2` and long `zlib` calls | Return after a bounded amount of output (`{continue, Output}`) and yield | Inflate all queued input in one call (`{finished, Output}`); a long call holds its scheduler thread | [builtins](builtins.md#zlib-module) |
 | Long `re` matches | `re:run/3` and the global loop yield after a bounded amount of work | One match runs to its end and holds its scheduler thread; a global run yields between matches only | [builtins](builtins.md#re-module) |
 | `re:compile/2` with `export`, `re:import/1` | An exported pattern `{re_exported_pattern, ...}` that another node imports | `export` is `badarg`; `import/1` raises `{not_implemented, import, 1}` | [builtins](builtins.md#re-module) |
 | `re` argument errors | `badarg` raised from `re:run/3` (or `replace`, `split`) with the caller's arguments and `error_info` | `badarg` raised from the `re` helper that rejected the argument, with that helper's arguments | [builtins](builtins.md#re-module) |
-| `code:is_sticky/1` | `true` for modules of `kernel`, `stdlib` and `compiler` | Always `false` | [builtins](builtins.md#code-module) |
-| Output to a file device (`io:format(File, ...)`) | Characters are encoded as the file's encoding (`latin1` by default: characters above 255 are an error) | Always UTF-8 bytes | [io](io.md#calls) |
+| `code:is_sticky/1` | `true` for modules of `kernel`, `stdlib` and `compiler`, and for the modules of directories `code:stick_dir/1` named | Always `false`; `stick_dir/1` only checks that the directory can be listed | [builtins](builtins.md#code-module) |
+| `code:root_dir/0` and the initial code path | OTP's installation directory; the path holds its `lib/*/ebin` directories | The executable's directory; the path holds the `ebin` directories of `lib/` beside it and of `ERL_LIBS`, then `"."` | [builtins](builtins.md#code-module) |
+| `code:load_file/1`, `load_abs/1`, `load_binary/3`, `atomic_load/1`, `prepare_loading/1` with valid object code | Load the module | `{error, badfile}`: every module is linked into the executable (D01) | [builtins](builtins.md#code-module) |
+| `code:coverage_support/0` and the coverage functions | `true` with the JIT; coverage modes and counters | `false`; the others raise `badarg`, as OTP does without coverage support | [builtins](builtins.md#code-module) |
+| `code:get_doc/1` of a module the program has | Its EEP 48 documentation chunk | `{error, missing}`: executables embed no documentation | [builtins](builtins.md#code-module) |
 | Formatting a large term (`io:format/1,2`) | Runs in Erlang code (`io_lib`) and the group leader, so the process can be preempted while formatting | Runs to completion in one builtin call; other processes wait | [builtins](builtins.md#portions) |
 | `process_flag/2` flags | `trap_exit`, `priority`, `message_queue_data`, `min_heap_size` and others | Only `trap_exit` and `min_heap_size`; every other flag raises `badarg` | [processes](processes.md#builtins) |
 | Error report order of processes crashing at the same time | Logger order | The order their workers finish them | [processes](processes.md#workers) |
@@ -78,7 +84,8 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `process_info/2` items `current_function`, `initial_call`, `current_stacktrace`, ... | Reported | `error:{notsup, Item}`; `process_info/1` omits them | [processes](processes.md#introspection) |
 | `process_info/2` `reductions`; `statistics/1` `reductions`, `garbage_collection`, `io` | Counted | 0 (not kept) | [builtins](builtins.md#system-information) |
 | `garbage_collect/0,1,2` | Collects before returning | Collects at the target's next safepoint | [processes](processes.md#introspection) |
-| `erlang:system_info(machine)` | `"BEAM"` | `"Clause"` | [builtins](builtins.md#system-information) |
+| `erlang:system_info(machine)`, and so `epp`'s `?MACHINE` and the macro it names | `"BEAM"`, `'BEAM'` | `"Clause"`, `'Clause'` | [builtins](builtins.md#system-information) |
+| `erlang:system_info(schedulers)` of a program started with an affinity mask (`start /affinity`, `taskset`) | One scheduler per logical processor of the host (32 under a 7-CPU mask), `schedulers_online` one per CPU of the mask | Both one per CPU of the mask: Clause starts only the online workers | [processes](processes.md#workers) |
 | `spawn_opt/2..5` tuning options (`priority`, `min_heap_size`, ...) | Applied | Checked and accepted, not applied | [processes](processes.md#spawn-options) |
 | `hibernate/3` | Discards the stack; the process ends when `M:F` returns | Keeps the stack; `M:F`'s result returns to the caller of `hibernate/3` | [processes](processes.md#spawn-options) |
 | `monitor(port, Item, Options)` with options | Accepted | `badarg` | [processes](processes.md#aliases) |
@@ -96,13 +103,33 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `list_to_port/1` of a number never issued | Returns a port term | `badarg`: only ports this program opened are admitted | [ports](ports.md#identity) |
 | `port_info/1,2` values | `id` is a table index; `memory`, `queue_size`, `locking` describe the driver | `id` is the port number; `memory` and `queue_size` are 0; `locking` is `port_level` | [ports](ports.md#builtins-and-port-messages) |
 | Writing a file opened only for reading | `{error, eacces}` on Windows, `{error, ebadf}` elsewhere | `{error, ebadf}` everywhere | [ports](ports.md#standard-io-and-files) |
-| `io:get_line`, `io:get_chars` and `file:read/2` in list mode on non-ASCII input | Characters decoded per the device encoding | One list element per byte | [ports](ports.md#standard-io-and-files) |
-| `os:cmd/1` result | Unicode characters decoded from the output | The output's bytes | [ports](ports.md#subprocesses) |
+| `win32reg`'s port | The linked-in `registry__drv__` port (`{spawn, "registry__drv__ rw"}`), answering commands with port messages | The `clause_registry` driver (`{spawn_driver, ...}`), answering the same replies through `port_control/3`; `port_info/2` names it `clause_registry` | [ports](ports.md#the-registry) |
+| `argparse`'s program name without the `progname` option | The emulator's `progname` (`erl`) | The executable's name without its extension (`init` has no `progname`) | [library](library.md) |
+| Top stack frame of an `argparse` command validation error | The validating function (`argparse:validate_command/2`, `validate_option/2`, a fun inside them) with `[Entity]` | `argparse:validate/2` with `[Entity]` | [builtins](builtins.md#argparse) |
+| `escript:script_name/0` | The escript's path, the first plain argument | The executable's path: a Clause program is its own script | [library](library.md) |
+| `escript:extract/2` with `compile_source` | The source compiled to a beam | `{error, {compile, ...}}`: Clause programs have no compiler | [library](library.md) |
+| `erl_abstract_code:debug_info(core_v1, ...)` (beam_lib's Core Erlang) | Core Erlang from the compiler | `{error, failed_conversion}`: Clause programs have no compiler | [library](library.md) |
+| `zstd:get_frame_header/1` of a truncated frame header | The fields of uninitialized memory | The fields zero (`'ZSTD_frame'`, sizes 0) | [builtins](builtins.md#zstd-module) |
+| `file:open/2` with `raw` or `ram` | A `#file_descriptor{}` record served in the caller (`is_pid/1` false); `io` requests on it fail; a `ram` file has no `read_line/1` (`undef`) and a closed one answers `{error, einval}` | A file server pid like other files; positioned I/O and `sendfile/5` answer as for OTP's raw files; a `ram` file answers `read_line/1` and I/O requests with `{error, enotsup}`, and `{error, terminated}` once closed | [ports](ports.md#standard-io-and-files) |
+| `file:truncate/1` on a file opened only for reading | The platform's error (`eacces` on Windows, `einval` elsewhere) | The C runtime's error for the descriptor (`ebadf` or `einval`); the server stops as OTP's | [ports](ports.md#standard-io-and-files) |
+| Files opened or set to `{utf16, _}` or `{utf32, _}` | Lines and characters decoded in the encoding | Lines end at a byte 10 before they are decoded | [ports](ports.md#standard-io-and-files) |
+| `io_ansi` sequences on Linux and macOS | From the terminfo database of `TERM` where it has the capability (`setaf`, `sgr0`, ...); `tput/1,2`, `tigetnum/1`, `tigetflag/1`, `tinfo/0` read it | The built-in ANSI sequences OTP uses without terminfo (as OTP on Windows); `tigetnum/1`, `tigetflag/1`, `tinfo/0` answer `{error, enotsup}`, `tput/1,2` raise `{enotsup, Capability}`; `enabled/0,1` wants a `TERM` other than `dumb` | [library](library.md#contents) |
+| `io_ansi:scan/1` and `tput/1,2` on Windows | Fail with `try_clause` on terminfo's `{error, enotsup}` | `scan/1` matches the built-in sequences; `tput/1,2` raise `{enotsup, Capability}` | [library](library.md#contents) |
+| `socket` on Windows: `recvmsg`, `sendmsg`, `sendfile`, `sendmmsg`, `recvmmsg` | Raise `notsup` | Work as on Linux and macOS | [library](library.md#contents) |
+| `socket` on Windows: a datagram longer than `recv`'s length | `{error, {completion_status, ...more_data...}}` | The datagram truncated, as elsewhere | [library](library.md#contents) |
+| `socket` on Linux and macOS: `ioctl/2,3,4`, `getopt_native/3`, `setopt_native/3`, `open/1,2` of a descriptor, `local` domain, SCTP | Supported | Refused as OTP on Windows refuses them (`{error, {invalid, ...}}`, `notsup`); `local` is `{error, eafnosupport}` | [library](library.md#contents) |
+| `socket:info/1`, `i/0,1,2` | The NIF's counters and states, `fd` the descriptor | Counters of the calls made, states as the module tracks them; `Fd` is the port number | [library](library.md#contents) |
+| `inet_res` answers | `gethostbyname`, `getbyname` and `gethostbyaddr` answers are cached by TTL in `inet_db`; a cached lookup can list addresses in another order | Nothing is cached: every lookup asks the name servers | [library](library.md#contents) |
+| Resolver configuration on Linux and macOS | `inet_db` also reads `host.conf`/`nsswitch.conf` and `inetrc` files, follows changes to `resolv.conf`, and on Linux derives the domain from the host name | `resolv.conf`'s `nameserver`, `domain` and `search` lines and the hosts file, read once | [library](library.md#contents) |
+| `os:set_signal(Signal, handle)` (Linux, macOS) | The signal is sent to `erl_signal_server`, whose default handler stops the system on `sigterm`, halts on `sigusr1` and `sigquit` | No `erl_signal_server`: `sigterm` and `sigquit` exit with status 0, `sigusr1` with status 1, others are dropped; without `set_signal`, `SIGTERM` keeps the system's default action | [ports](ports.md#subprocesses) |
 | Empty arguments of `{spawn_executable, F}` on Windows | Dropped from the command line | Passed as `""` | [ports](ports.md#subprocesses) |
 | `{exit_status, S}` and `eof` of a spawned program | Unspecified order, `exit_status` may arrive before the last data | After all data, before `eof` | [ports](ports.md#subprocesses) |
 | Busy ports | A port with too much queued output suspends senders, socket ports included; `port_command/3` `force` works on drivers that allow it | Only ports of spawned programs become busy; `fd` and socket ports never do; `force` raises `notsup` on every driver | [ports](ports.md#busy-ports) |
 | `{active, N}` of sockets | An integer `N` counts messages before `{tcp_passive, S}` | `exit(badarg)`; only `true`, `false` and `once` | [ports](ports.md#sockets) |
-| Socket tuning options (`nodelay`, `keepalive`, `send_timeout`, `delay_send`, buffers) | Applied; other `inet` options (`header`, `{packet, line}`, `http`, ...) work | The listed tuning options are accepted and not applied; other options are `exit(badarg)` | [ports](ports.md#sockets) |
+| Socket options of `inet_drv` itself (`header`, `deliver`, `exit_on_close`, `send_timeout`, `send_timeout_close`, `delay_send`, watermarks, `packet_size`, `show_econnreset`, `buffer`, `read_packets`, `recvtos`, `recvttl`, `line_delimiter`) | Applied | Kept and reported by `getopts/2` with OTP's defaults, not applied; the system's options (`nodelay`, `keepalive`, `linger`, buffers, `tos`, multicast, ...) are applied | [ports](ports.md#sockets) |
+| Other socket options (`{packet, line \| http \| ...}`, `{raw, ...}`, `bind_to_device`, `netns`) | Work | `exit(badarg)` when opening, `{error, einval}` from `setopts/2` and `getopts/2` | [ports](ports.md#sockets) |
+| `inet:getopts(S, [multicast_if])` on Windows | Reads uninitialized memory for a TCP socket, and the any address after a UDP socket set one | The system's value; the any address when the socket has none | [ports](ports.md#sockets) |
+| `port_info(Socket, input \| output)`, `inet:info/1`'s `input` and `output` | The bytes of the driver commands and replies | 0: socket traffic is counted by `inet:getstat/1,2` only | [ports](ports.md#sockets) |
 | Socket error reasons | Every POSIX reason the system reports | The common ones (`econnrefused`, `eaddrinuse`, `econnreset`, `etimedout`, ...); others are `eio` | [ports](ports.md#sockets) |
 | Port input while the connected process holds 1,024 messages and can run | Keeps reading and delivering | Stops delivering until the process's time slice ends; past 64 KiB held, stops reading, so the writing program blocks | [ports](ports.md#busy-ports) |
 | `gen_tcp:close/1` with queued output | Waits up to the `linger`/`send_timeout` setting for the output to leave | Returns at once; the I/O thread sends the queued output, then closes | [ports](ports.md#sockets) |
@@ -114,17 +141,18 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 
 | Difference | OTP | Clause | Owner |
 | --- | --- | --- | --- |
-| Stack trace locations | `[{file, F}, {line, L}]`, `error_info` for `error/3` | Always `[]`; no `error_info` | [ABI](abi.md#stack-traces) |
+| Stack trace locations | `[{file, F}, {line, L}]`, `error_info` for `error/3` | Always `[]`; no `error_info`, so `erl_error:format_exception/3,4` shows no locations or `*** argument` lines for them | [ABI](abi.md#stack-traces) |
 | `erlang:raise/3` with `{Fun, Args}` stack entries | Accepted | Rejected | [ABI](abi.md#stack-traces) |
 | `function_clause` top frame | Argument list | Arity | [ABI](abi.md#stack-traces) |
-| `undef` top frame | `{M, F, Args, []}` of the missing function | The calling function's frame | [funs](funs.md#dynamic-calls) |
+| `undef` top frame of a `M:F(A1, ..., An)` call | `{M, F, [A1, ..., An], []}` | `{M, F, N, []}`: the arity in place of the arguments (`apply/3` and fun calls show the arguments) | [funs](funs.md#dynamic-calls) |
 | Dynamic call of an export an executable cannot reach (its module named only through a stack trace, an exception or a message from outside the program) | Calls it | `undef`, unless built with `--keep-exports`; `function_exported/3` and `module_info(exports)` still list it | [executables](executables.md#export-liveness) |
 | Failing BIF/operator frames | Present (`{erlang, '+', Args, ...}`) | Absent; nothing below the entry function | [ABI](abi.md#stack-traces) |
 | Atom table full (`list_to_atom/1`) | The emulator aborts (`no more index entries in atom_tab`) and writes a crash dump | `clau: runtime failure: entry call failed: resource_limit`, exit 70 | [builtins](builtins.md#how-calls-reach-them) |
 | `list_to_integer/1,2` with characters above 255 | Its first digits use only each character's low byte (`[16#131]` is 1) | `badarg` | [builtins](builtins.md#how-calls-reach-them) |
 | `erlang:function_exported/3` of a BIF | True for every BIF of the emulator | True only for the builtins this runtime provides | [builtins](builtins.md#how-calls-reach-them) |
-| Error reports of crashed processes | Sent to the logger, written later by its default handler (on standard output under `erl`, often lost when an escript halts first) | Written on stderr when the process ends, before any later output | [processes](processes.md#exits) |
+| Error reports of crashed processes | Sent to the logger, written later by its default handler (on standard output under `erl`, often lost when an escript halts first) | Written on stderr when the process ends, before any later output; not a `logger` event, so handlers and filters do not see it | [processes](processes.md#exits) |
 | Calls to functions that never return | Compiled as tail calls (caller missing from the trace) | Ordinary calls (caller present) | [ABI](abi.md#stack-traces) |
+| Exceptions inside a known anonymous fun at `-O2` (`F = fun ... end, F(X)`, `lists:map(fun ... end, L)` and the other list loops, `maps:fold(fun ... end, A, M)`) | Frames of the fun (`-f/1-fun-0-`) and of the `lists` and `maps` helpers (`lists:map_1/2`) | The fun's body runs inlined in the caller: those frames are missing, and an improper list tail of `map/2`, `foldl/3`, `all/2`, `any/2`, `flatmap/2` raises `function_clause` with the caller on top | [funs](funs.md#inlined-funs) |
 | Host memory exhausted | The emulator reports that it cannot allocate memory, writes a crash dump and stops | `clau: runtime failure: entry call failed: out_of_memory`, exit 70, no dump | [runtime heap](runtime-heap.md#failure-behavior) |
 | Storage of maps above 32 keys | An on-heap HAMT of 16-way hashed nodes | An on-heap B+ tree of up to 16 entries per node in key order; heap sizes of large maps differ from OTP's | [runtime heap](runtime-heap.md#map-trees) |
 | Process memory cap | `max_heap_size` (in words, heap and stack) kills the process with reason `killed` and logs an error report | `--max-heap` / `--max-stack` (bytes) and the runtime-wide `--max-memory` fail the requesting process as `resource_limit`: `clau: runtime failure: entry call failed: resource_limit`, exit 70 | [runtime heap](runtime-heap.md#runtime-memory-limit) |
@@ -132,7 +160,22 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | Uncaught exception in an ordinary entry module | `escript` exits 127 | Exits 1 with one `uncaught exception <class>: <reason>` line (escript sources keep 127) | [executables](executables.md) |
 | Compiler diagnostics | `erl_lint` wording (`variable 'X' is unbound`) and warnings | Own wording (`unbound variable X`); OTP lint warnings are mostly not emitted (also native record warnings: unknown fields in access, update and patterns, own-module qualified construction without values, unused or header-defined records; a later pattern matching a name exported from a branch) | [semantic](semantic.md#bindings) |
 | Behaviour module with a hand-written `behaviour_info/1` | Calls it while compiling users and warns about missing, ill-defined or deprecated callbacks | Not evaluated: its users' callbacks are not checked | [semantic](semantic.md#behaviours) |
-| Behaviour modules outside the batch (`gen_server`, `supervisor`, ...) | Loaded from the code path; their callbacks are checked | `behaviour M undefined` warning | [semantic](semantic.md#behaviours) |
+| Behaviour modules neither in the batch nor in the Clause library (`application`, ...) | Loaded from the code path; their callbacks are checked | `behaviour M undefined` warning | [semantic](semantic.md#behaviours) |
+| Default `logger` handler | `logger_std_h` writing asynchronously with overload protection (sync, drop and flush modes, burst limits, overload kill) | Also on `standard_io` (`standard_error` with `CLAUSE_LOGGER_TYPE=standard_error`), but each event is written before the logging call returns; the overload options are checked and kept without an effect | [library](library.md) |
+| Handler processes of `logger_std_h` | Supervised by `logger_sup`, restarted after `overload_kill_restart_after` | Linked to the `logger` server; a handler whose process dies is removed | [library](library.md) |
+| `net_adm:names/0,1` | Asks epmd: `{ok, Names}` when an epmd runs on the host | `{error, address}`: Clause has no epmd client | [library](library.md) |
+| `net_kernel:start/1,2` | Starts distribution, or OTP's error when it cannot | Not available (`not_implemented`) | [library](library.md) |
+| Tracing: `erlang:trace/3`, `trace_pattern/2,3`, `trace_info/2`, `trace_delivered/1`, `system_monitor/0,1,2`, `system_profile/0,2`, `seq_trace/2`, `seq_trace_info/1`, `seq_trace_print/1,2`, `dt_*`, the `trace` module, `erl_tracer:enabled/3`, `trace/5` | Trace | `error:notsup` | [builtins](builtins.md#erlang-module) |
+| `seq_trace` tokens | Passed on with messages; serial numbers count them; a system tracer receives trace messages | Kept per process only: not passed on, serials stay as set, no trace messages | [library](library.md) |
+| `pg` scopes and `global` | Replicate between connected nodes; `pg` monitors nodes through `net_kernel` | One node, no peers or node monitoring | [library](library.md) |
+| Application resources | `.app` files found on the code path when loaded; `sys.config`, `-config` and `-App Key Value` arguments set environments | Compiled into the executable from the build's resource files; changing them needs a rebuild; no configuration files or arguments | [library](library.md#applications) |
+| `kernel` and `stdlib` applications | Started by boot; `kernel` has a master and a top supervisor | Loaded and running without masters: `get_supervisor(kernel)` is `undefined`, `info/0` lists them as running `undefined` | [library](library.md#applications) |
+| `application:ensure_all_started/3` with `concurrent` | Starts independent applications at once; the list follows completion order | Starts them one after another, dependencies first | [library](library.md#applications) |
+| `application:takeover/2` | Waits for the distributed application controller | Exits `noproc` (no `dist_ac`), as `load/2` with nodes does on both | [library](library.md#applications) |
+| I/O requests to an application master | Relayed to the group leader the application started under | Answered on standard I/O | [library](library.md#applications) |
+| `erlang:process_flag(error_handler, Module)` | The runtime calls `Module:undefined_function/3` and `undefined_lambda/3` for undefined calls | `badarg`; `process_info/2` always reports `error_handler`, and undefined calls raise `undef` directly ([`error_handler`](library.md) is only callable) | [library](library.md) |
+| Crash report details (`proc_lib`) | `erl_error`'s exception text with extended error information; neighbours with `current_function`, `initial_call` and `current_stacktrace`; real `reductions` | The exception's class line and stack frames without extended error information; neighbours without those items; `reductions` 0 | [library](library.md) |
+| `client_info` of `gen_server`, `gen_statem` and `gen_fsm` error reports | The calling process's `current_stacktrace` | `[]`: Clause keeps no current stack of another process | [library](library.md) |
 | `-behaviour` with a value that is not an atom | Warning prints the term with `~w` (`behaviour [115,116,114] undefined`) | Prints the attribute's source text (`behaviour "str" undefined`); the error is the same | [semantic](semantic.md#behaviours) |
 | `module_info(md5)` and the `vsn` OTP derives from it | MD5 of the compiled BEAM code | MD5 of the module's printed source; the derived `vsn` integer differs accordingly | [semantic](semantic.md#predefined-functions) |
 | `module_info(compile)` | `version` of OTP's compiler application, `options` given to it | Clause's version; `options` always `[]` | [semantic](semantic.md#predefined-functions) |
@@ -171,7 +214,6 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | Match specifications naming a variable numbered 25 or above | Renumbers every `'$N'` atom of the specification, even inside `{const, ...}` (so `{const, '$30'}` gives `'$0'`) | Variables keep their numbers; `{const, '$30'}` gives `'$30'` | [runtime](runtime.md#match-specifications) |
 | Match specification guards and bodies nested deeper than 1000 levels | Compile until the C stack runs low (`system_limit`) | `system_limit` | [runtime](runtime.md#match-specifications) |
 | Trace actions in `erlang:match_spec_test/3`: `enable_trace`, `disable_trace`, `trace` with valid flags | Change the caller's trace flags (29.1.1 crashes without a tracer) | `true` after checking the flags (and that a pid argument is alive); nothing changes | [builtins](builtins.md#ets) |
-| `ets:tab2file/3` with `{sync, true}` | `disk_log:sync/1` flushes the file to disk | The file is written and closed without a flush to disk (`file:sync/1` is LIB50) | [builtins](builtins.md#ets) |
 | `ets:tab2file/2,3` and `file2tab/1,2` | Through a disk_log process named by a fresh reference | Written and read directly with `file` | [builtins](builtins.md#ets) |
 | `{process_dump}` and `{current_stacktrace}` in `erlang:match_spec_test/3` | The process's dump text; its stack trace | `<<>>`; `[]` | [builtins](builtins.md#ets) |
 
@@ -192,7 +234,76 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `~p`, `~w` and `io_lib` writers of containers nested more than 256 deep | Printed | `system_limit` | [io](io.md#pretty-printing-p) |
 | `io_lib:print/4` with a column or line length that is not an integer | Depends on the term: printed (guards fail quietly), `function_clause` or `badarith` | `badarith` for any container term | [io_lib](builtins.md#io_lib) |
 | Negative precision or pad count (`~.*c` with -1) | Loops forever | `badarg` | [io](io.md#formats) |
-| `io:fread/2,3` (any `get_until` request) on standard input or a file with characters above 127 | The I/O server decodes the device's encoding into characters | The scanner sees the input's bytes | [ports](ports.md#standard-io-and-files) |
+
+## erl_scan
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Location of a `tokens/3,4` continuation (`continuation_location/1`, undocumented) | Where the scanner stopped, inside the unfinished token | The start of the unfinished token, which is scanned again with the next characters | [erl_scan](builtins.md#erl-scan) |
+| `{compiler_internal, [ssa_checks]}` | Scans `%ssa%` check comments into tokens | Ignored: they stay comments | [erl_scan](builtins.md#erl-scan) |
+| A based float (`16#1.8#e1`, base other than 10) whose digits exceed 53 bits | The mantissa converted as ERTS converts big integers | Accumulated in a double; the last bit may differ | [erl_scan](builtins.md#erl-scan) |
+| A list element that is not a character inside a string, quoted atom or escape | `function_clause`, `case_clause` or `if_clause`, depending on the clause | `function_clause` | [erl_scan](builtins.md#erl-scan) |
+
+## erl_parse
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| `'%ssa%'` tokens (SSA check clauses of OTP's compiler tests) | Parsed into `ssa_check_when` clauses | A syntax error; `erl_scan` never produces the token | [erl_parse](builtins.md#erl-parse) |
+
+## erl_eval
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Stack trace of an error the evaluator raises (`{badmatch, V}`, `undef` of a local call, ...) | The evaluating process's current stack (`process_info/2` `current_stacktrace`) | The stack at the evaluator's `throw` that collects it, in Clause's frames | [erl_eval](builtins.md#erl-eval) |
+
+## erl_lint
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Behaviours named by `-behaviour` | Any module on the code path answers `behaviour_info/1` | Only modules linked into the program answer; another is `undefined_behaviour` | [erl_lint](builtins.md#erl-lint) |
+| Order of several errors found in one map fold (singleton type variables of one type, specs without a function, callback checks) | The map's internal order (atoms by index) | Term order | [erl_lint](builtins.md#erl-lint) |
+| `erlang:is_builtin/3` for `-deprecated`, `-removed` and `-unsafe` entries that are not exported | OTP's BIF table | The runtime's builtins, which include native library functions | [erl_lint](builtins.md#erl-lint) |
+| `is_guard_expr/1` of a record construction | Raises `case_clause` | Answers whether the fields are guard expressions | [erl_lint](builtins.md#erl-lint) |
+
+## epp
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| `-include_lib("App/...")` not on the include path | Found in `code:lib_dir(App)`, which knows OTP's applications | Found in `code:lib_dir(App)` of Clause's code path, which has no OTP applications unless they are added to it | [library](library.md#contents) |
+
+## erl_pp
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Shape of the characters `erl_pp` returns | Deep character lists | One flat character list; flattened output is equal | [builtins](builtins.md#erl-pp) |
+
+## qlc
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Stack trace of an exception raised in a cursor process, as `next_answers/1,2` re-raises it | The cursor's stack trace followed by the owner's `process_info(self(), current_stacktrace)` | Followed by the stack trace of an exception caught in the owner (Clause has no `current_stacktrace` item) | [qlc](builtins.md#qlc) |
+| `qlc:q/1,2` in `erl_eval`, `ets:table/1,2`, `dets:table/1,2` in a program that never names `qlc` | `qlc` is always loaded | `undef` for `qlc`: these reach it by a runtime name, so only programs naming `qlc` (any module including `qlc.hrl` does) link it | [library](library.md#how-programs-get-them) |
+| Annotation numbers in the code of compiled queries (`info/2` with `{format, abstract_code}`) | OTP's transform numbers annotations around every integer of the module, the characters of `qlc.hrl`'s path in its `file` attribute included | The same transform, but Clause's `qlc.hrl` has another path, so numbers past the first query may differ; the code is otherwise equal | [qlc](builtins.md#qlc) |
+
+## qlc_pt
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Messages of `qlc_pt:parse_transform/2` at run time | From `compile:noenv_forms/2` (`strong_validation`): `erl_lint` plus the compiler's core passes, such as `sys_core_fold` warnings | From `erl_lint` only, as OTP's `qlc_pt` does when the compiler is not available | [qlc_pt](builtins.md#qlc-pt) |
+
+## Interactive shell
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Line editing in a terminal | `edlin`: cursor keys, line history, search, tab completion over `edlin_expand`, the `..>` multiline prompt | The terminal's own (cooked) line editing; lines are read as the terminal delivers them, with the same prompt for each further line of a command, as OTP does for piped input | [library](library.md#interactive-shell) |
+| Job control | Ctrl+G opens the JCL menu (new, connected, interrupted and killed shells) | None; the banner and the slow-command hint still name Ctrl+G as OTP prints them | [library](library.md#interactive-shell) |
+| `exit().` when the shell reads piped input | A new shell starts and reads nothing more | A new shell starts and reads the rest of the input | [library](library.md#interactive-shell) |
+| Programs that start the shell without `--shell` | Every module of the code path is callable | Only the modules the program links; without `--keep-exports` dynamic calls reach only exports the program can reach | [library](library.md#interactive-shell) |
+| Records of compiled modules (`rr(Module)`, `shell_default` and `user_default` at start) | Read from the module's debug information or source | `{error, nofile}`: linked code keeps no abstract code; `rr/1,2,3` of source and `.beam` files read them | [library](library.md#interactive-shell) |
+| `save_module/1` | Writes the module and compiles it with `c:c/1` | Writes the module only (no compiler) | [library](library.md#interactive-shell) |
+| `edlin_expand:expand/1,2` inside a call or a record field value | Function heads and argument types from the function's specification (`lists:seq(From, To)`), atoms and types the specification allows | `Mod:Fun/Arity` heads of the exported arities, no type suggestions: linked code keeps no specifications | [library](library.md#interactive-shell) |
+| `edlin_expand:expand/1,2` of functions and modules | Functions grouped by the documentation's groups; modules of the code path | One `Functions` group (no documentation); the program's modules | [library](library.md#interactive-shell) |
+| `c:i/0,1`, `c:ni/0`, `c:regs/0` columns | Each process's initial call and current function | `proc_lib`'s initial call or `undefined`; the current function `undefined` (no `current_function` item) | [library](library.md#interactive-shell) |
 
 ## Random numbers
 
@@ -200,11 +311,42 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | --- | --- | --- | --- |
 | Strip heights of `rand`'s normal ziggurat | Tabled constants | Computed to the nearest double from the ziggurat's constants; a height may differ in its last bit, which changes a slow-path accept only for a draw within that bit of the bound (odds near 2^-53 per slow-path draw). Strip widths and bounds are observed from OTP and equal | [builtins](builtins.md#random-numbers) |
 
+## crypto
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Order of `crypto:supports(ciphers)` | The NIF's table sorted by atom index, which varies between VM runs, then the aliases | OTP's table order, then the aliases | [builtins](builtins.md#crypto-module) |
+| `{File, Line}` of `crypto`'s `{badarg \| notsup \| error, {File, Line}, Description}` errors | OTP's C source file and line (`{"hash.c", 111}`) | Clause's C++ source file and line (`{"hash.cpp", 63}`); the class and description are OTP's | [builtins](builtins.md#crypto-module) |
+| `link_type` of `crypto:info/0` | How OTP linked libcrypto (usually `dynamic`) | Always `static`, also when an installed shared libcrypto is linked | [OpenSSL](crypto.md) |
+| Long `pbkdf2_hmac/5` computations (more than 100 iterations or 64 bytes) | Run on a dirty CPU scheduler | Run on the calling process's scheduler worker, which runs no other process meanwhile | [builtins](builtins.md#crypto-module) |
+| `modules` of the `crypto` application | `[crypto, crypto_ec_curves]` | `[crypto]` | [library](library.md) |
+| Long `crypto_one_time/4,5` and `crypto_one_time_aead/4,6,7` texts (more than 20000 bytes) | Run on a dirty CPU scheduler | Run on the calling process's scheduler worker, which runs no other process meanwhile | [builtins](builtins.md#crypto-module) |
+| The `fips_mode` application variable of `crypto` | Read when the `crypto` module loads: `true` enables FIPS mode | Not read (Clause has no `on_load` and programs have no `sys.config`): use `crypto:enable_fips_mode/1`, or `clau --fips` | [crypto](crypto.md#fips) |
+| `crypto:info_fips/0` without a loadable FIPS provider | `not_enabled` when OTP was built with FIPS support, `not_supported` otherwise | `not_supported` | [crypto](crypto.md#fips) |
+| When the `crypto` application is loaded | When the `crypto` module loads (its `on_load`) | When a `crypto_cache`, `crypto_aes` or `crypto_prng1` generator first reads `rand_cache_size` | [library](library.md) |
+| RSA key generation (`crypto:generate_key(rsa, ...)`) and SLH-DSA signatures | Run on a dirty CPU scheduler | Run on the calling process's scheduler worker, which runs no other process meanwhile | [builtins](builtins.md#crypto-module) |
+| The `rsa_sslv23_padding` option of `crypto:public_encrypt/4` and its siblings | Accepted when OTP is built against an OpenSSL that has SSLv23 padding (1.1, 3.x) | `"Bad padding type in option rsa_padding"`, as OTP built against OpenSSL 4 | [builtins](builtins.md#crypto-module) |
+| `crypto:ec_curve/1` of a curve the linked libcrypto lacks (an OpenSSL built without binary curves) | The parameters from `crypto_ec_curves` | `error:function_clause`, as for an unknown curve: the parameters come from the libcrypto's built-in curves | [builtins](builtins.md#crypto-module) |
+| `beam_lib` decryption of debug information in a program that does not call `crypto` | `crypto` is always present | `key_missing_or_invalid` unless the program links `crypto` (`--with-crypto`), since `beam_lib` calls it dynamically | [library](library.md) |
+
+## ASN.1
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Stack in `{error, {asn1, {Reason, Stack}}}` | Frames of the generated `enc_*`/`dec_*` functions and `asn1rtt_*` | Frames of `Module:encode/2` or `decode/2` and the codec builtin | [asn1](asn1.md#generated-modules) |
+| Functions of a generated module | Also exports `enc_Type/1,2`, `dec_Type/1,2` and the other per-type functions asn1ct generates | Only `encode/2`, `decode/2`, `info/0`, the option functions and the value functions | [asn1](asn1.md#generated-modules) |
+| A `CHOICE` whose body starts with `...` (no root alternatives) | asn1ct reports a syntax error | Accepted | [asn1](asn1.md#coverage) |
+| Value macros and functions that name another value inside an open type (PKCS-1's `mgf1SHA1`, `rSASSA-PSS-Default-Identifier`) | asn1ct leaves `{'Externalvaluereference', Line, Module, Name}` in place of the value | The referenced value | [asn1](asn1.md#generated-modules) |
+| A runtime error (not an ASN.1 one) while `public_key` decodes or encodes an extension value | Raised as it happens, mostly `error` class, from the generated `dec_ext-*`/`enc_ext-*` function | `exit({error, {asn1, Reason}})`: the value goes through the generated module's `decode/2` or `encode/2`, which wraps every failure | [public_key](public_key.md#functions) |
+| The default Diffie-Hellman groups of `public_key:dh_gex_group/4` | The groups OTP generated (`lib/public_key/priv/moduli`), 60–81 per size | Eight per size from OpenSSH's moduli file; same sizes (2047 to 8191) | [public_key](public_key.md#keys-and-signatures) |
+| Frames of a `public_key` exception | `public_key`, `pubkey_pem`, `pubkey_pbe`, `pubkey_cert_records`, `pubkey_cert`, `pubkey_ssh` | `public_key`, `clause_public_key_codec` and `clause_public_key_keys` | [public_key](public_key.md#functions) |
+
 ## Parse transforms
 
 | Difference | OTP | Clause | Owner |
 | --- | --- | --- | --- |
 | Name in the `file` attribute of an included file (`--print-abstr`, transform input) | The include directory joined to the name, as found (`inc.hrl`, `/abs/dir/inc.hrl`, `../inc/x.hrl`) | The path relative to the working directory when the file is under it, else the absolute path | [transforms](transforms.md#interchange) |
+| Line 0 annotations of imported forms (generated code, as from the `qlc` transform) | A valid line: the code has no source line | The code takes the place of the node imported before it | [transforms](transforms.md#importing-forms) |
 | `generated` annotations of imported forms (`.abstr` inputs, transform output) | `erl_lint` and the compiler skip some warnings for generated code | Ignored: the code is checked like source | [transforms](transforms.md#importing-forms) |
 | `{error, {Location, Module, Descriptor}}` forms in imported code | Formatted with `Module:format_error/1` | The descriptor's term text; formatting needs OTP | [transforms](transforms.md#importing-forms) |
 | A module with preprocessor or parse errors that names a parse transform | The transform runs and gets the errors as `{error, E}` forms; `erl_lint` reports them afterwards | Errors are reported and the transform does not run | [transforms](transforms.md#clause-pipeline) |

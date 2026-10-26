@@ -12,12 +12,12 @@ in [abi.md](abi.md#terms).
 - Compound values live in their process heap ([heap contract](runtime-heap.md))
   or in a module's read-only literal area ([areas](runtime-heap.md#areas)).
   Process pointers always name object starts. Admission (Debug builds only;
-  Release trusts words, `CHECKED_ADMISSION`) checks the owned range
-  and the header shape, rejecting foreign addresses and invalid shapes
-  ([admission](runtime-heap.md#admission)); kind and extent are decoded from
-  the header.
-- A host `Term` is exactly one `Word`, trivially copyable, with only `value_`.
-  A heap Term is valid until its heap's next collection or process exit
+  Release trusts words, `CHECKED_ADMISSION`) checks the owned range and the
+  header shape, rejecting foreign addresses and invalid shapes
+  ([admission](runtime-heap.md#admission)); kind and extent are decoded from the
+  header.
+- A host `Term` is exactly one `Word`, trivially copyable, with only `value_`. A
+  heap Term is valid until its heap's next collection or process exit
   ([roots](runtime-heap.md#roots-and-safe-points)); it pins nothing and carries
   no heap, lifetime token or collection count. Access then reads moved or freed
   memory and is undefined; there is no `stale_term` error. Destruction is safe.
@@ -47,27 +47,36 @@ in [abi.md](abi.md#terms).
   unchanged. Atom numbers never leave a node: ETF and disk forms use spellings.
 - `detail::atom_table` provides lock-free reads by atom number: fixed records
   directly, then chunks of 4,096 slots kept for the process lifetime. Each
-  `AtomStorage` owns its records by spelling, publishes them in this index,
-  and admits only records it owns or fixed records. Teardown retires its slots.
-- Atom Terms pin nothing. `atom_spelling()` borrows until runtime teardown;
-  it and `atom_utf8()` report `expired_context` after a non-fixed atom's runtime
-  is torn down. Moving an atom between runtimes means interning its spelling
-  in the destination while the source runtime is live.
+  `AtomStorage` owns its records by spelling, publishes them in this index, and
+  admits only records it owns or fixed records. Teardown retires its slots.
+- Atom Terms pin nothing. `atom_spelling()` borrows until runtime teardown; it
+  and `atom_utf8()` report `expired_context` after a non-fixed atom's runtime is
+  torn down. Moving an atom between runtimes means interning its spelling in the
+  destination while the source runtime is live.
 - Booleans are the atoms `true`/`false`. The fixed atoms `false`, `true`,
   `undefined`, `ok` and `error` (`abi::v1::fixed_atom_spellings`) have the words
   of atom numbers 0–4 in every runtime, with immortal static records, found
   without the lock and counted neither by `size()` nor toward `max_atoms`;
-  generated code uses them as constants. Every other atom word is runtime-private.
-- Compound literals of constants (strings, lists and tuples of immediates and
-  other literals, floats, bignums) are cells of the module literal area, built
-  at compile time and shared ([literal areas](runtime-heap.md#areas)); integer
-  literals in the small range are immediates.
+  generated code uses them as constants. Every other atom word is
+  runtime-private.
+- Compound literals (strings, lists, tuples and maps of literals, floats,
+  bignums, constant binaries) are module literals: encoded at compile time,
+  decoded once per runtime at registration into its literal heap and shared
+  ([literal areas](runtime-heap.md#areas)); integer literals in the small range
+  are immediates.
 - Other atom literals load from the module's atom cache
   (`ModuleDescriptor::atom_cache`: the claiming runtime's identity, then one
   word per slot), which the first runtime to register the module fills; a
   context whose `FrameState::runtime` matches the claim reads it without a call,
   any other calls `CLAUSE_atom_v3`. The claim is given back when the runtime's
   code server releases the module.
+- Runtime C++ writes literal atoms as `"name"_atom` (`atom_names.hpp`): one
+  static `CachedAtom` per spelling keeps the word last interned for it, and
+  `AtomStorage::intern` returns it after one lock-free index read when this
+  runtime issued it, skipping validation, the shared lock and the spelling map.
+  A word of another or a torn-down runtime fails that check and is replaced, so
+  several runtimes in one process stay correct (they only refresh the cache).
+  Builtin helpers take `AtomName`, a spelling with or without such a cache.
 - Interning and lookup are safe from concurrent scheduler workers
   ([threads](runtime.md#threads)); a spelling keeps one word.
 
@@ -82,10 +91,12 @@ in [abi.md](abi.md#terms).
 - Generated `+`, `-`, `*` try an inline fast path on two immediates, otherwise
   call the runtime service: `+` and `-` add or subtract the tagged words
   directly (`a + (b ^ 15)`) and fall back when the word overflows, which is
-  exactly when the result leaves the small range; `*` computes in double
-  width with explicit bounds. So do `band`, `bor`, `bxor`, `bsr`, `div`, `rem`
-  and comparisons of two small integers
-  ([inline forms](abi.md#runtime-services)).
+  exactly when the result leaves the small range; `*` computes in double width
+  with explicit bounds. So do `band`, `bor`, `bxor`, `bsr`, `div`, `rem` and
+  comparisons of two small integers ([inline forms](abi.md#runtime-services)).
+- The service multiplies a bignum (or an overflowed small product) by a small
+  integer limb by limb, from the operand's cell straight into the new one; other
+  bignum operations go through a multiprecision value.
 - `div` truncates toward zero; `rem` takes the dividend's sign; bitwise ops use
   infinite two's complement; negative shift counts reverse direction; huge right
   shifts saturate to 0 or -1.
@@ -126,11 +137,10 @@ in [abi.md](abi.md#terms).
 - Immutable tables sorted by exact key order. Duplicate construction keys keep
   the last value. Construction sorts the keys (O(n log n) comparisons; already
   ascending keys are only checked). Up to 32 entries a map is one heap cell and
-  an update inserts by binary search into a copy; above that it is a B+ tree
-  of heap cells updated by path copying in O(log n)
-  ([map trees](runtime-heap.md#map-trees)). No size or work cap beyond
-  memory, as in OTP. Integer and float keys differ (also `0.0` vs `-0.0`, also
-  nested).
+  an update inserts by binary search into a copy; above that it is a B+ tree of
+  heap cells updated by path copying in O(log n)
+  ([map trees](runtime-heap.md#map-trees)). No size or work cap beyond memory,
+  as in OTP. Integer and float keys differ (also `0.0` vs `-0.0`, also nested).
 - `K := V` updates require the key; `K => V` inserts or replaces. Updates stage
   a new table and publish once.
 - Body errors: `{badmap, M}`, `{badkey, K}`; guards reject instead.
@@ -141,9 +151,9 @@ in [abi.md](abi.md#terms).
 - Packed MSB-first with exact bit length, zeroed padding. Up to 64 bytes live
   inline in a heap binary sized to the data; larger values use a shared
   immutable buffer outside the heap, and slices are sub-binary cells of their
-  original ([off-heap binaries](runtime-heap.md#off-heap-binaries)). There is
-  no size cap beyond an optional process heap budget; integer segments are
-  written without building an integer as wide as the segment.
+  original ([off-heap binaries](runtime-heap.md#off-heap-binaries)). There is no
+  size cap beyond an optional process heap budget; integer segments are written
+  without building an integer as wide as the segment.
 - Construction stages all segments before publishing. Integer segments truncate;
   native endianness comes from the target data layout. An integer segment of a
   small value and a width of at most 64 bits is written from its machine word
@@ -151,15 +161,17 @@ in [abi.md](abi.md#terms).
   Generated code builds small constant-width constructions inline
   ([frames and transfers](abi.md#frames-and-transfers)).
 - Appends, as OTP's writable binaries: a construction starting with a whole
-  binary (`<<Acc/binary, ...>>`) builds its result in a buffer with spare room
-  (twice its size, at least 256 bytes) whose off-heap cell in the creating
-  process records its bits in use and capacity (zero in every other cell,
-  copies included). A later append whose accumulator view ends exactly there
-  writes the new bytes into the spare room, which no view covers, and returns a
-  longer view of the same buffer: a sub-binary of the buffer's own off-heap
-  cell, which may reach past that cell's bits. Any other accumulator (an older
-  view, another process's, an unaligned one, a full buffer) is copied into a new
-  doubled buffer. Other views of the buffer never change.
+  binary (`<<Acc/binary, ...>>`) of more than 64 bytes builds its result in a
+  buffer with spare room (its size rounded up to a power of two, at least 256
+  bytes) whose off-heap cell in the creating process records its bits in use and
+  capacity (zero in every other cell, copies included). A later append whose
+  accumulator view ends exactly there writes the new bytes into the spare room,
+  which no view covers, and returns a longer view of the same buffer: a
+  sub-binary of the buffer's own off-heap cell, which may reach past that cell's
+  bits. Any other accumulator (an older view, another process's, an unaligned
+  one, a full buffer) is copied once into a new buffer, which at least doubles a
+  full one. Other views of the buffer never change. Freed buffers are reused
+  ([buffer reuse](runtime-heap.md#buffer-reuse)).
 - Float segments: widths 16/32/64; construction may encode infinity, but
   matching rejects infinite/NaN fields. Zero-width float matches extract `0.0`.
 - UTF-8/16/32 segments validate scalars, surrogates and truncation.
@@ -216,8 +228,8 @@ in [abi.md](abi.md#terms).
   collection or process exit. Numbers come from one process-wide counter, so
   every reference of a program run is unique.
 - A handle reference (an OTP magic reference) is a reference cell that also
-  holds an off-heap buffer; it is the same reference to every service
-  and shares its buffer with every copy
+  holds an off-heap buffer; it is the same reference to every service and shares
+  its buffer with every copy
   ([handle references](runtime-heap.md#handle-references)).
 - Printing follows OTP's local identities: a pid as `<0.N.S>` (N the low 28 bits
   of its number, S the rest), a reference as `#Ref<0.A.B.C>` (C the low 18 bits
@@ -232,13 +244,19 @@ comparison, map key searches included, and identical words are equal without a
 walk. Byte-aligned bitstrings compare whole bytes at once. Order: numbers <
 atoms < references < funs < ports < pids < tuples < native records < maps < nil
 < lists < bitstrings ([funs](funs.md#comparison-and-printing) order among
-themselves).
-Atoms compare by UTF-8 spelling (code-point order); tuples by arity then fields;
-maps by size, then keys, then values; bitstrings by logical bits. Two small
-integers, two floats or two whole-byte binaries are ordered straight from their
-words or cells (`detail::word_order`), and two atoms from their spellings in the
-atom table (`AtomStorage::spelling`, through the lock-free number index), with
-no term admission.
+themselves). Atoms compare by UTF-8 spelling (code-point order); tuples by arity
+then fields; maps by size, then keys, then values; bitstrings by logical bits.
+Numbers (small integers, floats, bignums by sign and limbs), atoms (by their
+spellings in the atom table, through the lock-free number index), local
+references (by number), whole-byte binaries, and tuples and lists of these
+nested up to 8 levels are ordered straight from their words and cells
+(`detail::word_order`), with no term admission; any other pair, a float against
+a bignum of the same bit length, or a small integer beyond 2^53 against a float
+takes the structural order. `=:=` takes the same path (`detail::word_exact`):
+pairs it orders apart are unequal, and one word or two references it finds
+equal are equal, so a receive matching a reply's reference admits no term.
+`lists:sort/1` and `lists:usort/1` sort element words in place: all-small and
+all-atom lists by word or spelling, others with a stable word-order sort.
 
 ## Printing
 
@@ -263,5 +281,4 @@ are tuples) and nesting look the same in both.
   with `resource_limit` and returns no partial text.
 - Goldens: `runtime_printing` compares both styles with OTP (all corpus results
   plus authored edge cases); display rows whose OTP map order is internal are
-  skipped
-  ([fixtures](../tests/fixtures/printing/README.md)).
+  skipped ([fixtures](../tests/fixtures/printing/README.md)).

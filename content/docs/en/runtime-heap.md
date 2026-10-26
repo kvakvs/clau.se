@@ -77,6 +77,19 @@ process heap, shared by reference count (BEAM ProcBin and `Binary`).
 - `std::shared_ptr` is two pointers on every supported STL; a `static_assert`
   keeps the cell size fixed at eight words after the header on both widths.
 
+### Buffer reuse
+
+A freed buffer of a power-of-two size of at least 256 bytes (the capacities of
+appendable binaries) stays with the thread that dropped its last reference, for
+that thread's next buffer of exactly that size (like
+[heap blocks](#heap-blocks)). Each thread keeps at most 32 buffers and 8 MB;
+the cache is freed when the thread ends. A reused buffer's bytes after the new
+binary's own are left as they were: no view covers them. Without this, binary
+append loops took fresh pages for every grown buffer (the C++ heap returns the
+pages of large freed blocks). New buffers are `ByteBuffer`s
+(`runtime/include/byte_buffer.hpp`), which never zero their room either, so a
+port driver's reply (a whole file read) is written once and taken over as it is.
+
 ### Handle references
 
 A handle reference is a reference that also holds one off-heap buffer, as an OTP
@@ -127,7 +140,16 @@ heap. Smaller maps stay `map` cells.
   gives the tree back to the stub. The compiler marks an update owned only when
   the function built the source map itself (`M = <map expression or
   comprehension>` in the same clause body), reads `M` nowhere else and never
-  captures it in a fun (`semantic/map_ownership`).
+  captures it in a fun (`semantic/map_ownership`), and in fold loops from the
+  second step on ([owned accumulators](funs.md#inlined-funs)), where the
+  operation is chosen at run time.
+- One update at a small-integer key is decided by words alone
+  (`MapAccess::update_small_key`, no `Term` per argument, the key search calls
+  no virtual probe). Owned, it reuses the source stub too while its token is
+  current: the stub is then younger than the latest collection, so writing the
+  new root into it makes no old-to-young pointer. A fold that updates every
+  entry copies each node at most once per collection and otherwise writes one
+  value word per step.
 
 ## Areas
 
@@ -146,18 +168,28 @@ heap. Smaller maps stay `map` cells.
   safepoints, such as the returns of a body recursion, stays inline after the
   first fragment opens (fragment windows). Without a budget each new fragment is
   at least as large as the fragments before it.
-- **Literal areas.** Each module's compound literals — strings and constant
-  lists, tuples of constants, floats, bignum literals and constant binaries —
-  are laid out by the compiler as heap cells in one read-only global
-  (`ModuleDescriptor::literals`), registered runtime-wide
-  (`detail::LiteralAreas`, a lock-free sorted snapshot) when the module is
-  registered. Terms of every process may point into them: admission checks
+- **Literal areas (literal heap).** Each module's compound literals —
+  strings, constant lists, tuples and maps, floats, bignum literals and
+  constant binaries of any size — are encoded by the compiler into one
+  constant byte string (`ModuleDescriptor::literals`, `abi/literals.hpp`),
+  which stays in the executable's read-only data. Registration decodes them
+  once per runtime on a scratch context (pid number 0, never issued) with the
+  runtime's atoms and term factories, then copies them into one area of the
+  persistent term range that never retires; `detail::LiteralAreas` owns the
+  area for the runtime's life and registers it as a module literal area (a
+  lock-free sorted snapshot), so even copies that copy live persistent terms
+  share it. Binaries over 64 bytes keep a buffer of their own. Terms of every
+  process may point into them: admission checks
   `HeapStorage::readable` (heap, fragments, then literals), while
   `TermAccess::object` reads trusted pointers. The collector leaves literal
   words as they are (`owned` stays heap-only); copies between heaps and into
   message buffers keep
   pointing at them (a literal root needs no copy); the verifier accepts them.
-  Literals hold only immediates (fixed atoms only) and other literals' words.
+  Literal words are the runtime's own (atoms included), so each runtime has
+  its own copy; generated code reads the claiming runtime's words from
+  `literal_cache` and other runtimes' through `CLAUSE_literal_v1`. An owned map
+  update never changes a literal in place: only a stub in the process's own
+  heap qualifies.
 - **Fragments.** When a request does not fit and the heap may not move, it goes
   into the newest fragment if it fits there, else into a new fragment sized to
   fit (at least the minimum heap size) and chained to the process. The next
@@ -217,8 +249,12 @@ Heap blocks, fragments and old areas come from `memory/heap_blocks`. A block a
 collection releases stays with its thread for that thread's next collections
 (as ERTS's carriers keep memory): a new block takes the smallest cached
 block of at least its size and at most twice it, else fresh memory. Each thread
-keeps at most 8 blocks and 4M words (32 MB on 64-bit targets); blocks below
+keeps at most 8 blocks and 16M words (128 MB on 64-bit targets); blocks below
 4,096 words are not kept, since the C++ heap's free lists serve them cheaply.
+A released block that does not fit frees the oldest kept blocks first:
+a growing heap releases ever larger blocks, and without eviction the blocks of
+its early, small collections filled the cache, so a live set of millions of
+words took fresh pages for every young block, old area and full sweep.
 Without this, every collection's to-space took fresh pages from the operating
 system and paid a page fault per page it touched, and freeing a large block
 returned its pages. Cached blocks are not charged to any process or to the
@@ -245,8 +281,9 @@ runtime-wide account; a thread frees its cache when it ends.
   collects.
 - A collection's to-space is charged even past the limit, because it replaces
   the blocks it releases at the end of the same collection.
-- The stack doubles while the limit allows it, then grows only by the frame
-  being pushed.
+- The stack's first 64 words live inside the process context and are charged
+  by the first frame pushed. The stack then doubles while the limit allows it,
+  then grows only by the frame being pushed.
 
 ## Admission
 
@@ -269,7 +306,7 @@ After admission, `TermAccess::object` decodes kind, count and payload through
 `validate` checks representation only. Factories still re-admit inputs through
 `ProcessHeap::retain`, rejecting foreign compound inputs with `wrong_owner`.
 
-These checks run in Debug builds only (`CHECKED_ADMISSION`, OPTM.2C). A
+These checks run in Debug builds only (`CHECKED_ADMISSION`). A
 Release build trusts every compound, atom, pid and port word handed to a
 builtin, service or factory, as ERTS trusts its Eterms: generated code only
 produces words of its own process, literal areas and the runtime's atoms, so
@@ -333,25 +370,36 @@ into a receiver's heap. Immediates and literal roots need no storage. Factories,
 reservations and message buffers keep their lifetime checks (`expired_context`);
 a Term read from a buffer pins nothing and must not outlive its backing.
 The buffer is never collected and is freed with its last owner; its block is
-exactly the term's words, whatever the sender's minimum heap. Messages to a
-process running on another worker ([workers](processes.md#workers)), timer
-messages and monitor tags use it, so they are never re-encoded;
+exactly the term's words, whatever the sender's minimum heap. Sends to other
+processes ([arrival buffers](processes.md#arrival-buffers)), timer messages
+and monitor tags use it, so they are never re-encoded;
 [persistent terms](runtime.md#persistent-terms) live in their own address range
 and are copied, not shared, into buffers.
 
+**Single message walk.** A send to another process walks its message's graph
+once, before any lock (`OutgoingMessage`, with the `GraphCopy` of
+[graph_copy.hpp](../runtime/src/memory/graph_copy.hpp)); that walk sizes every
+later copy, and like any copy outside a process it copies persistent terms.
+
 **Message hand-off.** A send whose message takes at least
-`MessageBuffer::ADOPTED_WORDS` (512) words, counted by
-`MessageBuffer::large(value, sender, minimum)` with a bounded walk that stops
-there, builds the buffer before taking the executor lock, so the sender holds
-no lock while copying. The receiver then takes the buffer over instead of
+`MessageBuffer::ADOPTED_WORDS` (512) words always goes through a buffer, copied
+from that walk before any lock, so the sender holds no lock while copying. The
+receiver then takes the buffer over instead of
 copying it (`MessageBuffer::take`, `HeapStorage::adopt`), when the buffer has
 no other owner and the receiver has a heap block and no budget: the block joins
 its fragments at the same addresses, the buffer's off-heap binary and map lists
 join its own with their charges, and the buffer is left empty. Nobody else can
 reach the block before or after, so no word is copied twice. Adopted fragments
-ask for a collection only once their words reach the young block's, as ERTS's
-message fragments do, and the next collection treats them as young data.
-Smaller messages are copied, as before: cheaper than a fragment each.
+ask for a collection only once a receive took their message and their words
+reach the young block's, as ERTS counts a message fragment only once received
+(`HeapStorage::received`); the next collection treats them as young data, and
+copies a message still queued like any root.
+Smaller messages are copied once, cheaper than a fragment each: straight into
+the heap of a receiver that does not run, under the executor lock, or right
+behind an arrival node for a running one. The receiver takes such an arrival
+by copying its words as they are and moving the pointers between them by the
+distance of the copy, reading the objects in address order as the collector
+scans its copies (**relocated arrivals**); the graph is not walked again.
 
 ## Collection in generated code
 
@@ -493,7 +541,7 @@ safepoint, and no native pointer crosses one at all (already an error in
 
 ### Prototype
 
-[tests/prototypes/safepoint](../tests/prototypes/safepoint/) holds one
+[tests/prototypes/safepoint](../tests/prototypes/safepoint) holds one
 comprehension-style loop in post-`lower_frames` form (`loop.ll`): a term `Y`
 computed before the loop is stored to a term slot and reloaded after the
 loop-head safepoint. `python tests/prototypes/safepoint/run.py` compiles it for
@@ -508,7 +556,12 @@ A Cheney copy (`memory/heap_collect`), a full sweep or a minor collection
 ([generations](#generations)): allocate the new block first
 (failure is `out_of_memory` and leaves the heap untouched), then copy the
 object behind every root word and scan the new block left to right, copying
-the children of each copy. A moved boxed object's header
+the children of each copy. A slot is first checked against the from-space area
+of the previous slot (one range test), and immediates are told apart inline.
+Cons cells are scanned without a parse, and a boxed copy's slots are found from
+its header's kind alone (a per-kind count of untraced words, no size checks:
+the copies are of verified objects); objects of up to four words are copied
+word by word. A moved boxed object's header
 is replaced by a boxed pointer to its copy; a moved cons cell gets a zero head
 and a tail pointing to its copy. Forwarding preserves sharing. Roots are
 rewritten in place, the off-heap list is swept (copies relinked in list order,
@@ -540,12 +593,22 @@ Generational collection, as ERTS does it, without its write barrier:
   forwarded ones and releases dead young ones; dead old cells wait for the next
   full sweep.
 - **Young sizing.** A minor collection keeps the young block's size, as ERTS
-  does, and at least an eighth of the old area (ERTS). Generated code collects
+  does, and at least an eighth of the old area (ERTS). ERTS's minor block is
+  `next_heap_size(young + stack)`, but its stack fills the rest of a full
+  block, so that never grows it; Clause's stack is separate, and counting it
+  grew the block every minor collection. Clause also grows the block so the
+  young words above the high-water mark (all that can stay young) and the
+  stack fill at most 75% of it: measured, fewer collections pay off more than
+  ERTS's tighter blocks. Generated code collects
   only at safepoints, so allocation between two of them (the returns of a body
   recursion) may overflow far into fragments; when they hold a quarter of the
   block or more, the next block grows by them and is not shrunk. Otherwise a
-  young block over 8,000 words less than 25% live is copied into three times its
+  young block over 8,000 words less than 25% live shrinks to three times its
   live words (ERTS's minor rule).
+- **Shrinking in place.** Both shrinks (this one and a full sweep's) lower the
+  block's capacity in place, as ERTS reallocs it: nothing is copied again, and
+  the block's unused tail stays allocated, uncharged, until the next collection
+  releases the block.
 - **Off-heap limit.** After a minor collection the virtual binary heap limit
   counts the young live words only: the old area may hold dead words, which must
   not postpone the full sweep that frees dead old binaries.
@@ -576,9 +639,14 @@ read through trusted pointers, and a cons cell needs no parse:
   exponentially, as on OTP. One walk with an explicit stack (no recursion) sums
   the words of every reached object; the copy is one reservation of that sum,
   in the heap block or a fragment, filled by a second walk in the same order
-  that reads each cell again and points each slot at its child's copy. No table
-  maps source objects to copies, and only binary cells and map stubs keep their
-  offsets.
+  that reads each cell again and points each slot at its child's copy. Both
+  walks follow a list's tails in place, so only heads wait on the stack, and
+  tell shared literals from heap cells with one range test against the span of
+  all module literal areas. The first walk sizes the second's stack, so the
+  second allocates nothing and a message buffer's words need no zeroing. Both
+  stacks and the binary list hold their first entries inline, so a small
+  message's copy makes no host allocation. No table maps source
+  objects to copies, and only binary cells and map stubs keep their offsets.
 - An off-heap binary's copy is a new cell sharing the buffer; the destination
   holds the buffer (charging its own off-heap words if it held none of it)
   before reserving, and lists the cell only after the reservation commits.

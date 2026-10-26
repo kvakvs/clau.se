@@ -25,8 +25,8 @@ default (no selection) is always `main/1`.
   after `FUNCTION` is the arity and must be `0` or `1`; other slashes stay part
   of the name. Other spellings are usage errors (CLI, exit 2) or manifest errors
   (exit 1).
-- The whole manifest is decoded, so a malformed `entry` fails even in
-  unselected targets ([manifest](projects.md)).
+- The whole manifest is decoded, so a malformed `entry` fails even in unselected
+  targets ([manifest](projects.md)).
 - CLI `--entry` overrides the manifest key and requires exactly one selected
   target. It conflicts with check/print actions and `--new-project`; those
   actions ignore manifest `entry` (as they ignore `output`).
@@ -81,7 +81,8 @@ a value goes in the next argument or after `=`.
 | `--max-stack BYTES` | Cap on each process's frame stack; default uncapped |
 | `--min-heap-size WORDS` | Default `min_heap_size` of every process, at least 1, rounded up to a heap size, like OTP's `+hms`; at most `--max-heap`; default 233 ([sizing](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Cap on the memory of all processes together (heaps, off-heap binaries, stacks); default uncapped |
-| `--schedulers N` | Scheduler workers running processes, 1 to 1,024; default one per logical processor, like OTP's `+S` ([workers](processes.md#workers)) |
+| `--schedulers N` | Scheduler workers running processes, 1 to 1,024; default one per CPU of `--scheduler-cpus`, else one per logical processor the program may run on (its affinity mask), like OTP's online schedulers ([workers](processes.md#workers)) |
+| `--scheduler-cpus SET` | Bind worker N to the N-th CPU of `SET`, round-robin, like OTP's `+sbt`/`+sct`: `performance` (the fastest core class: P-cores of a hybrid CPU, every CPU otherwise), `all`, or a list such as `0-15` or `2,4,6`; every listed CPU must be in the affinity mask. Default unbound ([CPU binding](processes.md#cpu-binding)) |
 | `--profile FILE` | Write a report of entries and self time per function and per process to `FILE` when the program ends ([profiling](profiling.md)); off by default |
 | `--args-file FILE` | Options file like OTP's `vm.args`: reserved, reports `runtime option --args-file is not implemented` |
 | `--` | Ends the runtime options; the following arguments all go to `Entry` |
@@ -190,13 +191,13 @@ or `/OPT:REF /OPT:ICF` (MSVC), so code no entry path reaches is removed.
 
 `--lto` compiles the modules and the startup module to LLVM bitcode instead of
 objects and links with `-flto -fuse-ld=lld`, so LLD optimizes the program's
-generated code as one unit against the native runtime archive.
-Module and startup descriptors, exported entries and `main` stay referenced and
-survive; programs behave as without it. Only LLD reads this compiler's bitcode,
-so `--lto` is accepted for Windows MSVC and ELF targets; others fail before
-linking with `--lto is not supported for target <triple>: it needs LLD`. `--lto`
-needs an executable output (`-o` or a linking project build). The installed
-Clang/LLD must be the same LLVM release as `clau` (23.1).
+generated code as one unit against the native runtime archive. Module and
+startup descriptors, exported entries and `main` stay referenced and survive;
+programs behave as without it. Only LLD reads this compiler's bitcode, so
+`--lto` is accepted for Windows MSVC and ELF targets; others fail before linking
+with `--lto is not supported for target <triple>: it needs LLD`. `--lto` needs
+an executable output (`-o` or a linking project build). The installed Clang/LLD
+must be the same LLVM release as `clau` (23.1).
 
 ### Export liveness
 
@@ -221,7 +222,13 @@ builtins write to a process device through it). It stays conservative:
   `list_to_existing_atom/1`, `binary_to_atom/1,2`,
   `binary_to_existing_atom/1,2`, `binary_to_term/1,2`, `fun_info/1,2`,
   `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`, `pre_loaded/0`), every
-  export of every module stays.
+  export of every module stays;
+- a module compiled with `{clause_liveness, strict}` promises its atoms never
+  name called code: its record tags and atom literals other than its own name
+  (but not `M:F(...)` or `apply/3` with a literal module and a runtime
+  function), atom-producing builtins and `binary_to_term/1,2` count for neither
+  rule
+  ([strict liveness](compile.md#strict-liveness)).
 
 A function nothing live reaches gets no code at all. A left-out export keeps its
 name in the module's export table without code, so `function_exported/3` and
