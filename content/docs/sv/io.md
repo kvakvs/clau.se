@@ -1,8 +1,8 @@
 ---
 source: docs/io.md
-sourceCommit: 336caea7
-sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 63cb0a2b2caa118ec3a36a1eea641d00d761085fea56a9c7edd8509ddbde219c
+translatedAt: 2026-10-26
 ---
 # Konsolutdata (`io`)
 
@@ -24,8 +24,9 @@ Indatafunktionerna i `io` är skrivna i Erlang i
   `standard_io` och `user` är standard-utdata, `standard_error` är
   standard-fel (standard-utdata töms först, så att de två behåller sin
   ordning). En pid, eller en atom registrerad till en, är en I/O-server:
-  texten går till den som UTF-8 via `file:write/2` (en öppen fil i Clauses
-  modul `file`), och anropet returnerar det som den returnerar. En
+  texten går till den som en I/O-protokollbegäran
+  `{put_chars, unicode, Utf8}` (`clause_io:put_chars/2`), servern skriver den
+  med sin kodning och anropet returnerar svaret. En
   oregistrerad atom ger `badarg`, en död pid `error:terminated`, anroparen
   själv `error:calling_self`, varje annan term `function_clause`, som i OTP.
 - `io:put_chars(Chardata)` skriver chardata: Unicode-tecken, UTF-8-binaries
@@ -52,8 +53,8 @@ Indatafunktionerna i `io` är skrivna i Erlang i
   strängdetektering), `k` (ordnade maps) och `K` (ordningen från argumenten:
   `ordered`, `reversed`; jämförelse-funs ger `badarg`). Maps skrivs i
   nyckelordning.
-- Alla styrsekvenser i OTP 29 med dess fältregler: `~w ~W ~p ~P ~s ~e ~f ~g ~b
-  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` kortar av eller fyller ut till `P` inom
+- Alla styrsekvenser i OTP 29 med dess fältregler: `~w ~W ~p ~P ~s ~e ~f ~g ~b ~B
+  ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` kortar av eller fyller ut till `P` inom
   `F`; `~w`, heltal och flyttal skriver `*`-tecken när texten inte ryms i
   `F`; `~c` upprepar tecknet; heltalsbaser tas från `P` (2..36); `~n` med
   `F` skriver `F` radbrytningar; bredder räknas som `io_lib:chars_length/1`.

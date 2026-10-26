@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: 336caea7
-sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 9b1845341638452f441c091f8de4122b06281694d83cc28080968c0dbdbc9133
+translatedAt: 2026-10-26
 ---
 # ABI des erzeugten Codes (Revision 21)
 
@@ -75,8 +75,9 @@ für native Records (Atomplätze für Modul, Name und Felder, Export-Flag;
 [native Records](native-records.md#representation)) in einer externen Tabelle
 `<prefix>.records`, auf die andere Module eines Batches verweisen,
 Fun-Deskriptoren in einer privaten Tabelle `<prefix>.funs`
-([Funs](funs.md#representation)), den schreibgeschützten Literalbereich
-([Bereiche](runtime-heap.md#areas)), die beschreibbaren Atom- und Fun-Caches,
+([Funs](funs.md#representation)), die kodierten Modulliterale und den
+Literal-Cache ([Bereiche](runtime-heap.md#areas)), die beschreibbaren Atom- und
+Fun-Caches,
 die erzeugter Code inline liest, und die `code_convention` seiner Rümpfe. Die
 Registrierung ruft `CLAUSE_register_module_v4(Runtime*)` auf, das
 Version/Breite und alle Exporte validiert, Atome interniert, eine eingefrorene
@@ -96,6 +97,17 @@ Tabelle).
 - Atomausdrücke außer den festen Atomen lesen `atom_cache`, wenn das
   `FrameState::runtime` des Kontexts den Cache besitzt, sonst
   `CLAUSE_atom_v3`; sie internieren nie ([Atome](terms.md#atoms)).
+- Zusammengesetzte Literale sind `literal_count` Terme aus `literals`
+  (`literal_bytes` Bytes, `abi/literals.hpp`): die kompakte Termkodierung von
+  BEAM (Basistags `u`, `i`, `a`: Anzahlen, Ganzzahlen beliebiger Größe als
+  Big-Endian-Zweierkomplement, Atome als Modul-Atomplatz + 1 mit 0 für `[]`)
+  plus die erweiterten Tags von Clause für Listen (Länge, Elemente, Rest),
+  Tupel, Gleitkommazahlen (binary64), bitstrings (Bitanzahl, Bytes), maps und
+  Bytefolgen. Die Registrierung dekodiert sie in den Literal-Heap der Runtime;
+  die beanspruchende Runtime füllt `literal_cache` (ein Wort pro Literal), den
+  erzeugter Code nach der Besitzprüfung liest, und der Code anderer Runtimes
+  ruft `CLAUSE_literal_v1(context, index, descriptor)` auf
+  ([Bereiche](runtime-heap.md#areas)).
 - Ein Startobjekt (`clausev1_start`) listet jeden Deskriptor in einem
   `StartupDescriptor` auf, und sein natives `main` ruft
   `CLAUSE_main_v1(argc, argv, descriptor)` auf, das alle Module registriert und
@@ -264,28 +276,66 @@ ist. Ein exportiertes `<symbol>` behält die Signatur
   (`self`), je ein Zielwort. Ein Rumpf liest beim Eintritt daraus seinen
   Frame-Header (`stack + frame`) und die Register und verzweigt anhand des
   Fortsetzungsworts des Headers.
-- Binary-Muster (64-Bit-Ziele): Der Starttest, der Endtest und Ganzzahlsegmente
-  konstanter ganzzahliger Bytebreite bis 56 Bits an einer byteausgerichteten
-  Position lesen die Zelle inline (`abi::v1::heap_binary_*_word`,
+- Binary-Muster: Der Starttest, der Endtest und Ganzzahlsegmente konstanter
+  Breite bis zur Wortgröße abzüglich 8 Bits (56 auf 64-Bit-Zielen, 24 auf
+  32-Bit-Zielen) lesen die Zelle inline (`abi::v1::heap_binary_*_word`,
   `refc_*_word`: das `data_` einer Off-Heap-Sicht ist das erste Byte ihres
-  Puffers); andere Segmente und nicht ausgerichtete Positionen rufen
-  `CLAUSE_bits_v1` auf. Ein `sub_binary` als Subjekt (`sub_*_word`) wird über
-  sein Original gelesen. Ein abschließendes `Rest/binary` oder `Rest/bits` der
-  Einheit 1 wird inline als 4-Wort-Zelle `sub_binary` des Originals per
+  Puffers), an jeder Bitposition. Ein Segment ganzer Bytes an einer
+  byteausgerichteten Position benötigt einen Ladezugriff; jedes andere liest
+  die vom Feld berührten Bytes und schiebt das Feld heraus. Breiten, die keine
+  ganzen Bytes sind, werden nur als Big-Endian inline gelesen. Andere Segmente
+  rufen `CLAUSE_bits_v1` auf. Ein `sub_binary` als Subjekt (`sub_*_word`) wird
+  über sein Original gelesen. Ein abschließendes `Rest/binary` oder `Rest/bits`
+  der Einheit 1 wird inline als 4-Wort-Zelle `sub_binary` des Originals per
   Bump-Allokation angelegt.
-- Binary-Schleifen: Wenn jede Klausel einer Funktion einen Parameter als Binary
-  matcht (oder ihn ignoriert), nie das ganze Binary behält und die gebundenen
-  Reste nur als diesen Parameter von Selbst-Endaufrufen liest, erhält die
-  Funktion eine private Variante `<symbol>.loop`. Der eigene Schritt der
-  Funktion erzeugt die Rest-Zelle wie oben und betritt mit ihr die Variante (ein
-  vom Service erzeugter Rest, der geteilt sein kann, betritt stattdessen erneut
-  die Funktion). Die Variante erzeugt keine Rest-Zelle: Jeder Selbst-Endaufruf
+- Binary-Schleifen: Wenn kein Klauselkopf einer Funktion einen Parameter mit
+  einer Bindung vergleicht und eine Klausel einen Rest davon als diesen
+  Parameter eines Selbst-Endaufrufs zurückgibt, erhält die Funktion eine
+  private Variante `<symbol>.loop`. Der eigene Schritt der Funktion erzeugt
+  die Rest-Zelle wie oben und betritt mit ihr die Variante (ein vom Service
+  erzeugter Rest, der geteilt sein kann, betritt stattdessen erneut die
+  Funktion). Die Variante erzeugt keine Rest-Zelle: Jeder Selbst-Endaufruf
   speichert den neuen Offset und die Bitlänge in die Zelle des Parameters, auf
   die nur diese Schleife verweist, und reicht dieselbe Zelle weiter, sodass eine
   Schleife über ein Binary einmal alloziert. Die Variante liest die Sicht der
   Zelle einmal pro Schritt, vor ihren Klauseln, und überspringt den
-  Bitstring-Test des Parameters. Die Variante trägt in Stacktraces Name und
-  Stelligkeit der Funktion.
+  Bitstring-Test des Parameters. Lade- und Speicherzugriffe auf Prozesszustand,
+  Frames, `sub_binary`-Wörter und Inline-/Off-Heap-Binary-Wörter tragen disjunkte
+  LLVM-TBAA-Tags; eine Variante, die keine andere Erlang-Funktion aufruft,
+  markiert Ladezugriffe auf das Original ihrer Zelle und auf dessen Header,
+  Offset und Datenadresse mit `!invariant.load` und erhält nach der Pipeline
+  einen weiteren GVN-Durchlauf (Funktionsattribut `clause-binary-loop`), sodass
+  die Sicht die Schleife verlässt und der in einem Durchlauf gespeicherte
+  Offset und die Länge Registerwerte des nächsten Durchlaufs sind. Jeder
+  andere Lesezugriff im Rumpf auf einen Rest oder in der Variante auf den
+  ganzen Parameter sowie jede fun, die einen davon erfasst, erhält eine neue
+  `sub_binary`-Zelle mit denselben Bits (der Service erzeugt sie ohne Platz im
+  Heap), sodass nichts anderes je die Zelle der Schleife hält; guards lesen
+  den Wert selbst. Die Variante trägt in Stacktraces Name und Stelligkeit der
+  Funktion.
+- Gleitkommaschleifen (64-Bit-Ziele): Ein Parameter unter den ersten sechs (die
+  in Registern übergeben werden) ist ein Gleitkommaparameter, wenn jede Klausel
+  ihn an eine Variable bindet (oder ignoriert), ein Selbst-Endaufruf ihm einen
+  reinen Gleitkommaausdruck übergibt (ein Gleitkommaliteral, `/`, einen
+  `math`-Aufruf oder `+ - *` mit einem solchen Operanden) und sein Wert nur als
+  Operand von Arithmetik, Vergleichen oder `math`-Aufrufen, als derselbe
+  Parameter eines Selbst-Endaufrufs oder innerhalb des Ergebnisses oder eines
+  Endaufrufs einer anderen Funktion gelesen wird (nie in einer fun). Die
+  Funktion erhält eine private Variante `<symbol>.float`, die jeden
+  Gleitkommaparameter als Bits seines Double-Werts im Argumentwort übernimmt
+  (Funktionsattribute `clause-float-parameters`, eine Bitmaske, und
+  `clause-float-generic`, die Funktion). Ein Selbst-Endaufruf einer der beiden,
+  dessen neuer Wert jedes Gleitkommaparameters ein Double-Wert in einem
+  Register ist, betritt die Variante mit diesen Bits, sodass eine
+  Gleitkommaschleife keine Zelle pro Schritt erzeugt; die Variante erzeugt eine
+  Zelle eines Parameters nur dort, wo sie das Wort selbst liest. Rohe Bits
+  erreichen nie eine Stelle, die eine Bereinigung liest: Die anderen
+  Selbst-Endaufrufe der Variante betreten erneut die Funktion, und eine
+  Übergabe in die Variante, die ihren Service-Pfad nimmt (angeforderte
+  Bereinigung, Profiling, keine Reduktionen übrig, Stackwachstum), boxt die
+  Double-Werte mit dem Helfer `clause.float.box` des Moduls und betritt
+  stattdessen den Deskriptor der Funktion. Die Variante trägt in Stacktraces
+  Name und Stelligkeit der Funktion.
 - Eine Binary-Konstruktion, deren Bytes alle zur Kompilierzeit bekannt sind
   (kleine Ganzzahlkonstanten und Stringliterale konstanter ganzzahliger
   Bytebreite, höchstens 64 Bytes), ist eine Inline-Binary-Zelle des
@@ -300,6 +350,15 @@ ist. Ein exportiertes `<symbol>` behält die Signatur
 - Ein reines Builtin mit literalen Argumenten wird zur Kompilierzeit
   ausgewertet, wie es `sys_core_fold` von OTP tut: `atom_to_list(Atom)` eines
   Atomliterals ist der literale String dieses Namens, ohne Aufruf.
+- `integer_to_list(N)` einer kleinen Ganzzahl schreibt ihre Ziffernzellen in
+  die freien Wörter des Heap-Blocks, und `list_to_integer(L)` einer echten
+  Ziffernliste nach einem optionalen Minuszeichen, die kurz genug für eine
+  kleine Ganzzahl ist (17 Ziffern auf 64-Bit-Zielen, 8 auf 32-Bit-Zielen), liest
+  sie an Ort und Stelle (`codegen/lowering_integer_text`). Jedes andere
+  Argument oder ein Block ohne Platz betritt das Builtin, das jeden Fehler
+  auslöst. Als linker Operand von `++` prüft `integer_to_list(N)` das `N` an
+  seiner Position, und das Anhängen schreibt die Ziffern ohne Kopie direkt vor
+  `Right`.
 - `erlang:make_tuple(N, V)` mit kleinem `N` in 1..64 legt das Tupel per
   Bump-Allokation an und füllt es mit `llvm.experimental.memset.pattern`, wo der
   Heap Platz hat; andernfalls läuft das Builtin.
@@ -322,7 +381,15 @@ ist. Ein exportiertes `<symbol>` behält die Signatur
   abhängt), rechnen in Registern und legen die 2-Wort-Gleitkommazelle per
   Bump-Allokation an, wenn das Ergebnis endlich, der Divisor ungleich null ist
   und der Heap Platz hat; andernfalls löst `CLAUSE_immediate_v1` `badarith` aus
-  oder befördert.
+  oder befördert. Ein Gleitkommaliteral und das Ergebnis von `/`, von
+  Inline-Mathematik oder einer Operation mit einem solchen Operanden (bei
+  Erfolg immer eine Gleitkommazahl) halten ihren Double-Wert auch in einem
+  Register: Lesende Operationen verwenden das Register, und seine Zelle wird
+  erst erzeugt, wo etwas das Wort selbst liest (`CLAUSE_float_v1`, wenn der
+  Heap keinen Platz hat); ein lesender Service-Rückfall erhält eine eigene
+  Zelle. Ein Vergleich zweier solcher Gleitkommazahlen vergleicht die
+  Double-Werte, exakte Gleichheit ihre Bits (sodass `0.0 =:= -0.0` falsch
+  bleibt).
 - Map-Ausdrücke ohne Basis, deren Schlüssel Atom- oder kleine Ganzzahlliterale
   sind (höchstens 32 verschiedene), werden inline als klassische Map-Zellen
   geschrieben, die Schlüssel zur Kompilierzeit in exakter Termordnung sortiert,
@@ -337,6 +404,19 @@ ist. Ein exportiertes `<symbol>` behält die Signatur
   Platz hat. Ein fehlender Schlüssel lässt ein Muster sofort scheitern;
   Map-Bäume, andere Schlüssel, ein andernorts fehlender Schlüssel und Fehler
   verwenden `CLAUSE_map_v1` (Abfragen kleiner Maps).
+- Jede solche Suche nach einem literalen Schlüssel (einem im Quelltext
+  geschriebenen Atom oder einer kleinen Ganzzahl) hat einen Inline-Cache pro
+  Aufrufstelle, eine interne globale Variable `[2 x word]`, die alle Prozesse
+  teilen: den Index des zuletzt gefundenen Schlüsselworts (anfangs 1) und die
+  verbleibenden Überschreibungen (8). Die Suche vergleicht zuerst das
+  Schlüsselwort am gespeicherten Index, sodass eine map der an dieser Stelle
+  üblichen Form einen Vergleich kostet; andernfalls durchsucht sie die map und
+  speichert den gefundenen Index, solange Überschreibungen übrig sind. Beide
+  Wörter sind atomar mit gelockerter Speicherordnung; eine Stelle, die ihre
+  Überschreibungen aufgebraucht hat, liest nur noch, sodass Stellen, die viele
+  Formen in vielen Prozessen sehen, die Cache-Zeile nicht hin- und herschieben.
+  Variable Schlüssel (als Wörterbücher verwendete maps) werden nur durch
+  Durchsuchen gefunden (Inline-Caches für Map-Formen).
 - Tupel und Listen von höchstens 64 Wörtern werden inline in
   `[heap_top, heap_limit)` per Bump-Allokation angelegt (Header oder Cons-Zellen
   an Ort und Stelle geschrieben, `heap_top` vorgerückt), sonst von
@@ -503,3 +583,5 @@ Modul-/Funktionsbytes, Argumentarray und Stelligkeit auf und liefert einen
 | 21 | `ModuleDescriptor::fun_cache` und Inline-Closures |
 | 22 | Direkte Builtins: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
 | 23 | Schnelle Builtins: `BuiltinName::call` (`BuiltinCall`), 0 von `CLAUSE_builtin_call_v1` lehnt ab |
+| 24 | `RecordDescriptor::definition` (die Feldliste als Bytes im External Term Format für `records:get_definition/2`) und `ModuleDescriptor::features` (Atomplätze der aktivierten Features für `erl_features:used/1`) |
+| 25 | Kodierte Modulliterale und der Literal-Heap: `ModuleDescriptor::literals` enthält kodierte Bytes (`literal_bytes`), `literal_cache`, `literal_count`; `CLAUSE_literal_v1` |

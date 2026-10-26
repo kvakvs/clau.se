@@ -1,8 +1,8 @@
 ---
 source: docs/validation.md
-sourceCommit: 336caea7
-sourceSha256: b00092bc767953e496774561feaef35ac500b4db73b4344eafd6dda372c90e24
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 695fedb7d04a5c9f5f94ff65294e4c2ee14e817db6041f57d7f67af31e8aabc7
+translatedAt: 2026-10-26
 ---
 # Validering
 
@@ -43,6 +43,13 @@ cmake --build build/debug --target check-quality-all  # whole tree
 - Långa tester som drivs av ett Python- eller CMake-skript har en fast
   CTest-`COST`: CTest lär sig ett omslags kostnad från dess egen lilla CPU-tid
   och skulle starta dem sist.
+- Belastningskänsliga tester (`CLAUSE_LOAD_SENSITIVE_TESTS` i den översta
+  `CMakeLists.txt`: `frontend_cli`, `codegen_examples`, `linking_debugger`,
+  `executables_applications`) fick bara timeout eller förlorade tidsberoende
+  kapplöpningar vid en fullständig parallell körning. De har `DEPENDS` på alla
+  andra tester, så de startar när resten av urvalet är färdigt och har
+  processorerna för sig själva; ett misslyckat beroende gör inte att de hoppas
+  över.
 - `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplicerar gränserna per körning för
   golden-köraren (60 s) och köraren för semantiska fall (15 s) för
   instrumenterade byggen.
@@ -203,6 +210,7 @@ värden; resultaten är värdspecifika belägg, inte grindresultat.
 ```powershell
 make-benchmark.bat                         # Windows; set JOBS=N to cap parallel builds
 make-benchmark.bat --repeat 9 --only bench_gc,bench_msg
+make-benchmark.bat --cpus all                 # unpinned set; default --cpus performance
 make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
 ```
 
@@ -212,8 +220,33 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   av `erlc` och `clau -O2`. Var och en tar tid på sina kärnor med
   `erlang:monotonic_time/1` efter ett uppvärmningsanrop och skriver ut
   `BENCH <name> <nanoseconds>`: generering av data, bearbetning av data,
-  skräpsamling, meddelandeöverföring, fil-I/O (i en tom temporär arbetskatalog)
-  och loopback-socketar.
+  skräpsamling, meddelandeöverföring, fil-I/O (i en tom temporär arbetskatalog
+  under `build/bench/runs`, inne i arkivet så att ett antivirusundantag för
+  arkivet täcker den), loopback-socketar och bibliotek (`libraries.qlc`:
+  `qlc_pt`-transformeringar av frågor och moduler utformade som fall i
+  `qlc_SUITE`, tidtagna tillsammans). Iterationsantalen gör att varje kärna
+  varar 1–2 s på OTP, så att timerupplösning och störningar från värden förblir
+  små i förhållande till den; socketkärnor ökar arbetet per anslutning, inte
+  antalet socketar. Utanför tidtagningen väntar uppvärmningen och de tidtagna
+  anropen var för sig tills processerna de startade har avslutats
+  (`processes_left`-fel efter 10 s). Varje kärna körs i en egen ny process, som
+  avslutas innan nästa kärna startar, så att ingen kärna betalar för heapar som
+  en tidigare kärna förstorat.
+- Varje programkörning har ett eget Windows-jobbobjekt eller en egen
+  POSIX-session; nästa körning startar när alla dess processer är borta, och
+  kvarvarande processer som fortfarande lever 30 s efter avslut dödas och
+  rapporteras som ett fel.
+- CPU:er: varje process i en körning, både OTP:s och Clauses, körs på
+  uppsättningen `--cpus`: `performance` (standard: kärnorna med högst Windows
+  `EfficiencyClass`, Linux `/sys/devices/cpu_core/cpus` eller störst
+  `cpu_capacity`, alltså P-kärnorna på en hybridprocessor och annars alla
+  CPU:er), `all`, en lista som `0-15` eller `2,4,6`, eller en hexmask som
+  `0x5554`. På Windows bär körningens jobbobjekt affinitetsgränsen innan
+  programmet återupptas, på Linux sätter programmet den före `exec`; macOS kan
+  inte binda och kör obundet. Både OTP och Clause startar en aktiv
+  schemaläggare per CPU i uppsättningen, obunden till enskilda CPU:er.
+  Rapporthuvudet och varje historikpost (`cpus`) anger uppsättningen; kvoter
+  för körningar på olika uppsättningar är inte jämförbara.
 - System, på samma värd i en körning, varvade: OTP med sin standardvariant
   (JIT), OTP `-emu_flavor emu` när den är installerad (Windows-installeraren
   levererar endast JIT, så de kolumnerna visar `n/a`), Clause HEAD vid O2 och
@@ -221,15 +254,13 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   är minst en dag äldre än HEAD; `--baseline REV`, `--no-baseline`) byggd i
   ett cachat arbetsträd under `build/bench-base/<hash>` som delar
   `thirdparty/`.
-- Rapport: per kärna medianen av `--repeat` körningar (standard 5) i
+- Rapport: per kärna medianen av `--repeat` körningar (standard 3) i
   millisekunder med sex decimaler och dess spridning, förändringen för Clause
   O2 mot varje system (`+N%`: Clause snabbare, det andra tar N % längre tid;
   `-N%`: Clause tar N % längre tid; `(Fx)` tidskvoten) med ett geometriskt
   medelvärde, `--lto` mot OTP och O2, programmens totala tider inklusive
-  uppstart, körbara filers storlekar, fel och tidsgränser (`--timeout`, 600 s per körning).
-  Iterationsantalen håller en standardkörning under 10 minuter; Clause, det
-  långsammaste systemet, bestämmer storlekarna, så vissa OTP-kärnor varar bara
-  några millisekunder.
+  uppstart, körbara filers storlekar, fel och tidsgränser (`--timeout`, 600 s
+  per körning). En standardkörning mäter i ungefär 15 minuter.
 - Körbara filers storlekar i byte: varje program vid `-O2`, med `--lto` och
   vid `-O0` (ett extra bygge som bara mäts, aldrig körs; båda hoppas över av
   `--no-lto`) och baslinjen vid `-O2`, med en totalrad och ändringarna O2 mot
@@ -239,12 +270,15 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   `head`/`baseline` → byte; `null` där ett bygge misslyckades).
 - Historik: `benchmarks/history/<host>.json` behåller en post per kördag
   (kördatum, HEAD-hash och commitdatum, medianer för Clause, OTP och
-  baslinjen, storlekar), `benchmarks/history/reports/<host>/<day>-<hash>.txt`
+  baslinjen, storlekar samt Clauses tidskvoter `otp_ratio` och `baseline.ratio`
+  per kärna), `benchmarks/history/reports/<host>/<day>-<hash>.txt`
   textrapporterna; en ny körning samma dag ersätter båda. Poster och rapporter
   som körts mer än 183 dagar före den nyaste rensas bort; en körning med
   ändringar i källkoden som inte har checkats in rapporteras men registreras
-  inte. Historikkatalogen ignoreras av git: den stannar på värden som körde
-  den.
+  inte. Rapportens historiktabeller visar kvoterna för de senaste 8 kördagarna,
+  vilka förblir jämförbara när kärnornas arbete ändras; poster från före
+  omskalningen till 1–2 s behåller endast sina kvoter. Historikkatalogen
+  ignoreras av git: den stannar på värden som körde den.
 - Listningar: med `--listings` skriver en körning, före mätningen, varje
   programs [`--print-asm`](compile.md#assembly-listings)- och
   `--print-ir`-listningar (med `bench_util`, `--entry <program>` så att onåbar
@@ -288,6 +322,7 @@ CTest-körningar utan överhoppningar.
 | 2026-10-13 | Steps 58U–58W inferenscache | 278/279 | alla | Fullständig CTest, känt fel i `codegen_measurements`; `check-quality-all` rent |
 | 2026-10-14 | Step 41S `prim_eval` och den nya luerl-körningen (H3 stängd) | 299/300 | alla | Se nuvarande baslinje |
 | 2026-10-17 | Plan 20 OPTM.2 (enords-Term, persistenta termer på plats och återvunna) och OPTM.3 (okontrollerade åtkomstfunktioner) | 330/332 | all | Fullständig CTest: känt fel i `codegen_measurements`, och `library_freshness` (värdens OTP) väntar sig ännu de `not_implemented`-stubbkroppar som `b0e62a38` ersatte; `check-quality-all` utan anmärkningar |
+| 2026-10-19 | Plan 21 LIB10F ThreadSanitizer (Linux x86-64): ETS- och digraph-goldens, `runtime_concurrency` | 10 | — | Ingen rapport; `ets_portions` på en arbetstråd visade att en borttagning frigjorde i två portioner, åtgärdat genom att räkna kostnaden för ett frigjort objekt som för ett genomgånget |
 
 PG = steg i mönster-/guard-planen; posterna för plan 11-stegen är arkiverade i
 `.agents/00-finished.md`.

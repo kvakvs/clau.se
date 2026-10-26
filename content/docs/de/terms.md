@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 336caea7
-sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 4e14e8fda395d76503e8c295505005d07d3fa8c33b4ba32f99c48caae55921ab
+translatedAt: 2026-10-26
 ---
 # Term-Darstellungen
 
@@ -78,9 +78,10 @@ stehen in [abi.md](abi.md#terms).
   Datensätzen, werden ohne Sperre gefunden und weder von `size()` noch gegen
   `max_atoms` gezählt; erzeugter Code verwendet sie als Konstanten. Jedes
   andere Atomwort ist privat für die Runtime.
-- Zusammengesetzte Literale aus Konstanten (Zeichenketten, Listen und Tupel aus
-  Immediates und anderen Literalen, Gleitkommazahlen, Bignums) sind Zellen des
-  Literalbereichs des Moduls, zur Kompilierzeit gebaut und gemeinsam genutzt
+- Zusammengesetzte Literale (Zeichenketten, Listen, Tupel und maps aus
+  Literalen, Gleitkommazahlen, Bignums, konstante binaries) sind Modulliterale:
+  zur Kompilierzeit kodiert, bei der Registrierung einmal pro Runtime in deren
+  Literal-Heap dekodiert und gemeinsam genutzt
   ([Literalbereiche](runtime-heap.md#areas)); Ganzzahlliterale im kleinen
   Bereich sind Immediates.
 - Andere Atomliterale werden aus dem Atom-Cache des Moduls geladen
@@ -90,6 +91,15 @@ stehen in [abi.md](abi.md#terms).
   entspricht, liest ihn ohne Aufruf, jeder andere ruft `CLAUSE_atom_v3` auf.
   Der Anspruch wird zurückgegeben, wenn der Code-Server der Runtime das Modul
   freigibt.
+- Runtime-C++ schreibt literale Atome als `"name"_atom` (`atom_names.hpp`): Ein
+  statischer `CachedAtom` pro Schreibweise hält das zuletzt dafür internierte
+  Wort, und `AtomStorage::intern` gibt es nach einem sperrfreien Indexzugriff
+  zurück, wenn diese Runtime es vergeben hat, und überspringt Validierung,
+  geteilte Sperre und Schreibweisen-map. Ein Wort einer anderen oder abgebauten
+  Runtime besteht diese Prüfung nicht und wird ersetzt, sodass mehrere
+  Runtimes in einem Prozess korrekt bleiben (sie aktualisieren nur den Cache).
+  Builtin-Helfer nehmen `AtomName`, eine Schreibweise mit oder ohne solchen
+  Cache.
 - Internieren und Nachschlagen sind sicher gegenüber nebenläufigen
   Scheduler-Workern ([Threads](runtime.md#threads)); eine Schreibweise behält
   ein Wort.
@@ -111,6 +121,9 @@ stehen in [abi.md](abi.md#terms).
   expliziten Grenzen. Ebenso `band`, `bor`, `bxor`, `bsr`, `div`, `rem` und
   Vergleiche zweier kleiner Ganzzahlen
   ([Inline-Formen](abi.md#runtime-services)).
+- Der Dienst multipliziert ein Bignum (oder ein übergelaufenes kleines Produkt)
+  mit einer kleinen Ganzzahl Limb für Limb, direkt aus der Zelle des Operanden
+  in die neue; andere Bignum-Operationen verwenden einen Mehrfachpräzisionswert.
 - `div` schneidet in Richtung null ab; `rem` übernimmt das Vorzeichen des
   Dividenden; bitweise Operationen verwenden unendliches Zweierkomplement;
   negative Verschiebungsweiten kehren die Richtung um; riesige
@@ -188,18 +201,20 @@ stehen in [abi.md](abi.md#terms).
   Mehrfachpräzision. Erzeugter Code baut kleine Konstruktionen konstanter
   Breite inline ([Frames und Übergaben](abi.md#frames-and-transfers)).
 - Anhängen, wie bei den beschreibbaren Binaries von OTP: Eine Konstruktion,
-  die mit einem ganzen Binary beginnt (`<<Acc/binary, ...>>`), baut ihr
-  Ergebnis in einem Puffer mit Reserveplatz (doppelte Größe, mindestens
-  256 Bytes), dessen Off-Heap-Zelle im erzeugenden Prozess die belegten Bits
+  die mit einem ganzen Binary beginnt (`<<Acc/binary, ...>>`) und mehr als
+  64 Bytes umfasst, baut ihr Ergebnis in einem Puffer mit Reserveplatz (Größe
+  auf eine Zweierpotenz aufgerundet, mindestens 256 Bytes), dessen
+  Off-Heap-Zelle im erzeugenden Prozess die belegten Bits
   und die Kapazität vermerkt (null in jeder anderen Zelle, Kopien
   eingeschlossen). Ein späteres Anhängen, dessen Akkumulator-Ansicht genau dort
   endet, schreibt die neuen Bytes in den Reserveplatz, den keine Ansicht
   abdeckt, und gibt eine längere Ansicht desselben Puffers zurück: ein
   Sub-Binary der eigenen Off-Heap-Zelle des Puffers, das über die Bits dieser
   Zelle hinausreichen darf. Jeder andere Akkumulator (eine ältere Ansicht, die
-  eines anderen Prozesses, eine nicht ausgerichtete, ein voller Puffer) wird in
-  einen neuen, verdoppelten Puffer kopiert. Andere Ansichten des Puffers ändern
-  sich nie.
+  eines anderen Prozesses, eine nicht ausgerichtete, ein voller Puffer) wird
+  einmal in einen neuen Puffer kopiert, der einen vollen mindestens verdoppelt.
+  Andere Ansichten des Puffers ändern sich nie. Freigegebene Puffer werden
+  wiederverwendet ([Pufferwiederverwendung](runtime-heap.md#buffer-reuse)).
 - Gleitkommasegmente: Breiten 16/32/64; die Konstruktion darf Unendlich
   kodieren, das Matching weist aber unendliche/NaN-Felder ab.
   Gleitkomma-Matches der Breite null extrahieren `0.0`.
@@ -283,11 +298,21 @@ Funs < Ports < Pids < Tupel < native Records < Maps < nil < Listen < Bitstrings
 (zur Ordnung der [Funs](funs.md#comparison-and-printing) untereinander).
 Atome werden nach UTF-8-Schreibweise verglichen (Codepoint-Reihenfolge); Tupel
 nach Stelligkeit, dann Feldern; Maps nach Größe, dann Schlüsseln, dann Werten;
-Bitstrings nach logischen Bits. Zwei kleine Ganzzahlen, zwei Gleitkommazahlen
-oder zwei ganzbytige Binaries werden direkt aus ihren Wörtern oder Zellen
-geordnet (`detail::word_order`), und zwei Atome aus ihren Schreibweisen in
-der Atomtabelle (`AtomStorage::spelling`, über den sperrfreien Nummernindex),
-ohne Zulassung als Term.
+Bitstrings nach logischen Bits. Zahlen (kleine Ganzzahlen, Gleitkommazahlen,
+Bignums nach Vorzeichen und Limbs), Atome (nach ihren Schreibweisen in der
+Atomtabelle über den sperrfreien Nummernindex), lokale Referenzen (nach
+Nummer), ganzbytige binaries sowie bis zu 8 Ebenen tief verschachtelte Tupel
+und Listen daraus werden direkt aus ihren Wörtern und Zellen geordnet
+(`detail::word_order`), ohne Zulassung als Term; jedes andere Paar, eine
+Gleitkommazahl gegenüber einem Bignum gleicher Bitlänge oder eine kleine
+Ganzzahl jenseits von 2^53 gegenüber einer Gleitkommazahl verwendet die
+strukturelle Ordnung. `=:=` nimmt denselben Pfad (`detail::word_exact`): Paare,
+die er unterschiedlich einordnet, sind ungleich, und ein Wort oder zwei
+Referenzen, die er als gleich erkennt, sind gleich, sodass ein receive beim
+Matchen der Referenz einer Antwort keinen Term zulässt. `lists:sort/1` und
+`lists:usort/1` sortieren Elementwörter an Ort und Stelle: Listen nur kleiner
+Ganzzahlen oder nur von Atomen nach Wort oder Schreibweise, andere mit einer
+stabilen Sortierung nach Wortordnung.
 
 ## Ausgabe
 

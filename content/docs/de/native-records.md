@@ -1,8 +1,8 @@
 ---
 source: docs/native-records.md
-sourceCommit: a8c3f8f6
-sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 7ac44f2d773e43162cf3d7661c9585bc357f2dbc7da1e3dabbc1db4b2f9dd4f5
+translatedAt: 2026-10-26
 ---
 # Native Records
 
@@ -27,8 +27,8 @@ Darstellung:
 | Qualifiziert und importiert | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, Muster; `-export_record`, `-import_record` |
 | Inferiert (anonym) | `X#_.f`, `X#_{...}`, Muster `#_{...}` |
 
-Nicht vorhanden: das Reflexionsmodul `records` (Aufrufe von `records:*` sind
-Diagnosen `unknown module`), `term_to_binary` nativer Records (`error:notsup`,
+Das Reflexionsmodul `records` ist vorhanden ([Reflexion](#reflection)). Nicht
+vorhanden: `term_to_binary` nativer Records (`error:notsup`,
 [externes Termformat](builtins.md#external-term-format)) und Hot Code Upgrade.
 
 ## Darstellung
@@ -37,7 +37,10 @@ Diagnosen `unknown module`), `term_to_binary` nativer Records (`error:notsup`,
   unveränderlichen `abi::v1::RecordDescriptor` neben ihrem Moduldeskriptor
   kompiliert: der definierende `ModuleDescriptor`, Atom-Slots für Modul- und
   Record-Namen, das Export-Flag (`-export_record` zur Compile-Zeit) und die
-  Atom-Slots der Feldnamen in Definitionsreihenfolge. Atom-Slots werden über die
+  Atom-Slots der Feldnamen in Definitionsreihenfolge sowie die Feldliste, die
+  `records:get_definition/2` zurückgibt, als Bytes im External Term Format
+  (`{Field, Default}` mit dem gefalteten Standardwert oder nur `Field`).
+  Atom-Slots werden über die
   registrierten Atome des Moduls aufgelöst, wie die Namen in
   `FrameDescriptor`. Programme sind statisch (kein Entladen), daher lebt ein
   Deskriptor so lange wie das Programm; ein anderes Modul des Batches verweist
@@ -97,7 +100,11 @@ Die Meldungen folgen `erl_lint`:
 
 - Standardwerte müssen nach der Konstantenfaltung literal sein (Zahlen, Atome,
   Zeichenketten, `[]`, Conses/Tupel/Maps daraus, Binaries nur aus
-  Zeichenketten): `illegal default value for field a in native record r`.
+  Zeichenketten sowie arithmetische, Vergleichs- und
+  `not`/`and`/`or`/`xor`-Operatoren darauf, gefaltet wie vom Compiler von OTP);
+  `++`, `--`, `andalso`, `orelse` und ein fehlschlagender Operator (`1 / 0`)
+  sind unzulässig:
+  `illegal default value for field a in native record r`.
 - Lokale Konstruktion ohne Wert für ein Feld ohne Standardwert:
   `field a is not initialized in native record r`; unbekanntes Feld:
   `field zz undefined in record r`. Unbekannte Felder in Zugriff,
@@ -116,6 +123,30 @@ Die Meldungen folgen `erl_lint`:
   Standardwerte des definierenden Moduls selbst durch und referenziert dessen
   exportierten Deskriptor; unbekannte Felder lösen `badfield` aus, bevor ein
   fehlender Wert `novalue` auslöst (`ErrorReason` 21).
+
+## Reflexion
+
+`records` antwortet anhand der Definition, die ein record festgehalten hat:
+
+- `get/2`, `get_module/1`, `get_name/1` (`badarg` für einen Wert, der kein
+  record ist, oder ein fehlendes Feld), `get_field_names/1`, `is_exported/1`
+  (`{badrecord, X}`).
+- `create(Module, Name, Fields, #{is_exported => Boolean})` erstellt zur
+  Laufzeit eine Definition in der angegebenen Feldreihenfolge, die der
+  Code-Server interniert, sodass gleiche Erzeugungen sie teilen; ein
+  kompilierter record und ein erzeugter mit gleichem Modul, Namen, Export-Flag
+  und gleicher Feldreihenfolge sind `=:=`. Fehler in der Reihenfolge von OTP:
+  `{badrecord, Name}` für Namen, die keine Atome sind, `{badmap, Options}`,
+  `badarg` für andere Optionen, dann ein Durchlauf über die Felder (`badarg`
+  für ein Nicht-Paar, `{badfield, {{Module, Name}, Field}}` für einen Namen,
+  der kein Atom ist), dann `badarg` für ein wiederholtes Feld.
+- `update(Src, Module, Name, Map)` behält die Definition von Src:
+  `{badrecord, Src}`, `{badrecord, Name}`, wenn Module und Name nicht
+  übereinstimmen, `{badmap, Map}`, dann `{badfield, ...}` in
+  Schlüsselreihenfolge.
+- `get_definition(Module, Name)` dekodiert die Feldliste des Deskriptors:
+  `{#{is_exported => Boolean}, Fields}`, `badarg` für einen record, den kein
+  Modul des Programms definiert.
 
 ## Ausgabe und Ordnung
 

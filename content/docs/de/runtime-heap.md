@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 336caea7
-sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0e0336079bf5ea3110e7390081518b5a0f6fc13f50ae1303e65cfaf40d50cd8f
+translatedAt: 2026-10-26
 ---
 # Vertrag des Prozess-Heaps
 
@@ -94,6 +94,21 @@ jedes Prozess-Heaps liegt und per Referenzzählung geteilt wird (BEAM ProcBin un
   `static_assert` hält die Zellgröße bei beiden Wortbreiten auf acht Wörtern
   nach dem Header fest.
 
+### Wiederverwendung von Puffern
+
+Ein freigegebener Puffer mit einer Zweierpotenz als Größe von mindestens 256
+Bytes (den Kapazitäten anhängbarer binaries) bleibt bei dem Thread, der seine
+letzte Referenz verworfen hat, für dessen nächsten Puffer genau dieser Größe
+(wie [Heap-Blöcke](#heap-blocks)). Jeder Thread behält höchstens 32 Puffer und
+8 MB; der Cache wird beim Ende des Threads freigegeben. Die Bytes eines
+wiederverwendeten Puffers hinter denen des neuen binary bleiben unverändert:
+Keine Sicht umfasst sie. Ohne dies bezogen Schleifen zum Anhängen an binaries
+für jeden vergrößerten Puffer frische Seiten (der C++-Heap gibt die Seiten
+großer freigegebener Blöcke zurück). Neue Puffer sind `ByteBuffer`s
+(`runtime/include/byte_buffer.hpp`), die ihren Speicher ebenfalls nie nullen,
+sodass die Antwort eines Port-Treibers (eine vollständig gelesene Datei) einmal
+geschrieben und unverändert übernommen wird.
+
 ### Handle-Referenzen
 
 Eine Handle-Referenz ist eine Referenz, die zusätzlich einen Off-Heap-Puffer
@@ -155,7 +170,17 @@ wie OTP seine HAMT-Knoten auf dem Heap hält. Kleinere Maps bleiben
   Compiler markiert eine Aktualisierung nur dann als besitzend, wenn die
   Funktion die Quell-Map selbst gebaut hat (`M = <map expression or
   comprehension>` im selben Klauselrumpf), `M` nirgends sonst liest und nie in
-  einer Fun erfasst (`semantic/map_ownership`).
+  einer Fun erfasst (`semantic/map_ownership`), sowie in Fold-Schleifen ab dem
+  zweiten Schritt ([besitzende Akkumulatoren](funs.md#inlined-funs)), wobei die
+  Operation zur Laufzeit gewählt wird.
+- Eine Aktualisierung an einem Schlüssel, der eine kleine Ganzzahl ist, wird
+  allein anhand von Wörtern entschieden (`MapAccess::update_small_key`, kein
+  `Term` pro Argument, die Schlüsselsuche ruft keine virtuelle Prüfung auf).
+  Ist sie besitzend, verwendet sie auch den Quell-Stub wieder, solange dessen
+  Token aktuell ist: Der Stub ist dann jünger als die letzte Bereinigung,
+  sodass das Schreiben der neuen Wurzel darin keinen Zeiger von alt nach jung
+  erzeugt. Ein Fold, der jeden Eintrag aktualisiert, kopiert jeden Knoten
+  höchstens einmal pro Bereinigung und schreibt sonst pro Schritt ein Wertwort.
 
 ## Bereiche
 
@@ -176,19 +201,30 @@ wie OTP seine HAMT-Knoten auf dem Heap hält. Kleinere Maps bleiben
   Safepoints, etwa bei den Rückkehrpunkten einer Rumpfrekursion, inline bleibt,
   nachdem sich das erste Fragment öffnet (Fragmentfenster). Ohne Budget ist
   jedes neue Fragment mindestens so groß wie die Fragmente davor.
-- **Literalbereiche.** Die zusammengesetzten Literale jedes Moduls — Strings
-  und konstante Listen, Tupel aus Konstanten, Gleitkommazahlen,
-  Bignum-Literale und konstante Binaries — werden vom Compiler als Heap-Zellen
-  in einer schreibgeschützten globalen Variablen
-  (`ModuleDescriptor::literals`) angelegt und bei der Registrierung des Moduls
-  runtime-weit registriert (`detail::LiteralAreas`, ein sperrfreier sortierter
-  Schnappschuss). Terme jedes Prozesses dürfen darauf zeigen: Die Zulassung prüft
+- **Literalbereiche (Literal-Heap).** Die zusammengesetzten Literale jedes
+  Moduls — Strings, konstante Listen, Tupel und maps, Gleitkommazahlen,
+  Bignum-Literale und konstante binaries beliebiger Größe — kodiert der
+  Compiler in eine konstante Bytefolge (`ModuleDescriptor::literals`,
+  `abi/literals.hpp`), die in den schreibgeschützten Daten der ausführbaren
+  Datei bleibt. Die Registrierung dekodiert sie einmal pro Runtime in einem
+  temporären Kontext (Pid-Nummer 0, nie vergeben) mit den Atomen und
+  Termfabriken der Runtime und kopiert sie dann in einen Bereich des
+  Adressraums persistenter Terme, der nie ausgemustert wird;
+  `detail::LiteralAreas` besitzt ihn für die Lebensdauer der Runtime und
+  registriert ihn als Modul-Literalbereich (ein sperrfreier sortierter
+  Schnappschuss), sodass selbst Kopien, die lebende persistente Terme kopieren,
+  ihn teilen. Binaries über 64 Bytes behalten einen eigenen Puffer. Terme jedes
+  Prozesses dürfen darauf zeigen: Die Zulassung prüft
   `HeapStorage::readable` (Heap, Fragmente, dann Literale), während
   `TermAccess::object` vertrauenswürdige Zeiger liest; die Speicherbereinigung lässt Literalwörter, wie
   sie sind (`owned` bleibt nur für den Heap); Kopien zwischen Heaps und in
   Nachrichtenpuffer zeigen weiter darauf (eine Literalwurzel braucht keine
-  Kopie); der Verifizierer akzeptiert sie. Literale halten nur Immediates (nur
-  feste Atome) und Wörter anderer Literale.
+  Kopie); der Verifizierer akzeptiert sie. Literalwörter gehören der Runtime
+  (einschließlich der Atome), daher hat jede Runtime ihre eigene Kopie;
+  erzeugter Code liest die Wörter der beanspruchenden Runtime aus
+  `literal_cache` und die anderer Runtimes über `CLAUSE_literal_v1`. Eine
+  besitzende map-Aktualisierung ändert ein Literal nie an Ort und Stelle:
+  Dafür kommt nur ein Stub im eigenen Heap des Prozesses infrage.
 - **Fragmente.** Wenn eine Anforderung nicht passt und sich der Heap nicht
   bewegen darf, geht sie in das neueste Fragment, falls sie dort passt, sonst
   in ein neues, passend dimensioniertes Fragment (mindestens die minimale
@@ -261,9 +297,16 @@ Block, den eine Bereinigung freigibt, bleibt für die nächsten Bereinigungen
 dieses Threads bei seinem Thread (so wie die Carrier von ERTS Speicher
 behalten): Ein neuer Block nimmt den kleinsten zwischengespeicherten Block, der
 mindestens seine Größe und höchstens das Doppelte davon hat, sonst frischen
-Speicher. Jeder Thread behält höchstens 8 Blöcke und 4M Wörter (32 MB auf
+Speicher. Jeder Thread behält höchstens 8 Blöcke und 16M Wörter (128 MB auf
 64-Bit-Zielen); Blöcke unter 4.096 Wörtern werden nicht behalten, da die
-Freilisten des C++-Heaps sie günstig bedienen. Ohne dies nahm der Zielbereich
+Freilisten des C++-Heaps sie günstig bedienen.
+Ein freigegebener Block, der nicht hineinpasst, gibt zuerst die ältesten
+zwischengespeicherten Blöcke frei: Ein wachsender Heap gibt immer größere
+Blöcke frei, und ohne Verdrängung füllten die Blöcke seiner frühen, kleinen
+Bereinigungen den Cache, sodass eine lebende Datenmenge von Millionen Wörtern
+für jeden jungen Block, alten Bereich und vollständigen Durchlauf frische
+Seiten bezog.
+Ohne dies nahm der Zielbereich
 (to-space) jeder Bereinigung frische Seiten vom Betriebssystem und zahlte einen
 Seitenfehler pro berührter Seite, und das Freigeben eines großen Blocks gab
 seine Seiten zurück. Zwischengespeicherte Blöcke werden keinem Prozess und
@@ -295,8 +338,10 @@ wenn er endet.
 - Der Zielbereich (to-space) einer Bereinigung wird auch über das Limit hinaus
   angerechnet, weil er die Blöcke ersetzt, die er am Ende derselben
   Bereinigung freigibt.
-- Der Stack verdoppelt sich, solange das Limit es erlaubt, und wächst danach
-  nur um den Frame, der gerade abgelegt wird.
+- Die ersten 64 Wörter des Stacks liegen im Prozesskontext und werden mit dem
+  ersten abgelegten Frame angerechnet. Danach verdoppelt sich der Stack,
+  solange das Limit es erlaubt, und wächst danach nur um den Frame, der gerade
+  abgelegt wird.
 
 ## Zulassung
 
@@ -323,7 +368,7 @@ Wort und `validate` prüft nur die Darstellung. Fabriken lassen Eingaben
 weiterhin über `ProcessHeap::retain` erneut zu und weisen fremde
 zusammengesetzte Eingaben mit `wrong_owner` zurück.
 
-Diese Prüfungen laufen nur in Debug-Builds (`CHECKED_ADMISSION`, OPTM.2C).
+Diese Prüfungen laufen nur in Debug-Builds (`CHECKED_ADMISSION`).
 Ein Release-Build vertraut jedem zusammengesetzten Wort, Atom-, Pid- und
 Port-Wort, das einem Builtin, Service oder einer Fabrik übergeben wird, wie
 ERTS seinen Eterms vertraut: Erzeugter Code produziert nur Wörter des eigenen
@@ -399,16 +444,22 @@ Reservierungen und Nachrichtenpuffer behalten ihre Lebensdauerprüfungen
 darf seinen zugrunde liegenden Speicher nicht überleben.
 Der Puffer wird nie bereinigt und mit seinem letzten Besitzer freigegeben; sein
 Block umfasst genau die Wörter des Terms, unabhängig vom Mindest-Heap des
-Senders. Nachrichten an einen Prozess, der auf einem anderen Worker läuft
-([Worker](processes.md#workers)), Timer-Nachrichten und Monitor-Tags verwenden
-ihn, sodass sie nie neu kodiert werden;
+Senders. Sendungen an andere Prozesse
+([Eingangspuffer](processes.md#arrival-buffers)), Timer-Nachrichten und
+Monitor-Tags verwenden ihn, sodass sie nie neu kodiert werden;
 [persistente Terme](runtime.md#persistent-terms) leben in ihrem eigenen
 Adressbereich und werden in Puffer kopiert, nicht mit ihnen geteilt.
 
+**Ein Nachrichtendurchlauf.** Eine Sendung an einen anderen Prozess durchläuft
+den Graphen ihrer Nachricht einmal, vor jeder Sperre (`OutgoingMessage`, mit
+der `GraphCopy` aus [graph_copy.hpp](../runtime/src/memory/graph_copy.hpp));
+dieser Durchlauf bestimmt die Größe jeder späteren Kopie und kopiert wie jede
+Kopie außerhalb eines Prozesses persistente Terme.
+
 **Nachrichtenübergabe.** Ein Senden, dessen Nachricht mindestens
-`MessageBuffer::ADOPTED_WORDS` (512) Wörter umfasst, gezählt durch
-`MessageBuffer::large(value, sender, minimum)` mit einem begrenzten Durchlauf, der dort stoppt, baut den Puffer, bevor es die Sperre des
-Executors nimmt, sodass der Sender beim Kopieren keine Sperre hält. Der
+`MessageBuffer::ADOPTED_WORDS` (512) Wörter umfasst, geht immer über einen
+Puffer, der anhand dieses Durchlaufs vor jeder Sperre kopiert wird, sodass der
+Sender beim Kopieren keine Sperre hält. Der
 Empfänger übernimmt den Puffer dann, statt ihn zu kopieren
 (`MessageBuffer::take`, `HeapStorage::adopt`), wenn der Puffer keinen anderen
 Besitzer hat und der Empfänger einen Heap-Block und kein Budget hat: Der Block
@@ -416,10 +467,19 @@ kommt an denselben Adressen zu seinen Fragmenten, die Off-Heap-Binary- und
 Map-Listen des Puffers kommen samt ihrer Anrechnungen zu seinen eigenen, und
 der Puffer bleibt leer zurück. Niemand sonst kann den Block vorher oder nachher
 erreichen, daher wird kein Wort zweimal kopiert. Übernommene Fragmente fordern
-erst dann eine Bereinigung an, wenn ihre Wörter die des jungen Blocks
-erreichen, wie es die Nachrichtenfragmente von ERTS tun, und die nächste
-Bereinigung behandelt sie als junge Daten. Kleinere Nachrichten werden wie
-bisher kopiert: günstiger als je ein Fragment.
+erst dann eine Bereinigung an, wenn ein receive ihre Nachricht entnommen hat
+und ihre Wörter die des jungen Blocks erreichen, so wie ERTS ein
+Nachrichtenfragment erst nach dem Empfang zählt (`HeapStorage::received`);
+die nächste Bereinigung behandelt sie als junge Daten und kopiert eine noch
+eingereihte Nachricht wie jede Wurzel.
+Kleinere Nachrichten werden einmal kopiert, günstiger als je ein Fragment:
+unter dem Executor-Mutex direkt in den Heap eines nicht laufenden Empfängers
+oder unmittelbar hinter einen Eingangsknoten für einen laufenden. Der
+Empfänger übernimmt einen solchen Eingang, indem er dessen Wörter unverändert
+kopiert und die Zeiger zwischen ihnen um den Abstand der Kopie verschiebt;
+dabei liest er die Objekte in Adressreihenfolge, wie die Speicherbereinigung
+ihre Kopien durchsucht (**verschobene Eingänge**). Der Graph wird nicht erneut
+durchlaufen.
 
 ## Bereinigung in erzeugtem Code
 
@@ -578,7 +638,7 @@ einen Safepoint hinweg, und kein nativer Zeiger überquert überhaupt einen
 
 ### Prototyp
 
-[tests/prototypes/safepoint](../tests/prototypes/safepoint/) enthält eine
+[tests/prototypes/safepoint](../tests/prototypes/safepoint) enthält eine
 Schleife im Stil einer Comprehension in der Form nach `lower_frames`
 (`loop.ll`): Ein vor der Schleife berechneter Term `Y` wird in einen Termplatz
 gespeichert und nach dem Safepoint am Schleifenkopf neu geladen.
@@ -594,7 +654,13 @@ Eine Cheney-Kopie (`memory/heap_collect`), ein vollständiger Durchlauf oder ein
 kleine Bereinigung ([Generationen](#generations)): Zuerst wird der neue Block
 alloziert (ein Fehlschlag ist `out_of_memory` und lässt den Heap unberührt),
 dann wird das Objekt hinter jedem Wurzelwort kopiert und der neue Block von links nach rechts durchsucht, wobei
-die Kinder jeder Kopie kopiert werden. Der Header eines verschobenen geboxten
+die Kinder jeder Kopie kopiert werden. Ein Platz wird zuerst gegen den
+Quellbereich des vorherigen Platzes geprüft (ein Bereichstest), und Immediates
+werden inline unterschieden. Cons-Zellen werden ohne Parsen durchsucht, und
+die Plätze einer geboxten Kopie werden allein anhand der Art in ihrem Header
+gefunden (eine Anzahl nicht verfolgter Wörter pro Art, keine Größenprüfungen:
+Die Kopien stammen von verifizierten Objekten); Objekte mit bis zu vier Wörtern
+werden Wort für Wort kopiert. Der Header eines verschobenen geboxten
 Objekts wird durch einen geboxten Zeiger auf seine Kopie ersetzt; eine
 verschobene Cons-Zelle bekommt einen Null-Kopf und einen Rest, der auf ihre
 Kopie zeigt. Die Weiterleitung erhält geteilte Strukturen. Wurzeln werden an
@@ -633,13 +699,25 @@ Generationelle Bereinigung, wie ERTS sie durchführt, ohne deren Schreibbarriere
   warten auf den nächsten vollständigen Durchlauf.
 - **Dimensionierung des jungen Blocks.** Eine kleine Bereinigung behält die
   Größe des jungen Blocks bei, wie ERTS, und mindestens ein Achtel des alten
-  Bereichs (ERTS). Erzeugter Code bereinigt nur an Safepoints, daher kann die
+  Bereichs (ERTS). Der kleine Block von ERTS ist
+  `next_heap_size(young + stack)`, aber sein Stack füllt den Rest eines vollen
+  Blocks, sodass dies ihn nie vergrößert; der Stack von Clause ist getrennt,
+  und ihn mitzuzählen vergrößerte den Block bei jeder kleinen Bereinigung.
+  Clause vergrößert den Block außerdem so, dass die jungen Wörter oberhalb
+  der Hochwassermarke (alle, die jung bleiben können) und der Stack höchstens
+  75 % davon füllen: Messungen zeigen, dass weniger Bereinigungen mehr bringen
+  als die engeren Blöcke von ERTS. Erzeugter Code bereinigt nur an Safepoints, daher kann die
   Allokation zwischen zwei davon (die Rückkehrpunkte einer Rumpfrekursion) weit
   in Fragmente überlaufen; halten diese ein Viertel des Blocks oder mehr,
-  wächst der nächste Block um sie und wird nicht verkleinert. Andernfalls wird
-  ein junger Block über 8.000 Wörtern mit weniger als 25 % lebenden Daten in
-  das Dreifache seiner lebenden Wörter kopiert (die Regel von ERTS für kleine
+  wächst der nächste Block um sie und wird nicht verkleinert. Andernfalls
+  schrumpft ein junger Block über 8.000 Wörtern mit weniger als 25 % lebenden
+  Daten auf das Dreifache seiner lebenden Wörter (die Regel von ERTS für kleine
   Bereinigungen).
+- **Verkleinerung an Ort und Stelle.** Beide Verkleinerungen (diese und die
+  eines vollständigen Durchlaufs) verringern die Kapazität des Blocks an Ort
+  und Stelle, wie ERTS ihn realloziert: Nichts wird erneut kopiert, und das
+  ungenutzte Ende des Blocks bleibt alloziert, ohne angerechnet zu werden,
+  bis die nächste Bereinigung den Block freigibt.
 - **Off-Heap-Limit.** Nach einer kleinen Bereinigung zählt das Limit des
   virtuellen Binary-Heaps nur die jungen lebenden Wörter: Der alte Bereich kann
   tote Wörter enthalten, die den vollständigen Durchlauf, der tote alte
@@ -677,8 +755,16 @@ werden:
   erreichten Objekts; die Kopie ist eine Reservierung dieser Summe, im
   Heap-Block oder in einem Fragment, gefüllt durch einen zweiten Durchlauf in
   derselben Reihenfolge, der jede Zelle erneut liest und jeden Platz auf die
-  Kopie seines Kindes zeigen lässt. Keine Tabelle bildet Quellobjekte auf
-  Kopien ab, und nur Binary-Zellen und Map-Stubs behalten ihre Offsets.
+  Kopie seines Kindes zeigen lässt. Beide Durchläufe folgen den Listenresten
+  direkt, sodass nur Köpfe auf dem Stack warten, und unterscheiden geteilte
+  Literale von Heap-Zellen mit einem Bereichstest gegen die Spanne aller
+  Modul-Literalbereiche. Der erste Durchlauf bestimmt die Stack-Größe des
+  zweiten, sodass dieser nichts alloziert und die Wörter eines
+  Nachrichtenpuffers nicht genullt werden müssen. Beide Stacks und die
+  binary-Liste halten ihre ersten Einträge inline, sodass das Kopieren einer
+  kleinen Nachricht keine Host-Allokation verursacht. Keine Tabelle bildet
+  Quellobjekte auf Kopien ab, und nur Binary-Zellen und Map-Stubs behalten ihre
+  Offsets.
 - Die Kopie eines Off-Heap-Binarys ist eine neue Zelle, die den Puffer teilt;
   das Ziel hält den Puffer (und belastet seine eigenen Off-Heap-Wörter, falls
   es nichts davon hielt), bevor es reserviert, und listet die Zelle erst,

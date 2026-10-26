@@ -1,13 +1,46 @@
 ---
 source: docs/building.md
-sourceCommit: 336caea7
-sourceSha256: 86d39780700856574257fd2d598102b8e551505085c42a0a8175f9c2c7b2330c
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b5b9cdbb0544c714f847eac4931ed0fa38d8de1144153349efac4c2302159cbc
+translatedAt: 2026-10-26
 ---
 
-# Збирання компілятора
+# Збирання Clause
 
-Налаштуйте й зберіть з кореня репозиторію:
+Як зібрати `clau` і `clause_runtime`, налаштувати збирання, запустити тести
+й використовувати інструменти розробника. Будову тестів і результати описано у
+[валідації](validation.md).
+
+## Вимоги
+
+- CMake 3.28+ і компілятор C++23; у Windows — набір компонентів **Desktop
+  development with C++** Visual Studio з Windows SDK, Ninja і глобально
+  встановленим LLVM/Clang (`clang-cl` і `clang` для компонування програм).
+- C++ SDK LLVM 23.1.x (23.1.1 або новіший) для компілятора. Бажано глобальне
+  встановлення; інакше CMake завантажує зафіксований SDK 23.1.2 у
+  `thirdparty/` на Windows x64/ARM64, Linux x64/ARM64 і macOS ARM64
+  ([LLVM SDK](compile.md#llvm-sdk)). Самі інструменти командного рядка LLVM
+  не містять SDK.
+- Boost 1.90+ (Multiprecision, Asio та Parser для компілятора; лише заголовки),
+  toml++ 3.4.0, SQLite 3.54.0, PCRE2 10.47 і zlib 1.3.2. CMake завантажує
+  відсутні залежності в `thirdparty/` з перевірками SHA-256 і повторно
+  використовує їх без мережі, зокрема для нових каталогів збирання; на Linux
+  і macOS Boost і toml++ беруться зі встановлення або `thirdparty/`
+  ([залежність збирання](projects.md#build-dependency)).
+- Python 3 для тестів та інструментів якості, бенчмарків і лістингів.
+- Erlang/OTP не потрібен для збирання чи тестування. Тести використовують
+  [власні еталонні фікстури проєкту](../tests/fixtures/patternmatch/generated/README.md);
+  встановлення OTP 29 потрібне лише для перетворень розбору, необов'язкових
+  живих аудитів, повторної генерації фікстур і бенчмарків.
+
+На macOS (Erlang необов'язковий):
+
+```sh
+xcode-select --install
+brew install cmake boost tomlplusplus llvm@23 erlang
+```
+
+## Налаштування та збирання
 
 ```sh
 cmake --preset debug                    # build/debug, single configuration
@@ -27,9 +60,10 @@ cmake --build --preset windows-release
 `build/windows/lib/<Config>/clause_runtime.lib`. `clau` знаходить архів
 runtime і модулі `library/` відносно власного розташування.
 
-Обгортки (перевизначення через змінні середовища: `BUILD_DIR`,
-`TOOL_BUILD_DIR`, `BUILD_TYPE`, `JOBS`, `CMAKE`, `CTEST`, `CMAKE_ARGS`,
-`CLANG_FORMAT`):
+## Обгортки
+
+Перевизначення через змінні середовища: `BUILD_DIR`, `TOOL_BUILD_DIR`,
+`BUILD_TYPE`, `JOBS`, `CMAKE`, `CTEST`, `CMAKE_ARGS`, `CLANG_FORMAT`.
 
 | Makefile | Windows | Що робить |
 | --- | --- | --- |
@@ -47,7 +81,7 @@ CMake. `clau.bat` (Windows) і `run-macos.sh` спершу збирають `bui
 потім запускають `clau` з усіма аргументами, зберігаючи робочий каталог і код
 виходу викликача.
 
-Параметри конфігурування:
+## Параметри конфігурування
 
 | Параметр | Призначення |
 | --- | --- |
@@ -60,6 +94,7 @@ CMake. `clau.bat` (Windows) і `run-macos.sh` спершу збирають `bui
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Вибрати виконуваний файл Clang для Windows |
 | `-DCLAUSE_OTP_AUDITS=ON`, `-DCLAUSE_ESCRIPT=/path/to/escript` | Увімкнути необов'язкові живі аудити OTP і вибрати використовуваний OTP 29 |
 | `-DCLAUSE_TEST_DEBUG_INFO=ON` | Збирати тестові програми з налагоджувальною інформацією (щоб налагодити збій) |
+| `-DCLAUSE_OPTIMIZED_COMPILER=OFF` | Збирати `clau` і бібліотеки компілятора без оптимізації в Debug (щоб налагодити збій `clau`) |
 
 Примітки щодо Windows: CRT за замовчуванням — `/MDd` (Debug) або `/MD`; явно
 заданий `CMAKE_MSVC_RUNTIME_LIBRARY` має відповідати SDK LLVM. MSVC `cl`
@@ -69,9 +104,7 @@ CMake. `clau.bat` (Windows) і `run-macos.sh` спершу збирають `bui
 як-от `CXXFLAGS` (у CLion очистіть кешоване значення через
 `-DCMAKE_CXX_FLAGS:STRING=`); натомість використовуйте кореневі параметри.
 
-## Тестування
-
-Тести вмикаються за бажанням під час конфігурування:
+## Тести
 
 ```sh
 cmake --preset debug -DBUILD_TESTING=ON
@@ -84,14 +117,13 @@ ctest --preset debug -j 16               # full mode
 виконує скорочену матрицю оптимізацій/драйверів і пропускає тести
 `full_only`; `full` (за замовчуванням, якщо не задано, `make test-full`,
 `TEST_MODE=full`) виконує все. Кожен тест резервує два слоти CTest, тож
-`-j N` виконує N/2 тестів одночасно. Тести компілюють справжні вихідні файли
-Erlang через CLI і порівнюють виконувані файли з еталонами, згенерованими OTP;
-базову лінію, фікстури та будову тестів описано в
-[валідації](validation.md).
+`-j N` виконує N/2 тестів одночасно.
 
-Контроль якості (Lizard і clang-tidy, версії інструментів зафіксовано в
-`tools/requirements-quality.txt`, встановлюються в `.venv-quality/`; поза
-Windows використовуйте `.venv-quality/bin/python`):
+## Контроль якості
+
+Lizard і clang-tidy, версії зафіксовано в `tools/requirements-quality.txt`,
+встановлюються в `.venv-quality/` (поза Windows використовуйте
+`.venv-quality/bin/python`):
 
 ```sh
 python -m venv .venv-quality
@@ -102,7 +134,30 @@ cmake --build build/debug --target check-quality-all   # whole tree
 
 `check-quality` перевіряє файли, змінені від `HEAD` (або `CLAUSE_QUALITY_BASE`),
 і по одній одиниці трансляції на змінений заголовок (`check-quality-all` охоплює
-всі залежні одиниці в повній перевірці) та потребує збірки з увімкненими
+всі залежні одиниці) та потребує збірки з увімкненими
 компілятором і runtime; `check-complexity-all` та `check-clang-tidy-all`
 запускають один інструмент. `cmake/CheckClangTidy.cmake` приймає
 `QUALITY_SHARD=K/N`, щоб розділити тривалий запуск.
+
+## Бенчмарки й лістинги
+
+`make benchmark` / `make-benchmark.bat` збирають Release `clau` у `build/bench`
+і порівнюють програми `benchmarks/bench_*.erl` з OTP хоста та старішим комітом
+Clause; `benchmarks/run.py --help` перелічує параметри
+([бенчмарки](validation.md#benchmarks)). Вони ніколи не є частиною тестів.
+
+`benchmarks/compile_times.py` вимірює час роботи самого `clau`: кілька разів
+запускає завдання компіляції (`--workload W1` або аргументи `clau` після `--`)
+на продуктивних ядрах із `--no-cache --print-stage-times` і звітує про медіану,
+мінімум і розкид для кожної фази та проходу виведення, найповільніші компоненти
+виведення й те, чи збігаються лічильники проходів і stdout між запусками.
+З `--baseline <clau.exe>` дві збірки чергуються, а підсумок показує їхнє
+співвідношення. Скрипт відмовляється вимірювати час, поки тривають збирання,
+тести чи інший запуск `clau`, якщо не задано `--force-noisy`, і записує JSON
+у `build/bench/compile-times/`.
+
+`decompile-debug.bat <module>` і `decompile-release.bat <module>` записують
+асемблерний код Debug або Release одного вихідного файлу Clause на C++ у
+`<module>.debug.asm` / `<module>.release.asm`, з рядками вихідного коду й
+відновленими іменами (`tools/asm.py`, збірки clang-cl; `--function TEXT`
+фільтрує).

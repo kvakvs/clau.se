@@ -1,8 +1,8 @@
 ---
 source: docs/transforms.md
-sourceCommit: a8c3f8f6
-sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: d5e6317f85b2929e53d917111bc1e41c6cf211dd4fad2c3950fd821c7e5d1bcc
+translatedAt: 2026-10-26
 ---
 # Parse transforms
 
@@ -156,7 +156,9 @@ l'analyseur de Clause, de sorte qu'elles subissent les mêmes vérifications
 syntaxiques que le source ; la précédence des opérateurs décide où des
 parenthèses sont ajoutées. `{Line, Column}`, un `Line` seul (affiché
 `file:line:`) et les listes de propriétés avec `location` et `file` sont
-acceptés ; `generated` est ignoré. Un attribut de fichier change le fichier
+acceptés ; `generated` est ignoré. La ligne 0, que la transformation `qlc`
+d'OTP attribue au code généré, prend l'emplacement du nœud importé avant elle.
+Un attribut de fichier change le fichier
 des formes suivantes ; lorsque ce fichier existe, le code importé garde ses
 lignes de débogage et ses commentaires de source. Les formes mal formées sont
 des erreurs à leur annotation (`unknown expression bogus`,

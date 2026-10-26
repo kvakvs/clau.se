@@ -1,8 +1,8 @@
 ---
 source: docs/preprocessor.md
-sourceCommit: a8c3f8f6
-sourceSha256: 57dcb1da3315eb173341c8100e17e37df776b01f85f4c06585c1b7e5d3503daf
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b7130c02b475776576475a4709f5650f63ff8b45d2bb8443418b5683ab374189
+translatedAt: 2026-10-26
 ---
 # Preprocesador
 

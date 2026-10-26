@@ -1,16 +1,16 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: a8c3f8f6
-sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b492ebd048a1022e18083704f4e12f60003d3e503aac261ba808b985a981ea5c
+translatedAt: 2026-10-26
 ---
 # Referencia de los fuentes de Erlang/OTP
 
 Clause sigue la rama oficial `maint-29`. La fijación (pin) revisada está en
 [`references/otp-pin.cmake`](../references/otp-pin.cmake):
 
-- Revisión `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2, commit
-  upstream con fecha 2026-10-14), actualizada el 2026-10-14.
+- Revisión `9710673e5916164dff9616327df7de39f1aa75a9` (OTP 29.1.2, commit
+  upstream con fecha 2026-10-22), actualizada el 2026-10-24.
 - Oráculo instalado usado para los goldens y las auditorías: OTP 29.1.1 /
   ERTS 17.1.
 
@@ -69,3 +69,4 @@ Los registros históricos conservan la revisión con la que se hicieron.
 | 2026-10-01 – 10-03 | Descargada de nuevo antes de cada paso de patrones/guards; sin cambios | la misma |
 | 2026-10-03 | Plan 11 step 1: pasan 14 pruebas de auditoría, se reproducen 19 corpus | la misma |
 | 2026-10-14 | Actualizada a OTP 29.1.2: hashes de gramática, escáner, preprocesador y `phase6/otp.tsv` sin cambios (`genop.tab` solo un comentario); pasan 17 pruebas de auditoría y se reproducen 19 corpus con el oráculo 29.1.1; actualizada la revisión registrada por los goldens de ejecutables, lint, programas e impresión (salidas sin cambios, `external_terms` conserva su salida de map dependiente del orden de los átomos) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |
+| 2026-10-24 | Actualizada; upstream solo cambió flujos de trabajo de `.github/` (32 archivos), por lo que las entradas de gramática, escáner, preprocesador, corpus y `phase6/otp.tsv` son idénticas byte a byte y no se repitieron las auditorías; actualizada la revisión registrada por los goldens | `9710673e5916164dff9616327df7de39f1aa75a9` |

@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: 336caea7
-sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 9b1845341638452f441c091f8de4122b06281694d83cc28080968c0dbdbc9133
+translatedAt: 2026-10-26
 ---
 # ABI do código gerado (revisão 21)
 
@@ -76,7 +76,7 @@ descritores de native records (slots de átomos do módulo, do nome e dos campos
 flag de exportação; [native records](native-records.md#representation)) numa
 tabela externa `<prefix>.records` que os outros módulos de um lote referenciam,
 os descritores de funs numa tabela privada `<prefix>.funs`
-([funs](funs.md#representation)), a área de literais só de leitura
+([funs](funs.md#representation)), os literais codificados do módulo e a cache de literais
 ([áreas](runtime-heap.md#areas)), as caches graváveis de átomos e de funs que o
 código gerado lê inline, e a `code_convention` dos seus corpos. O registo chama
 `CLAUSE_register_module_v4(Runtime*)`, que valida a versão/largura e todas as
@@ -96,6 +96,17 @@ internados permanecem na tabela limitada).
 - As expressões de átomo que não sejam os átomos fixos leem `atom_cache` quando
   o `FrameState::runtime` do contexto é o dono da cache, caso contrário
   `CLAUSE_atom_v3`; nunca internam ([átomos](terms.md#atoms)).
+- Os literais compostos são `literal_count` termos de `literals`
+  (`literal_bytes` bytes, `abi/literals.hpp`): a codificação compacta de termos
+  da BEAM (tags base `u`, `i`, `a`: contagens, inteiros de qualquer tamanho em
+  complemento de dois big-endian, átomos como slot de átomo do módulo + 1 com 0
+  para `[]`) mais as tags estendidas do Clause para listas (comprimento,
+  elementos, cauda), tuplos, floats (binary64), bitstrings (contagem de bits,
+  bytes), maps e strings de bytes. O registo descodifica-os para o heap de
+  literais do runtime; o runtime que reclama a cache preenche `literal_cache`
+  (uma palavra por literal), que o código gerado lê após verificar a posse, e
+  o código de outros runtimes chama `CLAUSE_literal_v1(context, index, descriptor)`
+  ([áreas](runtime-heap.md#areas)).
 - Um objeto de arranque (`clausev1_start`) lista todos os descritores num
   `StartupDescriptor` e o seu `main` nativo chama
   `CLAUSE_main_v1(argc, argv, descriptor)`, que regista todos os módulos e
@@ -262,19 +273,22 @@ que chama `CLAUSE_invoke_v1(context, frame, arguments)`.
   (`self`), uma palavra do alvo cada. Um corpo lê o cabeçalho do seu frame
   (`stack + frame`) e os registos a partir dele à entrada e faz um switch sobre
   a palavra de retoma do cabeçalho.
-- Padrões binários (alvos de 64 bits): o teste de início, o teste de fim e os
-  segmentos inteiros de largura constante em bytes inteiros até 56 bits numa
-  posição alinhada ao byte leem a célula inline
+- Padrões binários: o teste de início, o teste de fim e os segmentos inteiros
+  de largura constante até à largura da palavra menos 8 bits (56 em alvos de
+  64 bits, 24 nos de 32 bits) leem a célula inline
   (`abi::v1::heap_binary_*_word`, `refc_*_word`: o `data_` de uma vista fora do
-  heap é o primeiro byte do seu buffer); os outros segmentos e as posições não
-  alinhadas chamam `CLAUSE_bits_v1`. Um sujeito `sub_binary` (`sub_*_word`) é
+  heap é o primeiro byte do seu buffer), em qualquer posição de bit. Um
+  segmento de bytes inteiros numa posição alinhada ao byte é uma única leitura;
+  qualquer outro lê os bytes que o campo toca e extrai-o por deslocamento.
+  As larguras que não são bytes inteiros só são inline em big-endian. Os outros
+  segmentos chamam `CLAUSE_bits_v1`. Um sujeito `sub_binary` (`sub_*_word`) é
   lido através do seu original. Um `Rest/binary` ou `Rest/bits` final de
   unidade 1 é alocado inline por incremento como uma célula `sub_binary` de 4
   palavras do original.
-- Ciclos binários: quando todas as cláusulas de uma função fazem corresponder
-  um parâmetro como binary (ou o ignoram), nunca guardam o binary inteiro e só
-  leem os restos que vinculam como esse parâmetro de chamadas de cauda a si
-  próprias, a função recebe uma variante privada `<symbol>.loop`. O passo da
+- Ciclos binários: quando nenhum cabeçalho de cláusula de uma função compara
+  um parâmetro com uma vinculação, e alguma cláusula passa um resto dele de
+  volta como esse parâmetro de uma chamada de cauda a si própria, a função
+  recebe uma variante privada `<symbol>.loop`. O passo da
   própria função cria a célula do resto como acima e entra na variante com ela
   (um resto criado pelo serviço, que pode ser partilhado, volta antes a entrar
   na função). A variante não cria nenhuma célula de resto: cada chamada de
@@ -282,8 +296,40 @@ que chama `CLAUSE_invoke_v1(context, frame, arguments)`.
   célula do parâmetro, que só este ciclo referencia, e passa a mesma célula
   adiante, pelo que um ciclo sobre um binary aloca uma única vez. A variante lê
   a vista da célula uma vez por passo, antes das suas cláusulas, e salta o
-  teste de bitstring do parâmetro. A variante tem o nome e a aridade da função
+  teste de bitstring do parâmetro. As leituras e escritas do estado do processo,
+  dos frames, das palavras de `sub_binary` e das palavras de binary inline/fora
+  do heap têm tags LLVM TBAA disjuntas; uma variante que não chama nenhuma outra
+  função Erlang marca as leituras do original da sua célula e do cabeçalho,
+  offset e endereço dos dados do original com `!invariant.load`, e recebe mais
+  uma GVN após o pipeline (atributo de função `clause-binary-loop`), pelo que a
+  vista sai do ciclo e o offset e comprimento guardados numa iteração são
+  valores em registos na seguinte. Qualquer outra leitura no corpo de um resto,
+  ou, na variante, do parâmetro inteiro, e cada fun que capture um deles,
+  recebe uma nova célula `sub_binary` com os mesmos bits (o serviço cria-a sem
+  espaço no heap), pelo que nada mais detém a célula do ciclo; os guards leem
+  o próprio valor. A variante tem o nome e a aridade da função
   nos rastreios de pilha.
+- Ciclos de floats (alvos de 64 bits): um parâmetro entre os primeiros seis
+  (os passados em registos) que todas as cláusulas vinculam a uma variável (ou
+  ignoram), ao qual alguma chamada de cauda a si própria passa uma expressão
+  exclusivamente float (um literal float, `/`, uma chamada a `math`, ou `+ - *`
+  com um desses operandos), e cujo valor só é lido como operando de aritmética,
+  comparações ou chamadas a `math`, como o mesmo parâmetro de uma chamada de
+  cauda a si própria, ou dentro do resultado ou de uma chamada de cauda a outra
+  função (nunca numa fun), é um parâmetro float. A função recebe uma variante
+  privada `<symbol>.float` que recebe cada parâmetro float como os bits do seu
+  double na palavra do argumento (atributos de função `clause-float-parameters`,
+  uma máscara de bits, e `clause-float-generic`, a função). Uma chamada de
+  cauda a si própria de qualquer uma cujo novo valor de cada parâmetro float
+  seja um double num registo entra na variante com esses bits, pelo que um
+  ciclo de floats não cria nenhuma célula por passo; a variante só cria uma
+  célula de um parâmetro onde lê a própria palavra. Os bits em bruto nunca
+  chegam a um local que uma recolha leia: as outras chamadas de cauda a si
+  própria da variante voltam a entrar na função, e uma transferência para a
+  variante que siga o caminho de serviço (recolha pretendida, profiling,
+  reduções esgotadas, crescimento da pilha) coloca os doubles em células com o
+  auxiliar `clause.float.box` do módulo e entra antes no descritor da função.
+  A variante tem o nome e a aridade da função nos rastreios de pilha.
 - Uma construção binária cujos bytes são todos conhecidos em tempo de
   compilação (constantes inteiras pequenas e literais de string com larguras
   constantes em bytes inteiros, no máximo 64 bytes) é uma célula binária inline
@@ -298,6 +344,14 @@ que chama `CLAUSE_invoke_v1(context, frame, arguments)`.
 - Um builtin puro com argumentos literais é avaliado em tempo de compilação,
   como faz o `sys_core_fold` do OTP: `atom_to_list(Atom)` de um literal de
   átomo é a string literal desse nome, sem qualquer chamada.
+- `integer_to_list(N)` de um inteiro pequeno escreve as células dos seus
+  dígitos nas palavras livres do bloco de heap, e `list_to_integer(L)` de uma
+  lista própria de dígitos, após um sinal menos opcional, suficientemente curta
+  para ser um inteiro pequeno (17 dígitos em alvos de 64 bits, 8 nos de 32 bits)
+  lê-a no local (`codegen/lowering_integer_text`). Qualquer outro argumento,
+  ou um bloco sem espaço, entra no builtin, que lança todos os erros. Como
+  operando esquerdo de `++`, `integer_to_list(N)` verifica `N` onde está e o
+  acrescento escreve os dígitos diretamente em `Right`, sem cópia.
 - `erlang:make_tuple(N, V)` com um `N` pequeno em 1..64 aloca o tuplo por
   incremento e preenche-o com `llvm.experimental.memset.pattern` quando o heap
   tem espaço; caso contrário, corre o builtin.
@@ -318,7 +372,14 @@ que chama `CLAUSE_invoke_v1(context, frame, arguments)`.
   célula substituta constante, para que nenhuma leitura dependa de um salto),
   calculam em registos e alocam por incremento a célula float de 2 palavras
   quando o resultado é finito, o divisor não é zero e o heap tem espaço; caso
-  contrário, `CLAUSE_immediate_v1` lança `badarith` ou promove.
+  contrário, `CLAUSE_immediate_v1` lança `badarith` ou promove. Um literal
+  float, e o resultado de `/`, de math inline ou de uma operação com um desses
+  operandos (sempre um float quando tem sucesso), também mantém o seu double
+  num registo: as operações que o leem usam o registo, e a sua célula só é
+  criada onde algo lê a própria palavra (`CLAUSE_float_v1` quando o heap não
+  tem espaço); um caminho de recurso ao serviço que o leia recebe uma célula
+  própria. Uma comparação de dois desses floats compara os doubles, e a
+  igualdade exata compara os seus bits (pelo que `0.0 =:= -0.0` continua falso).
 - As expressões de map sem base cujas chaves são literais de átomo ou de
   inteiro pequeno (no máximo 32 distintas) são escritas inline como células de
   map clássico, com as chaves ordenadas em tempo de compilação pela ordem exata
@@ -333,6 +394,17 @@ que chama `CLAUSE_invoke_v1(context, frame, arguments)`.
   espaço. Uma chave em falta faz falhar um padrão de imediato; árvores de map,
   outras chaves, uma chave em falta noutros casos e erros passam por
   `CLAUSE_map_v1` (pesquisas em maps pequenos).
+- Cada uma destas pesquisas de uma chave literal (um átomo ou inteiro pequeno
+  escrito no código-fonte) tem uma cache inline por local, uma variável global
+  interna `[2 x word]` partilhada por todos os processos: o índice da última
+  palavra de chave encontrada (inicialmente 1) e as reescritas restantes (8).
+  A pesquisa compara primeiro a palavra da chave no índice em cache, pelo que
+  um map com a forma habitual desse local custa uma comparação; caso contrário,
+  percorre as chaves e, enquanto restam reescritas, guarda o índice encontrado.
+  Ambas as palavras são atómicas com ordenação relaxada; um local que esgotou
+  as reescritas só lê, pelo que locais que veem muitas formas em muitos
+  processos não fazem a linha de cache oscilar. As chaves variáveis (maps usados
+  como dicionários) só percorrem as chaves (caches inline de formas de map).
 - Os tuplos e as listas de no máximo 64 palavras são alocados inline por
   incremento em `[heap_top, heap_limit)` (cabeçalho ou células cons escritos no
   local, `heap_top` avançado), caso contrário construídos por
@@ -498,3 +570,5 @@ dos bytes do módulo/função, do array de argumentos e da aridade, devolvendo u
 | 21 | `ModuleDescriptor::fun_cache` e closures inline |
 | 22 | Builtins diretos: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
 | 23 | Builtins rápidos: `BuiltinName::call` (`BuiltinCall`), 0 de `CLAUSE_builtin_call_v1` indica recusa |
+| 24 | `RecordDescriptor::definition` (a lista de campos como bytes do External Term Format, para `records:get_definition/2`) e `ModuleDescriptor::features` (slots de átomos das funcionalidades ativadas, para `erl_features:used/1`) |
+| 25 | Literais codificados do módulo e o heap de literais: `ModuleDescriptor::literals` contém bytes codificados (`literal_bytes`), `literal_cache`, `literal_count`; `CLAUSE_literal_v1` |

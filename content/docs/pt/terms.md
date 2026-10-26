@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 336caea7
-sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 4e14e8fda395d76503e8c295505005d07d3fa8c33b4ba32f99c48caae55921ab
+translatedAt: 2026-10-26
 ---
 # Representação dos termos
 
@@ -72,9 +72,10 @@ em palavras estão em [abi.md](abi.md#terms).
   encontrados sem o bloqueio e não contados nem por `size()` nem
   para `max_atoms`; o código gerado usa-os como constantes. Todas as outras
   palavras de átomo são privadas do runtime.
-- Os literais compostos de constantes (strings, listas e tuplos de imediatos e
-  de outros literais, floats, bignums) são células da área de literais do
-  módulo, construídas em tempo de compilação e partilhadas
+- Os literais compostos (strings, listas, tuplos e maps de literais, floats,
+  bignums, binaries constantes) são literais de módulo: codificados em tempo
+  de compilação, descodificados uma vez por runtime no registo para o seu
+  heap de literais e partilhados
   ([áreas de literais](runtime-heap.md#areas)); os literais inteiros no
   intervalo pequeno são imediatos.
 - Os outros literais de átomo são carregados da cache de átomos do módulo
@@ -83,6 +84,15 @@ em palavras estão em [abi.md](abi.md#terms).
   preenche; um contexto cujo `FrameState::runtime` corresponda à reivindicação
   lê-a sem chamada, qualquer outro chama `CLAUSE_atom_v3`. A reivindicação é
   devolvida quando o code server do runtime liberta o módulo.
+- O C++ do runtime escreve átomos literais como `"name"_atom`
+  (`atom_names.hpp`): um `CachedAtom` estático por grafia mantém a última
+  palavra internada para ela, e `AtomStorage::intern` devolve-a após uma
+  leitura do índice sem bloqueios quando este runtime a emitiu, dispensando a
+  validação, o bloqueio partilhado e o map de grafias. Uma palavra de outro
+  runtime ou de um runtime desmontado falha essa verificação e é substituída,
+  pelo que vários runtimes num processo continuam corretos (apenas atualizam
+  a cache). As funções auxiliares dos builtins recebem `AtomName`, uma grafia
+  com ou sem essa cache.
 - Internar e procurar são seguros a partir de workers concorrentes do
   escalonador ([threads](runtime.md#threads)); uma grafia mantém uma só palavra.
 
@@ -104,6 +114,10 @@ em palavras estão em [abi.md](abi.md#terms).
   explícitos. O mesmo fazem `band`, `bor`, `bxor`, `bsr`, `div`, `rem` e as
   comparações de dois inteiros pequenos
   ([formas inline](abi.md#runtime-services)).
+- O serviço multiplica um bignum (ou um produto pequeno que transbordou) por
+  um inteiro pequeno, limb a limb, diretamente da célula do operando para a
+  nova; as outras operações com bignums passam por um valor de precisão
+  múltipla.
 - `div` trunca em direção a zero; `rem` toma o sinal do dividendo; as operações
   bit a bit usam complemento para dois infinito; contagens de deslocamento
   negativas invertem a direção; deslocamentos enormes para a direita saturam em
@@ -180,8 +194,9 @@ em palavras estão em [abi.md](abi.md#terms).
   gerado constrói inline as construções pequenas de largura constante
   ([frames e transferências](abi.md#frames-and-transfers)).
 - Acréscimos, como os binaries graváveis do OTP: uma construção que começa com
-  um binary inteiro (`<<Acc/binary, ...>>`) constrói o seu resultado num buffer
-  com espaço de reserva (o dobro do seu tamanho, pelo menos 256 bytes) cuja
+  um binary inteiro (`<<Acc/binary, ...>>`) de mais de 64 bytes constrói o seu
+  resultado num buffer com espaço de reserva (o seu tamanho arredondado por
+  excesso para uma potência de dois, pelo menos 256 bytes) cuja
   célula fora do heap no processo criador regista os bits em uso e a capacidade
   (zero em todas as outras células, cópias incluídas). Um acréscimo posterior
   cuja vista do acumulador termine exatamente aí escreve os novos bytes no
@@ -189,7 +204,9 @@ em palavras estão em [abi.md](abi.md#terms).
   mesmo buffer: um sub-binary da própria célula fora do heap do buffer, que pode
   ir além dos bits dessa célula. Qualquer outro acumulador (uma vista mais
   antiga, a de outro processo, uma não alinhada, um buffer cheio) é copiado
-  para um novo buffer duplicado. As outras vistas do buffer nunca mudam.
+  uma vez para um novo buffer, que pelo menos duplica um buffer cheio. As
+  outras vistas do buffer nunca mudam. Os buffers libertados são reutilizados
+  ([reutilização de buffers](runtime-heap.md#buffer-reuse)).
 - Segmentos float: larguras 16/32/64; a construção pode codificar infinito, mas
   a correspondência rejeita campos infinitos/NaN. Correspondências float de
   largura zero extraem `0.0`.
@@ -272,11 +289,21 @@ funs < ports < pids < tuplos < native records < maps < nil < listas <
 bitstrings ([as funs](funs.md#comparison-and-printing) ordenam-se entre si).
 Os átomos comparam-se pela grafia UTF-8 (ordem dos pontos de código); os tuplos
 pela aridade e depois pelos campos; os maps pelo tamanho, depois pelas chaves e
-depois pelos valores; os bitstrings pelos bits lógicos. Dois inteiros pequenos,
-dois floats ou dois binaries de bytes inteiros são ordenados diretamente a
-partir das suas palavras ou células (`detail::word_order`), e dois átomos a
-partir das suas grafias na tabela de átomos (`AtomStorage::spelling`, através
-do índice numérico sem bloqueios), sem admissão de termos.
+depois pelos valores; os bitstrings pelos bits lógicos. Os números (inteiros
+pequenos, floats, bignums por sinal e limbs), os átomos (pelas suas grafias na
+tabela de átomos, através do índice numérico sem bloqueios), as referências
+locais (por número), os binaries de bytes inteiros, e os tuplos e listas destes
+aninhados até 8 níveis são ordenados diretamente a partir das suas palavras e
+células (`detail::word_order`), sem admissão de termos; qualquer outro par,
+um float comparado com um bignum com o mesmo comprimento em bits, ou um inteiro
+pequeno além de 2^53 comparado com um float segue a ordem estrutural. `=:=`
+segue o mesmo caminho (`detail::word_exact`): os pares que ordena como
+diferentes são desiguais, e uma palavra ou duas referências que considere
+iguais são iguais, pelo que um receive que corresponda à referência de uma
+resposta não admite qualquer termo.
+`lists:sort/1` e `lists:usort/1` ordenam as palavras dos elementos no local:
+listas só de inteiros pequenos e só de átomos por palavra ou grafia, as outras
+com uma ordenação estável pela ordem das palavras.
 
 ## Impressão
 

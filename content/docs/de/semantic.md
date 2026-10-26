@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: a8c3f8f6
-sourceSha256: f1156b4ef9a29821e7a254cd605e1b92c22cf3304d574ae47f4d558a786f2c18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 5b75d27b8b6d10019ba765c950ca875904e7eb3d8dea6044ac59e240fccc259f
+translatedAt: 2026-10-26
 ---
 # Semantische Analyse
 
@@ -60,8 +60,9 @@ von OTP, `erl_internal:add_predefined_functions` und `check_behaviour` von
     L, column C)`, wenn ein früheres Behaviour ihn ebenfalls verlangt (ein
     optionaler Callback zählt, wenn er exportiert ist);
   - `behaviour M undefined`, wenn `M` nicht im Batch ist oder kein
-    `behaviour_info/1` hat (OTP-Behaviours wie `gen_server` sind nicht in der
-    [Bibliothek](library.md) von Clause), dazu die Modulnamensfehler von OTP für
+    `behaviour_info/1` hat (ein OTP-Behaviour, das die
+    [Bibliothek](library.md) von Clause noch nicht bereitstellt, etwa
+    `application`), dazu die Modulnamensfehler von OTP für
     Namen, die keine Module sein können (`the module name must not be empty`,
     `... must be an atom`, ...).
 - Warnungen lassen die Kompilierung nicht fehlschlagen. Die `-compile`-Optionen
@@ -252,9 +253,33 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   (`semantic/types/inference_inputs`), gematcht durch die Kopfmuster jeder
   Klausel; rekursive Aufrufe zählen mit. Eingaben beginnen bei `none()` (eine
   Funktion, die nichts aufruft, läuft nie und inferiert `none()`) und wachsen
-  über Durchläufe des Batches: 8 Durchläufe vereinigen, spätere weiten auf wie
-  rekursive Ergebnisse; Eingaben, die sich nach 16 Durchläufen nicht
-  stabilisiert haben, werden zu `term()` (als aufgeweitet gemeldet).
+  über Durchläufe des Batches. Jede Eingabe steigt je nach Anzahl ihrer
+  Änderungen eine Stufenleiter hinauf: Ihre ersten 4 Änderungen vereinigen,
+  die nächsten 2 weiten wie rekursive Ergebnisse auf, die nächsten 2 ersetzen
+  zusätzlich Container innerhalb eines Containers durch `term()`, und eine
+  weitere Änderung ergibt `term()` (als aufgeweitet gemeldet). Eingaben, die
+  sich nach 63 Durchläufen nicht stabilisiert haben, werden zu `term()` (als
+  aufgeweitet gemeldet). Eine rekursive Komponente gilt als kostspielig, sobald
+  eine Lösung mehr als 2^17 Gittervereinigungen (verschachtelte mitgezählt) und
+  mehr als 1/16 der bisher höchsten Anzahl von Vereinigungen eines Durchlaufs
+  verbraucht; ändern sich die Eingaben ihrer Mitglieder erneut, werden sie
+  sofort zu `term()` (als aufgeweitet gemeldet), sodass spätere Lösungen den
+  wechselnden Eingaben ihrer Aufrufer nicht mehr folgen.
+- Durchläufe nach dem ersten durchlaufen nur Komponenten, für die sich etwas
+  Gelesenes geändert hat (`semantic/types/inference_incremental`): Eine
+  Komponente behält ihre Zusammenfassungen und Ausdrucksfakten, solange die
+  Eingaben ihrer Mitglieder, jede gelesene Zusammenfassung (Aufrufe,
+  `fun F/A`, `apply`) und die Eingaben erneut ausgewerteter Aufgerufener
+  unverändert sind und die Budgets für den Durchlauf und die erneute Analyse
+  dieselben Antworten liefern würden (das Budget für die erneute Analyse ist
+  genauso weit verbraucht wie zu Beginn ihres letzten Durchlaufs oder würde
+  erneut alles gewähren oder verweigern); ihre Arbeit zählt weiterhin zum
+  Durchlaufbudget. Die Ergebnisse entsprechen einem Durchlauf über jede
+  Komponente. Der letzte Durchlauf mit `term()`-Eingaben durchläuft alle. Nach
+  einem Durchlauf werden nur die Eingaben der darin durchlaufenen oder von
+  einer darin durchlaufenen Funktion aufgerufenen Funktionen erneut aus ihren
+  Aufrufen vereinigt; die Argumentfakten und Eingaben der anderen bleiben wie
+  bei der letzten Vereinigung.
 - Literale haben exakte Fakten: Ganzzahlen jeder Größe und Zeichen sind
   Singletons, Atome Singleton-Atome, Gleitkommazahlen `float()`, Strings nicht
   leere Listen ihrer Zeichen (`[]` für `""`), und `-`/`+` einer literalen Zahl
@@ -496,8 +521,13 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   Aufruf das Ergebnis der ausgewählten Funktionstypen.
 - Ein `receive` ist die Vereinigung seiner Klauseln und seines `after`-Rumpfs,
   den ein Timeout von `infinity` nie ausführt.
-- Eine rekursive Komponente beginnt das Ergebnis jedes Mitglieds bei `none()`
-  und inferiert alle Mitglieder neu, bis sich kein Ergebnis mehr ändert; jede
+- Eine rekursive Komponente beginnt das Ergebnis jedes Mitglieds bei ihrer
+  ersten Lösung bei `none()` und in späteren Durchläufen bei den
+  Zusammenfassungen, mit denen ihre letzte Lösung endete: Dabei ersetzt der
+  erste Durchlauf jedes Mitglieds seine Zusammenfassung durch das gefundene
+  Ergebnis (die frühere Zusammenfassung dient davor nur als Annahme für
+  Aufrufe), sodass veraltete Funktionstypen nie erhalten bleiben. Sie inferiert
+  Mitglieder neu, bis sich kein Ergebnis mehr ändert; jede
   Runde vereinigt das neue Ergebnis mit dem vorherigen (weitet es nach den
   ersten 8 Runden auf, [Inferenzdomäne](#inference-domain)), und ein
   ausstehender rekursiver Aufruf trägt nichts zu einer Vereinigung bei. Eine
@@ -525,7 +555,12 @@ Die Inferenz ist von deklarierten Typen getrennt und vertraut Specs nie.
   Zusammenfassungen, die er liest (Aufrufe, Aufrufergebnisse, `fun F/A`), eine
   geänderte Zusammenfassung markiert ihre Leser, und ein nicht markiertes
   Mitglied behält seine Ausdrucksfakten. Die erste Runde durchläuft jedes
-  Mitglied.
+  Mitglied. Ein Mitglied behält seinen letzten Durchlauf über Lösungen hinweg:
+  Eine Lösung übernimmt dessen Ergebnis samt Ausdrucksfakten und Arbeit,
+  solange die gelesenen Mitglieder dieselben Ergebnisse und Funktionstypen
+  haben und alles andere Gelesene unverändert ist und dieselben Antworten
+  liefern würde, wie bei einer beibehaltenen Komponente in inkrementellen
+  Durchläufen. Die Ergebnisse entsprechen einem erneuten Durchlauf.
 - Ein gemeinsames Arbeitsbudget begrenzt die Inferenz; Erschöpfung kostet
   Präzision und fällt auf generischen Code zurück, weist aber nie ein Programm
   ab.
@@ -651,7 +686,7 @@ ausgegeben, Kategorien mit ihren eingebauten Namen.
 | Nichts | `none()` | Neutrales Element | Eine Funktion, die nie zurückkehrt, bleibt `none()` |
 | Alles | `term()` | Absorbiert jeden Fakt | `dynamic()` und `any()` sind `term()` |
 | Ganzzahlen | `42`, `1 \| 3 \| 7` | Union der Singletons | Mehr als 8 Singletons werden zu ihrem Bereich |
-| Ganzzahlbereich | `1..10`, `0..255` | Kleinster Bereich, der beide enthält | Eine Schranke, die sich zwischen Runden bewegt hat, geht zur nächsten Schwelle: eine untere auf 1, dann 0, dann unbeschränkt; eine obere auf -1, dann unbeschränkt |
+| Ganzzahlbereich | `1..10`, `0..255` | Kleinster Bereich, der beide enthält | Eine Schranke, die sich zwischen Runden bewegt hat, geht zur nächsten Schwelle: eine untere auf 1, dann 0, dann unbeschränkt; eine obere auf -1, dann unbeschränkt. Auch Schranken innerhalb von Containern werden aufgeweitet, wenn der vorherige Fakt an derselben Stelle ein Tupel (dieser Größe und mit diesem Tag), eine Map (mit diesen Schlüsseln) oder eine Liste hat |
 | Unbeschränkte Ganzzahlen | `pos_integer()` (ab 1), `non_neg_integer()` (ab 0), `neg_integer()` (-1 und darunter), `integer()` | Kleinstes Intervall, das beide enthält, ausgegeben nach seiner Kategorie | — |
 | Gleitkommazahlen | `float()` | — | — |
 | Zahlen | `number()` | Ein Bereich oder eine Kategorie von Ganzzahlen, vereinigt mit `float()` | Singleton-Ganzzahlen mit `float()` bleiben `1 \| float()` |
@@ -678,6 +713,14 @@ ausgegeben, Kategorien mit ihren eingebauten Namen.
 - Einengung (`Lattice::meet`) ist der Schnitt von Fakten, die Werte, die beide
   enthalten (oder mehr, aber `none()` nur, wenn sie keine teilen). Ein leerer
   Schnitt bedeutet, dass der Pfad nicht laufen kann.
+- Fakten sind unveränderliche Knoten eines Graphen, daher speichert der Graph
+  das Ergebnis jeder Vereinigung zweier Fakten, jedes Schnitts und jeder
+  Inklusionsprüfung (`within`) für den Rest des Batches: Fast alle wiederholen
+  sich. Ein gespeichertes Ergebnis zählt weiterhin die dabei ausgeführten
+  Vereinigungen für das [kostenabhängige Aufgeben](#inference), sodass die
+  Ergebnisse nicht von der Speicherung abhängen; ein Ergebnis, bei dessen
+  Berechnung das Knotenbudget einen Fakt aufgeweitet hat, wird nicht
+  gespeichert.
 
 Bei `-O2` mit Typspezialisierung verwendet das Lowering diese Fakten, um
 Prüfungen zu entfernen ([Spezialisierung](specialization.md#proofs));
@@ -819,9 +862,19 @@ sum() -> 1 + 2.
   `clauses.erl` Funktionstypen, Aufrufauswahl und Auswertung pro Aufruf
   innerhalb und jenseits ihrer Budgets; `dependent.erl`
   [abhängige Fakten](#dependent-facts); `trees.erl` und `parsers.erl`
-  Rekursionen über Bäume und Formen erzeugter Parser.
+  Rekursionen über Bäume und Formen erzeugter Parser; `widening.erl` Zähler
+  innerhalb von Containern, die aufgeweitet werden und sich stabilisieren.
 - `tests/fixtures/inference/contracts/` enthält die Spezifikationsprüfungen
   (CTest `inference_contracts`).
+- `tests/fixtures/inference/budgets/walkers.erl` ist ein Compiler-Durchlauf in
+  der üblichen Erlang-Form (ein großer Zustands-record, der durch wechselseitig
+  rekursive Durchlauffunktionen gereicht wird, deren Ergebnisse Vereinigungen
+  vieler records sind). CTest `inference_walkers`
+  (`tests/compiler/inference/walkers.py`) hält seine Durchläufe,
+  Arbeitsschritte, Gittervereinigungen sowie die Lösungen, Runden und
+  Mitgliedsdurchläufe der Gruppe von Durchlauffunktionen innerhalb von Budgets,
+  die etwa ein Viertel über den heutigen Werten liegen, und führt das Programm
+  aus.
 
 ### Ausgabe von Typen
 

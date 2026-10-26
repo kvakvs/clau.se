@@ -1,8 +1,8 @@
 ---
 source: docs/native-records.md
-sourceCommit: a8c3f8f6
-sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 7ac44f2d773e43162cf3d7661c9585bc357f2dbc7da1e3dabbc1db4b2f9dd4f5
+translatedAt: 2026-10-26
 ---
 # Native records
 
@@ -27,10 +27,10 @@ même représentation :
 | Qualifié et importé | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, motifs ; `-export_record`, `-import_record` |
 | Inféré (anonyme) | `X#_.f`, `X#_{...}`, motif `#_{...}` |
 
-Non fournis : le module de réflexion `records` (les appels à `records:*` sont
-des diagnostics `unknown module`), `term_to_binary` des native records
-(`error:notsup`, [format externe des termes](builtins.md#external-term-format))
-et la mise à jour de code à chaud.
+Le module de réflexion `records` est fourni ([réflexion](#reflection)). Non
+fournis : `term_to_binary` des native records (`error:notsup`,
+[format externe des termes](builtins.md#external-term-format)) et la mise à jour
+de code à chaud.
 
 ## Représentation
 
@@ -38,8 +38,11 @@ et la mise à jour de code à chaud.
   `abi::v1::RecordDescriptor` immuable à côté du descripteur de son module : le
   `ModuleDescriptor` qui le définit, des emplacements d'atomes pour les noms du
   module et du record, l'indicateur d'export (`-export_record` à la compilation)
-  et les emplacements d'atomes des noms de champs dans l'ordre de définition.
-  Les emplacements d'atomes sont résolus via les atomes enregistrés du module,
+  et les emplacements d'atomes des noms de champs dans l'ordre de définition,
+  ainsi que la liste des champs que `records:get_definition/2` renvoie sous
+  forme d'octets External Term Format (`{Field, Default}` avec la valeur par
+  défaut réduite, ou simplement `Field`). Les emplacements d'atomes sont
+  résolus via les atomes enregistrés du module,
   comme les noms de `FrameDescriptor`. Les programmes sont statiques (pas de
   déchargement), donc un descripteur vit aussi longtemps que le programme ; un
   autre module du lot y fait référence par symbole. Les valeurs par défaut sont
@@ -96,7 +99,10 @@ Les messages suivent `erl_lint` :
 
 - Les valeurs par défaut doivent être littérales après réduction des constantes
   (nombres, atomes, chaînes, `[]`, cons/tuples/maps de ceux-ci, binaries
-  composés uniquement de chaînes) :
+  composés uniquement de chaînes, et les opérateurs arithmétiques, de
+  comparaison et `not`/`and`/`or`/`xor` sur ces valeurs, réduits comme le fait le
+  compilateur d'OTP) ; `++`, `--`, `andalso`, `orelse` et un opérateur qui
+  échoue (`1 / 0`) sont illégaux :
   `illegal default value for field a in native record r`.
 - Construction locale sans valeur pour un champ sans valeur par défaut :
   `field a is not initialized in native record r` ; champ inconnu :
@@ -117,6 +123,31 @@ Les messages suivent `erl_lint` :
   module qui le définit et référence son descripteur exporté ; les champs
   inconnus lèvent `badfield` avant qu'une valeur manquante ne lève `novalue`
   (`ErrorReason` 21).
+
+## Réflexion
+
+`records` répond à partir de la définition capturée par un record :
+
+- `get/2`, `get_module/1`, `get_name/1` (`badarg` pour une valeur qui n'est pas
+  un record ou un champ absent), `get_field_names/1`, `is_exported/1`
+  (`{badrecord, X}`).
+- `create(Module, Name, Fields, #{is_exported => Boolean})` construit une
+  définition à l'exécution dans l'ordre des champs donné, internée par le
+  serveur de code, de sorte que les créations égales la partagent ; un record
+  compilé et un record créé ayant les mêmes module, nom, indicateur d'export et
+  ordre des champs sont `=:=`. Erreurs dans l'ordre d'OTP :
+  `{badrecord, Name}` pour les noms qui ne sont pas des atomes,
+  `{badmap, Options}`, `badarg` pour les autres options, puis un passage sur
+  les champs (`badarg` pour un élément qui n'est pas une paire,
+  `{badfield, {{Module, Name}, Field}}` pour un nom qui n'est pas un atome),
+  puis `badarg` pour un champ répété.
+- `update(Src, Module, Name, Map)` conserve la définition de Src :
+  `{badrecord, Src}`, `{badrecord, Name}` lorsque Module et Name ne
+  correspondent pas, `{badmap, Map}`, puis `{badfield, ...}` dans l'ordre des
+  clés.
+- `get_definition(Module, Name)` décode la liste des champs du descripteur :
+  `{#{is_exported => Boolean}, Fields}`, `badarg` pour un record qu'aucun
+  module du programme ne définit.
 
 ## Affichage et ordre
 

@@ -1,39 +1,47 @@
 ---
 source: docs/getting-started.md
-sourceCommit: a8c3f8f6
-sourceSha256: e41796ac4ccff30a50eeb282a99fd37d606801927af08faf115a4a6e21bfe5fd
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 927f249c0688995dadbae0b7818e34265c28b2e5d58ba5dd6bec1f879661d54c
+translatedAt: 2026-10-26
 ---
 # Primeros pasos
 
-Requisitos:
+Requisitos: CMake 3.28+, un compilador de C++23 y Python 3. CMake encuentra o
+descarga el SDK de LLVM 23.1 y las demás dependencias; en Windows se usa una
+consola de desarrollo x64 de Visual Studio con Ninja y LLVM/Clang instalados.
+Detalles: [compilación](building.md).
 
-- CMake 3.28+ y un compilador de C++23; en Windows, la carga de trabajo
-  **Desktop development with C++** de Visual Studio con un Windows SDK, Ninja y
-  una instalación global de LLVM/Clang (`clang-cl`, y `clang` para enlazar
-  programas).
-- El SDK de C++ de LLVM 23.1.x (23.1.1 o posterior) para el compilador. Se
-  prefiere una instalación global; en caso contrario, CMake descarga el SDK
-  fijado 23.1.2 en `thirdparty/` en Windows x64/ARM64, Linux x64/ARM64 y macOS
-  ARM64 ([SDK de LLVM](compile.md#llvm-sdk)). Las herramientas de línea de
-  órdenes de LLVM por sí solas no incluyen el SDK.
-- Boost 1.90+ (Multiprecision, Asio y Parser para el compilador; solo
-  cabeceras), toml++ 3.4.0, SQLite 3.54.0, PCRE2 10.47 y zlib 1.3.2. CMake
-  descarga las que faltan en `thirdparty/` con verificación SHA-256 y las
-  reutiliza sin conexión, también para directorios de compilación nuevos; en
-  Linux y macOS, Boost y toml++ proceden de una instalación o de `thirdparty/`
-  ([dependencias de compilación](projects.md#build-dependency)).
-- Python 3 para las pruebas y las herramientas de calidad, benchmarks y
-  listados.
-- Erlang/OTP no es necesario para compilar ni para ejecutar las pruebas. Las
-  pruebas usan
-  [fixtures golden propios del proyecto](../tests/fixtures/patternmatch/generated/README.md);
-  solo los parse transforms, las auditorías opcionales en vivo, la regeneración
-  de fixtures y los benchmarks necesitan una instalación de OTP 29.
-
-En macOS (Erlang opcional):
+Compilación:
 
 ```sh
-xcode-select --install
-brew install cmake boost tomlplusplus llvm@23 erlang
+cmake --preset debug          # Windows: cmake --preset windows
+cmake --build --preset debug  # Windows: cmake --build --preset windows-release
 ```
+
+`clau` queda en `build/debug/bin` (Windows: `build/windows/bin/Release`).
+
+Se escribe un programa; el punto de entrada es el módulo que exporta `main/1`,
+que recibe los argumentos de la línea de órdenes como cadenas:
+
+```erlang
+-module(hello).
+-export([main/1]).
+
+main(Args) -> io:format("Hello, ~p~n", [Args]).
+```
+
+Se compila y ejecuta:
+
+```sh
+clau -O2 -o hello hello.erl
+./hello world
+```
+
+Para más de unos pocos archivos, se describen los objetivos en un proyecto TOML:
+
+```sh
+clau --new-project myapp       # writes an annotated myapp.toml
+clau --project myapp.toml
+```
+
+`clau --help` enumera todas las opciones.

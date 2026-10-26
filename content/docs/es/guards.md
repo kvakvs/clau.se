@@ -1,8 +1,8 @@
 ---
 source: docs/guards.md
-sourceCommit: a8c3f8f6
-sourceSha256: 06fccff40aa16d2969fa711e61435acef58adf23acf5478fdea02da2654c8fa8
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 2185c0cc73d59bce520de21cba5090044b187537026ccfa230241b3ee58caf85
+translatedAt: 2026-10-26
 ---
 # Guards
 

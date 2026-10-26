@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: a8c3f8f6
-sourceSha256: b1c98a208a0a72f7ad5b20a2915eb2b39a4142cc65314491f83b019398b3b85a
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: dc39c5b08aff56dfd597eb58f062bf4aebc96a1c580bdd77a24f38de9936c351
+translatedAt: 2026-10-26
 ---
 # TOML-projekt
 
@@ -32,6 +32,7 @@ disable_features = ["compr_assign"]
 ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
+shell = false
 cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
@@ -48,6 +49,8 @@ my_dependency = "vendor/my_dependency"
   Explicita filer måste sluta på `.erl`, eller `.abstr` för former i abstrakt
   format ([transformer](transforms.md#interchange)); headerfiler är beroenden,
   inte indata.
+- `[[targets.asn1]]`-grupper kompilerar ASN.1-specifikationer (`sources`,
+  `options`, `outdir`) till moduler som ingår i målet ([ASN.1](asn1.md#inputs)).
 - `parse_transforms` (modulnamn) och `transform_paths` (kataloger eller mönster
   för förkompilerade `.beam`-filer) i `options` tillämpar parse transforms på
   målets moduler ([transformer](transforms.md#options)).
@@ -58,6 +61,9 @@ my_dependency = "vendor/my_dependency"
   anropbar, så som `--keep-exports` gör för varje valt mål
   ([exporters livskraft](executables.md#export-liveness)). Det måste vara ett
   booleskt värde.
+- `shell = true` i `options` länkar in det interaktiva skalet i målets körbara
+  fil, så som `--shell` gör ([interaktivt skal](library.md#interactive-shell)).
+  Det måste vara ett booleskt värde.
 - `cache_inference_in_dirs` (katalogjokertecken) i `options` lägger till
   kataloger vars moduler behåller sina inferensresultat i byggcachen
   ([inferenscache](#inference-cache)).

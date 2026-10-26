@@ -1,8 +1,8 @@
 ---
 source: docs/funs.md
-sourceCommit: a8c3f8f6
-sourceSha256: 114573ca575f133c3b45d3422218a8b98264b55c30167b405bb3008e3806c74e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 48b67a84428fd618682bf70ff7cc6bdc1eff671ca37080353b71fb6ab13088e5
+translatedAt: 2026-10-26
 ---
 # Funktionsvärden
 
@@ -42,7 +42,9 @@ de fastlåsta `maint-29`-källorna (`erts/emulator/beam/utils.c` `erts_cmp`,
   funktion utvärderar modulen, sedan funktionen, sedan argumenten från vänster
   till höger. En modul eller funktion som inte är en atom ger `badarg`; en
   funktion som ingen modul i programmet exporterar med den ariteten ger
-  `undef`. Ett anrop i svansposition är ett svansanrop.
+  `undef`, med `{M, F, Arity, []}` överst i stackspårningen (OTP visar
+  argumenten; `apply/3` och anrop av externa funs visar dem också). Ett anrop
+  i svansposition är ett svansanrop.
 - `apply(Fun, Args)` och `apply(M, F, Args)` (autoimporterade om inte modulen
   definierar `apply/2,3` eller undertrycker importen; även `erlang:apply/2,3`)
   utvärderar sina argument och kräver sedan att `Args` är en äkta lista
@@ -50,6 +52,10 @@ de fastlåsta `maint-29`-källorna (`erts/emulator/beam/utils.c` `erts_cmp`,
   (`{badfun, Fun}`, `{badarity, {Fun, Args}}`); `apply/3` slår upp
   `M:F/length(Args)` som ovan, så fler än 255 argument ger `undef`. Båda är
   svansanrop i svansposition och aldrig tillåtna i guards.
+- `erlang:apply/2,3` som nås via namn vid körning (`spawn(erlang, apply, [F,
+  Args])`, `M:apply(...)` med `M` bundet till `erlang`, en timers åtgärd) är
+  inbyggda funktioner (`builtins/erlang/apply.cpp`) som fortsätter i den
+  anropade funktionen med samma fel.
 - `fun M:F/A` med variabler ger `badarg` om inte `M` och `F` är atomer och `A`
   är ett heltal i 0..255; funktionen behöver inte finnas förrän funen anropas.
 - Uppslag använder kodserverns hashindex över programmets exporter
@@ -95,6 +101,61 @@ de fastlåsta `maint-29`-källorna (`erts/emulator/beam/utils.c` `erts_cmp`,
 - En anonym fun i ett standardvärde för ett record-fält är en enda fun för
   varje konstruktion som använder standardvärdet (OTP expanderar en kopia per
   ställe).
+
+## Inlinade funs
+
+Vid `-O2` (`codegen/lowering_fun_inlining.cpp`, `lowering_list_loops.cpp`,
+`lowering_map_loops.cpp`) sänks ett anrop av en anonym fun som är känd där den
+anropas till funens klausuler på anropets plats, ungefär som OTP:s alternativ
+`inline_list_funcs`:
+
+- **Kända funs.** En fun skriven i anropet (`(fun(X) -> ... end)(Y)`, eller
+  det första argumentet i en listloop nedan), eller en variabel som binds en
+  gång till en anonym fun utan namn (`F = fun ... end`) och som läses en gång
+  eller innehåller högst 40 uttryck. Inuti en annan funs kod inlinas en
+  variabels fun bara när allt den fångar in också är bundet där. Inlinade
+  kroppar nästlas högst fyra nivåer djupt; binary- och flyttalsloopar inlinar
+  ingenting.
+- **Klausuler på plats.** Argumenten matchas mot funens klausuler och guards,
+  och den matchande klausulens kropp körs i anroparens ram. När ingen klausul
+  matchar anropas funen, så `function_clause` kommer från funens egen kod som
+  tidigare. En fun skriven i anropet byggs bara på den vägen och de vägar
+  nedan som behöver dess värde (closure sinking); en variabels fun byggs där
+  den binds, som tidigare.
+- **Listloopar.** `lists:map/2`, `filter/2`, `foreach/2`, `all/2`, `any/2`,
+  `flatmap/2`, `foldl/3`, `foldr/3`, `mapfoldl/3` och `mapfoldr/3` i Clauses
+  egen modul `lists` med en känd fun av rätt aritet blir en loop över listan
+  i den anropande funktionen. Varje elements fun-anrop inlinas; listor byggs
+  omvänt och vänds en gång på slutet; `foldr/3` och `mapfoldr/3` vänder först
+  sin indata, så deras fun fortfarande ser elementen från det sista, efter
+  att en oäkta svans har gett fel. Liksom kroppsrekursionen de ersätter
+  skräpsamlar listloopar bara där de lämnar ifrån sig exekveringen (vart
+  4 000:e element utan andra anrop) och i anropen deras fun gör.
+- **Map-foldloopar.** `maps:fold/3` i Clauses egen modul `maps` med en känd
+  fun av aritet 3 blir en loop över map:ens poster (den klassiska map-cellen,
+  eller ett träds poster som kopieras en gång till en tupelformad cell, så som
+  `maps:fold/3` läser dem), i nyckelordning som `maps:fold/3`. En map-iterator
+  eller ett värde som inte är en map gör det riktiga `maps`-anropet, som
+  hanterar det eller ger sitt eget fel.
+- **Ägda ackumulatorer.** När varje klausul i en fold-fun (`maps:fold/3`,
+  `lists:foldl/3`, `lists:foldr/3`) returnerar sin ackumulatorparameter
+  uppdaterad, `fun(K, V, Acc) -> Acc#{K := V + 1} end` med `Acc` som inte
+  läses någon annanstans och inte fångas in av någon fun, äger loopen varje
+  stegs resultat: från det andra steget är uppdateringen ägd och ändrar
+  map:en på plats ([map-träd](runtime-heap.md#map-trees)). Det första steget
+  kopierar, eftersom den ursprungliga ackumulatorn kan hållas någon annanstans.
+- **Samma resultat och felorsaker.** Värden, ordningen som funen körs i och
+  felorsaker är desamma som i `lists`: indata som inte är en lista till
+  `map/2`, `foldl/3`, `all/2`, `any/2` och oäkta svansar till `filter/2`,
+  `foreach/2`, `foldr/3`, `mapfoldl/3`, `mapfoldr/3` gör det riktiga
+  `lists`-anropet, som ger sitt eget fel; en oäkta svans till `map/2`,
+  `foldl/3`, `all/2`, `any/2`, `flatmap/2` ger `function_clause` i anroparen.
+  Ett predikat som inte ger ett booleskt värde ger `{case_clause, V}` (`all/2`,
+  `any/2`) eller `{bad_filter, V}` (`filter/2`), ett resultat som inte är ett
+  par från en `mapfold`-fun ger `{badmatch, V}`.
+- **Stackspårningar** av undantag inuti inlinade funs saknar funens och
+  hjälpfunktionens ramar i `lists` eller `maps`
+  ([skillnader](differences.md#errors-stack-traces-and-reports)).
 
 ## Representation
 

@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 336caea7
-sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0e0336079bf5ea3110e7390081518b5a0f6fc13f50ae1303e65cfaf40d50cd8f
+translatedAt: 2026-10-26
 ---
 # Contrato del heap de proceso
 
@@ -93,6 +93,21 @@ heaps de proceso, compartido mediante recuento de referencias (ProcBin y
   `static_assert` mantiene el tamaño de la celda fijo en ocho palabras después
   de la cabecera en ambos anchos.
 
+### Reutilización de búferes
+
+Un búfer liberado cuyo tamaño sea una potencia de dos de al menos 256 bytes
+(las capacidades de los binaries ampliables) se queda con el hilo que descartó
+su última referencia, para el siguiente búfer de ese hilo de exactamente ese
+tamaño (como los [bloques de heap](#heap-blocks)). Cada hilo conserva como
+máximo 32 búferes y 8 MB; la caché se libera cuando termina el hilo. Los bytes
+de un búfer reutilizado posteriores a los del nuevo binary se dejan como
+estaban: ninguna vista los abarca. Sin esto, los bucles de anexado de binaries
+tomaban páginas nuevas para cada búfer ampliado (el heap de C++ devuelve las
+páginas de los bloques grandes liberados). Los búferes nuevos son `ByteBuffer`
+(`runtime/include/byte_buffer.hpp`), que tampoco ponen nunca a cero su espacio,
+por lo que la respuesta de un controlador de puerto (la lectura de un archivo
+completo) se escribe una vez y se asume tal como está.
+
 ### Referencias handle
 
 Una referencia handle es una referencia que además retiene un búfer fuera del
@@ -151,7 +166,17 @@ siendo celdas `map`.
   al stub. El compilador marca una actualización como propia solo cuando la
   función construyó ella misma el map de origen (`M = <map expression or
   comprehension>` en el mismo cuerpo de cláusula), no lee `M` en ningún otro
-  lugar y nunca lo captura en un fun (`semantic/map_ownership`).
+  lugar y nunca lo captura en un fun (`semantic/map_ownership`), y en bucles
+  fold a partir del segundo paso ([acumuladores propios](funs.md#inlined-funs)),
+  donde la operación se elige en tiempo de ejecución.
+- Una actualización con una clave entera pequeña se decide solo con palabras
+  (`MapAccess::update_small_key`, sin un `Term` por argumento, la búsqueda de
+  la clave no llama a ninguna consulta virtual). Si es propia, también
+  reutiliza el stub de origen mientras su testigo sea vigente: el stub es
+  entonces más joven que la última recolección, así que escribir en él la nueva
+  raíz no crea ningún puntero de antiguo a joven. Un fold que actualiza cada
+  entrada copia cada nodo como máximo una vez por recolección y, en los demás
+  pasos, escribe una palabra de valor por paso.
 
 ## Áreas
 
@@ -172,20 +197,31 @@ siendo celdas `map`.
   como los retornos de una recursión en el cuerpo, sigue siendo en línea tras
   abrirse el primer fragmento (ventanas de fragmento). Sin presupuesto, cada
   fragmento nuevo es al menos tan grande como los anteriores.
-- **Áreas de literales.** Los literales compuestos de cada módulo (cadenas y
-  listas constantes, tuplas de constantes, flotantes, literales bignum y
-  binaries constantes) los dispone el compilador como celdas de heap en una
-  única variable global de solo lectura (`ModuleDescriptor::literals`),
-  registrada para todo el runtime (`detail::LiteralAreas`, una instantánea
-  ordenada sin bloqueos) cuando se registra el módulo. Los términos de
-  cualquier proceso pueden apuntar a ellas: la admisión comprueba
+- **Áreas de literales (heap de literales).** Los literales compuestos de cada
+  módulo —cadenas, listas, tuplas y maps constantes, flotantes, literales
+  bignum y binaries constantes de cualquier tamaño— los codifica el compilador
+  en una única cadena de bytes constante (`ModuleDescriptor::literals`,
+  `abi/literals.hpp`), que permanece en los datos de solo lectura del
+  ejecutable. El registro los decodifica una vez por runtime en un contexto
+  temporal (pid número 0, nunca emitido) con los átomos y las factorías de
+  términos del runtime, y después los copia en un área del rango de términos
+  persistentes que nunca se retira; `detail::LiteralAreas` posee el área durante
+  toda la vida del runtime y la registra como área de literales de módulo (una
+  instantánea ordenada sin bloqueos), de modo que incluso las copias que copian
+  términos persistentes vivos la comparten. Los binaries de más de 64 bytes
+  conservan un búfer propio. Los términos de cualquier proceso pueden apuntar
+  a ellas: la admisión comprueba
   `HeapStorage::readable` (heap, fragmentos y después literales), mientras que
   `TermAccess::object` lee punteros de confianza. El recolector deja las
   palabras de literales tal como están
   (`owned` sigue siendo solo del heap); las copias entre heaps y hacia búferes
   de mensajes siguen apuntando a ellas (una raíz literal no necesita copia); el
-  verificador las acepta. Los literales contienen solo inmediatos (solo átomos
-  fijos) y palabras de otros literales.
+  verificador las acepta. Las palabras de literales son propias del runtime
+  (incluidos los átomos), así que cada runtime tiene su propia copia; el código
+  generado lee las palabras del runtime que reclama el módulo desde
+  `literal_cache` y las de otros runtimes mediante `CLAUSE_literal_v1`. Una
+  actualización propia de map nunca cambia un literal en el sitio: solo cumple
+  los requisitos un stub del heap del propio proceso.
 - **Fragmentos.** Cuando una solicitud no cabe y el heap no puede moverse, va
   al fragmento más reciente si cabe allí, y si no a un nuevo fragmento con el
   tamaño necesario (como mínimo el tamaño mínimo del heap) encadenado al
@@ -255,9 +291,14 @@ Los bloques de heap, los fragmentos y las áreas antiguas provienen de
 para las siguientes recolecciones de ese hilo (igual que los carriers de ERTS
 conservan memoria): un bloque nuevo toma el menor bloque en caché de al menos su
 tamaño y como máximo el doble, y si no, memoria nueva. Cada hilo conserva como
-máximo 8 bloques y 4M palabras (32 MB en destinos de 64 bits); los bloques de
+máximo 8 bloques y 16M palabras (128 MB en destinos de 64 bits); los bloques de
 menos de 4.096 palabras no se conservan, ya que las listas libres del heap de
-C++ los sirven de forma barata. Sin esto, el espacio de destino de cada
+C++ los sirven de forma barata. Un bloque liberado que no cabe libera primero
+los bloques conservados más antiguos: un heap que crece libera bloques cada
+vez mayores y, sin expulsión, los bloques de sus primeras recolecciones
+pequeñas llenaban la caché, así que un conjunto vivo de millones de palabras
+tomaba páginas nuevas para cada bloque joven, área antigua y barrido completo.
+Sin esto, el espacio de destino de cada
 recolección tomaba páginas nuevas del sistema operativo y pagaba un fallo de
 página por cada página que tocaba, y liberar un bloque grande devolvía sus
 páginas. Los bloques en caché no se cargan a ningún proceso ni a la cuenta de
@@ -287,8 +328,9 @@ todo el runtime; un hilo libera su caché cuando termina.
 - El espacio de destino de una recolección se carga incluso por encima del
   límite, porque sustituye a los bloques que libera al final de la misma
   recolección.
-- La pila se duplica mientras el límite lo permite, y después crece solo en el
-  tamaño del marco que se apila.
+- Las primeras 64 palabras de la pila viven dentro del contexto del proceso y
+  se cargan al apilar el primer marco. Después la pila se duplica mientras el
+  límite lo permite, y después crece solo en el tamaño del marco que se apila.
 
 ## Admisión
 
@@ -316,7 +358,7 @@ factorías siguen readmitiendo las entradas mediante `ProcessHeap::retain`,
 rechazando entradas compuestas ajenas con `wrong_owner`.
 
 Estas comprobaciones se ejecutan solo en compilaciones Debug
-(`CHECKED_ADMISSION`, OPTM.2C). Una compilación Release confía en toda palabra
+(`CHECKED_ADMISSION`). Una compilación Release confía en toda palabra
 compuesta, de átomo, pid o puerto entregada a un builtin, servicio o factoría,
 como ERTS confía en sus Eterms: el código generado solo produce palabras de su
 propio proceso, de áreas de literales y de átomos del runtime, por lo que las
@@ -389,18 +431,23 @@ las reservas y los búferes de mensajes conservan sus comprobaciones de vida
 (`expired_context`); un Term leído de un búfer no fija nada y no debe
 sobrevivir a su almacenamiento. El búfer nunca se recolecta y se libera con
 su último propietario; su bloque tiene exactamente las palabras del término,
-sea cual sea el heap mínimo del emisor. Lo usan los mensajes a un proceso que
-se ejecuta en otro hilo de trabajo ([hilos de trabajo](processes.md#workers)),
+sea cual sea el heap mínimo del emisor. Lo usan los envíos a otros procesos
+([búferes de llegadas](processes.md#arrival-buffers)),
 los mensajes de los temporizadores y las etiquetas de monitores, por lo que
 nunca se vuelven a codificar; los
 [términos persistentes](runtime.md#persistent-terms) viven en su propio rango
 de direcciones y se copian, sin compartirse, a los búferes.
 
+**Un solo recorrido del mensaje.** Un envío a otro proceso recorre el grafo de
+su mensaje una vez, antes de cualquier bloqueo (`OutgoingMessage`, con el
+`GraphCopy` de [graph_copy.hpp](../runtime/src/memory/graph_copy.hpp)); ese
+recorrido dimensiona todas las copias posteriores y, como cualquier copia
+fuera de un proceso, copia los términos persistentes.
+
 **Traspaso de mensajes.** Un envío cuyo mensaje ocupa al menos
-`MessageBuffer::ADOPTED_WORDS` (512) palabras, contadas por
-`MessageBuffer::large(value, sender, minimum)` mediante un recorrido acotado
-que se detiene ahí, construye el búfer antes de tomar el bloqueo del
-ejecutor, de modo que el emisor no retiene ningún bloqueo mientras copia.
+`MessageBuffer::ADOPTED_WORDS` (512) palabras siempre pasa por un búfer, copiado
+a partir de ese recorrido antes de cualquier bloqueo, de modo que el emisor no
+retiene ningún bloqueo mientras copia.
 Después, el receptor asume el búfer en lugar de copiarlo
 (`MessageBuffer::take`, `HeapStorage::adopt`), cuando el búfer no tiene otro
 propietario y el receptor tiene un bloque de heap y ningún presupuesto: el
@@ -408,10 +455,18 @@ bloque se une a sus fragmentos en las mismas direcciones, las listas de
 binaries fuera del heap y de maps del búfer se unen a las suyas con sus cargas,
 y el búfer queda vacío. Nadie más puede alcanzar el bloque antes ni después,
 así que ninguna palabra se copia dos veces. Los fragmentos adoptados solo
-solicitan una recolección cuando sus palabras alcanzan las del bloque joven,
-como hacen los fragmentos de mensajes de ERTS, y la siguiente recolección los
-trata como datos jóvenes. Los mensajes más pequeños se copian, como antes:
-resulta más barato que un fragmento para cada uno.
+solicitan una recolección una vez que un receive ha tomado su mensaje y sus
+palabras alcanzan las del bloque joven, igual que ERTS cuenta un fragmento de
+mensaje solo una vez recibido (`HeapStorage::received`); la siguiente
+recolección los trata como datos jóvenes y copia un mensaje que siga en cola
+como cualquier raíz.
+Los mensajes más pequeños se copian una vez, más barato que un fragmento para
+cada uno: directamente al heap de un receptor que no se ejecuta, bajo el
+bloqueo del ejecutor, o justo detrás de un nodo de llegada para uno en
+ejecución. El receptor toma una llegada así copiando sus palabras tal como
+están y desplazando los punteros entre ellas la distancia de la copia,
+leyendo los objetos en orden de dirección como el recolector recorre sus
+copias (**llegadas reubicadas**); el grafo no se vuelve a recorrer.
 
 ## Recolección en código generado
 
@@ -567,7 +622,7 @@ es un error en `lower_frames`).
 
 ### Prototipo
 
-[tests/prototypes/safepoint](../tests/prototypes/safepoint/) contiene un bucle
+[tests/prototypes/safepoint](../tests/prototypes/safepoint) contiene un bucle
 al estilo de una comprehension en forma posterior a `lower_frames`
 (`loop.ll`): un término `Y` calculado antes del bucle se almacena en un slot de
 término y se recarga después del safepoint de la cabecera del bucle.
@@ -584,7 +639,13 @@ recolección menor ([generaciones](#generations)): primero se asigna el nuevo
 bloque (un fallo es `out_of_memory` y deja el heap intacto), después se copia
 el objeto detrás de cada palabra
 raíz y se recorre el nuevo bloque de izquierda a derecha, copiando los hijos de
-cada copia. La cabecera de un objeto boxed movido se sustituye por un puntero
+cada copia. Primero se comprueba un slot frente al área de origen del slot
+anterior (una comprobación de rango), y los inmediatos se distinguen en línea.
+Las celdas cons se recorren sin análisis, y los slots de una copia boxed se
+localizan solo por el tipo de su cabecera (un recuento por tipo de palabras no
+trazadas, sin comprobaciones de tamaño: las copias son de objetos verificados);
+los objetos de hasta cuatro palabras se copian palabra a palabra. La cabecera
+de un objeto boxed movido se sustituye por un puntero
 boxed a su copia; una celda cons movida recibe una cabeza a cero y una cola que
 apunta a su copia. El reenvío preserva la compartición. Las raíces se
 reescriben en el sitio, se barre la lista fuera del heap (las copias se vuelven
@@ -622,12 +683,23 @@ Recolección generacional, como la hace ERTS, sin su barrera de escritura:
   las celdas antiguas muertas esperan al siguiente barrido completo.
 - **Dimensionamiento joven.** Una recolección menor conserva el tamaño del
   bloque joven, como hace ERTS, y como mínimo una octava parte del área antigua
-  (ERTS). El código generado solo recolecta en safepoints, así que la
+  (ERTS). El bloque menor de ERTS es `next_heap_size(young + stack)`, pero su
+  pila llena el resto de un bloque completo, así que esto nunca lo hace crecer;
+  la pila de Clause está separada y contarla hacía crecer el bloque en cada
+  recolección menor. Clause también amplía el bloque para que las palabras
+  jóvenes por encima de la marca de nivel máximo (todas las que pueden seguir
+  siendo jóvenes) y la pila ocupen como máximo el 75%: las mediciones indican
+  que reducir las recolecciones compensa más que los bloques más ajustados de
+  ERTS. El código generado solo recolecta en safepoints, así que la
   asignación entre dos de ellos (los retornos de una recursión en el cuerpo)
   puede desbordarse mucho en fragmentos; cuando estos ocupan una cuarta parte
   del bloque o más, el siguiente bloque crece en su tamaño y no se reduce. En
   otro caso, un bloque joven de más de 8.000 palabras con menos del 25% vivo se
-  copia en el triple de sus palabras vivas (la regla menor de ERTS).
+  reduce al triple de sus palabras vivas (la regla menor de ERTS).
+- **Reducción en el sitio.** Ambas reducciones (esta y la de un barrido completo)
+  disminuyen la capacidad del bloque en el sitio, como ERTS lo reasigna:
+  nada se vuelve a copiar y la cola sin usar del bloque sigue asignada, sin
+  cargarse, hasta que la siguiente recolección libera el bloque.
 - **Límite fuera del heap.** Después de una recolección menor, el límite del
   heap binario virtual cuenta solo las palabras jóvenes vivas: el área antigua
   puede contener palabras muertas, que no deben aplazar el barrido completo que
@@ -665,9 +737,16 @@ análisis:
   suma las palabras de cada objeto alcanzado; la copia es una única reserva de
   esa suma, en el bloque de heap o en un fragmento, rellenada por un segundo
   recorrido en el mismo orden que vuelve a leer cada celda y hace que cada slot
-  apunte a la copia de su hijo. Ninguna tabla asocia los objetos de origen con
-  sus copias, y solo las celdas de binaries y los stubs de maps conservan sus
-  desplazamientos.
+  apunte a la copia de su hijo. Ambos recorridos siguen las colas de una lista
+  en el sitio, así que solo las cabezas esperan en la pila, y distinguen los
+  literales compartidos de las celdas del heap con una comprobación de rango
+  sobre la extensión de todas las áreas de literales de módulos. El primer
+  recorrido dimensiona la pila del segundo, así que el segundo no asigna nada y
+  las palabras de un búfer de mensajes no necesitan ponerse a cero. Ambas pilas
+  y la lista de binaries guardan sus primeras entradas en línea, por lo que la
+  copia de un mensaje pequeño no realiza ninguna asignación del anfitrión.
+  Ninguna tabla asocia los objetos de origen con sus copias, y solo las celdas
+  de binaries y los stubs de maps conservan sus desplazamientos.
 - La copia de un binary fuera del heap es una nueva celda que comparte el
   búfer; el destino retiene el búfer (cargando sus propias palabras fuera del
   heap si no retenía nada de él) antes de reservar, y solo añade la celda a la

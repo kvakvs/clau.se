@@ -1,8 +1,8 @@
 ---
 source: docs/execution-model.md
-sourceCommit: a8c3f8f6
-sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: ef2ddb1d1fa5ece215035e006df8bf25bc2dd907c9e5b39d7eb0c991b4179977
+translatedAt: 2026-10-26
 ---
 # Modèle d'exécution : cadres et continuations
 
@@ -111,7 +111,12 @@ l'appel natif.
   Comme pour un appel terminal sur soi-même, un emplacement conservé peut
   contenir un terme d'un membre précédent jusqu'à ce que l'appelé l'écrive,
   de sorte que les collectes peuvent garder un tel terme en vie un peu plus
-  longtemps.
+  longtemps. Les membres d'un cycle partagent une même fonction native :
+  le descripteur de chaque membre la désigne comme corps, ses indices de
+  reprise couvrent tous les membres, et un démarrage (resume 0) choisit le
+  membre à partir du descripteur du cadre ; un appel terminal entre membres
+  est donc un branchement plutôt qu'un transfert. Les débogueurs voient les
+  membres comme intégrés inline dans cette fonction.
 - **Cession (yield).** Lorsqu'il ne reste aucune réduction, une entrée
   n'empile rien : elle s'enregistre dans `ProcessStack::resume_`, conserve ses
   arguments comme racines de registres (`ProcessStack::keep_registers`) et
@@ -209,7 +214,11 @@ inchangés. Aucune cible requise n'en a besoin.
 - **Paramètres.** Un corps lit ses premiers arguments dans les paramètres
   lorsqu'il démarre et le résultat de l'appel dans `x0` lorsqu'il reprend ;
   `lower_frames` ne déverse l'un ou l'autre dans un emplacement que s'il est
-  vivant à travers un appel ou un point sûr.
+  vivant à travers un appel ou un point sûr. Une variante de boucle en
+  flottants ([abi](abi.md)) reçoit certains paramètres sous forme de bits de
+  doubles : seuls ses transferts inline les passent ainsi, et ses chemins de
+  service entrent dans la fonction avec des cellules à la place, de sorte que
+  les registres lus par un service contiennent des termes.
 - **Les positions terminales** sont la dernière expression du corps d'une
   clause, suivie à travers les blocs, les parenthèses et les corps de clauses
   de `case`, `if` et `receive`. Les appels dans les opérandes de `catch`,
@@ -231,7 +240,7 @@ inchangés. Aucune cible requise n'en a besoin.
 
 ## Alternatives comparées
 
-[tests/prototypes/execution_model](../tests/prototypes/execution_model/)
+[tests/prototypes/execution_model](../tests/prototypes/execution_model)
 abaisse à la main les mêmes fonctions Erlang (récursion de corps `sum/1`,
 récursion terminale `loop/2`, `fail/1` levant une erreur à la profondeur N,
 `catcher/1` la capturant) de trois façons et les compile pour chaque cible

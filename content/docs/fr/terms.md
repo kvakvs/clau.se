@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 336caea7
-sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 4e14e8fda395d76503e8c295505005d07d3fa8c33b4ba32f99c48caae55921ab
+translatedAt: 2026-10-26
 ---
 # Représentation des termes
 
@@ -77,9 +77,10 @@ en mots se trouvent dans [abi.md](abi.md#terms).
   statiques immortels, trouvés sans le verrou et comptés ni par `size()` ni dans
   `max_atoms` ; le code généré les utilise comme constantes. Tout autre mot
   d'atome est privé au runtime.
-- Les littéraux composés de constantes (chaînes, listes et tuples d'immédiats
-  et d'autres littéraux, flottants, bignums) sont des cellules de la zone de
-  littéraux du module, construites à la compilation et partagées
+- Les littéraux composés (chaînes, listes, tuples et maps de littéraux,
+  flottants, bignums, binaries constants) sont des littéraux de module : encodés
+  à la compilation, décodés une seule fois par runtime lors de l'enregistrement
+  dans son tas de littéraux et partagés
   ([zones de littéraux](runtime-heap.md#areas)) ; les littéraux entiers de la
   petite plage sont des immédiats.
 - Les autres littéraux atomes se chargent depuis le cache d'atomes du module
@@ -89,6 +90,15 @@ en mots se trouvent dans [abi.md](abi.md#terms).
   revendication le lit sans appel, tout autre appelle `CLAUSE_atom_v3`. La
   revendication est rendue lorsque le serveur de code du runtime libère le
   module.
+- Le C++ du runtime écrit les atomes littéraux sous la forme `"name"_atom`
+  (`atom_names.hpp`) : un `CachedAtom` statique par orthographe conserve le
+  dernier mot interné pour celle-ci, et `AtomStorage::intern` le renvoie après
+  une lecture d'index sans verrou lorsque ce runtime l'a émis, en évitant la
+  validation, le verrou partagé et la map d'orthographes. Un mot d'un autre
+  runtime ou d'un runtime détruit échoue à cette vérification et est remplacé ;
+  plusieurs runtimes dans un même processus restent donc corrects (ils ne font
+  que rafraîchir le cache). Les fonctions auxiliaires des builtins prennent un
+  `AtomName`, une orthographe avec ou sans un tel cache.
 - L'internement et la recherche sont sûrs depuis des threads de travail
   d'ordonnanceur concurrents ([threads](runtime.md#threads)) ; une orthographe
   garde un seul mot.
@@ -109,6 +119,10 @@ en mots se trouvent dans [abi.md](abi.md#terms).
   petite plage ; `*` calcule en double largeur avec des bornes explicites. De
   même pour `band`, `bor`, `bxor`, `bsr`, `div`, `rem` et les comparaisons de
   deux petits entiers ([formes inline](abi.md#runtime-services)).
+- Le service multiplie un bignum (ou un petit produit ayant débordé) par un
+  petit entier, membre par membre, directement depuis la cellule de l'opérande
+  vers la nouvelle ; les autres opérations sur les bignums passent par une
+  valeur multiprécision.
 - `div` tronque vers zéro ; `rem` prend le signe du dividende ; les opérations
   bit à bit utilisent un complément à deux infini ; un décalage négatif inverse
   le sens ; les très grands décalages à droite saturent à 0 ou -1.
@@ -187,8 +201,9 @@ en mots se trouvent dans [abi.md](abi.md#terms).
   Le code généré construit en ligne les petites constructions de largeur
   constante ([cadres et transferts](abi.md#frames-and-transfers)).
 - Ajouts, comme les binaries inscriptibles d'OTP : une construction qui
-  commence par un binary entier (`<<Acc/binary, ...>>`) construit son résultat
-  dans un tampon avec de la place libre (deux fois sa taille, au moins
+  commence par un binary entier (`<<Acc/binary, ...>>`) de plus de 64 octets
+  construit son résultat dans un tampon avec de la place libre (sa taille
+  arrondie à la puissance de deux supérieure, au moins
   256 octets) dont la cellule hors tas dans le processus créateur enregistre
   ses bits utilisés et sa capacité (zéro dans toute autre cellule, copies
   comprises). Un ajout ultérieur dont la vue de l'accumulateur se termine
@@ -196,8 +211,10 @@ en mots se trouvent dans [abi.md](abi.md#terms).
   ne couvre, et renvoie une vue plus longue du même tampon : un sous-binary de
   la propre cellule hors tas du tampon, qui peut aller au-delà des bits de
   cette cellule. Tout autre accumulateur (une vue plus ancienne, celle d'un
-  autre processus, une vue non alignée, un tampon plein) est copié dans un
-  nouveau tampon doublé. Les autres vues du tampon ne changent jamais.
+  autre processus, une vue non alignée, un tampon plein) est copié une seule
+  fois dans un nouveau tampon, qui double au moins la taille d'un tampon plein.
+  Les autres vues du tampon ne changent jamais. Les tampons libérés sont
+  réutilisés ([réutilisation des tampons](runtime-heap.md#buffer-reuse)).
 - Segments flottants : largeurs 16/32/64 ; la construction peut encoder
   l'infini, mais le filtrage rejette les champs infinis/NaN. Les
   correspondances de flottants de largeur nulle extraient `0.0`.
@@ -284,11 +301,20 @@ nil < listes < bitstrings (les [funs](funs.md#comparison-and-printing)
 s'ordonnent entre elles).
 Les atomes se comparent selon leur orthographe UTF-8 (ordre des points de
 code) ; les tuples par arité puis par champs ; les maps par taille, puis clés,
-puis valeurs ; les bitstrings par bits logiques. Deux petits entiers, deux
-flottants ou deux binaries d'octets entiers sont ordonnés directement depuis
-leurs mots ou cellules (`detail::word_order`), et deux atomes depuis leurs
-orthographes dans la table des atomes (`AtomStorage::spelling`, via l'index
-sans verrou par numéro), sans admission de termes.
+puis valeurs ; les bitstrings par bits logiques. Les nombres (petits entiers,
+flottants, bignums par signe et membres), les atomes (par leurs orthographes
+dans la table des atomes, via l'index sans verrou par numéro), les références
+locales (par numéro), les binaries d'octets entiers, et les tuples et listes
+de ces valeurs imbriqués jusqu'à 8 niveaux sont ordonnés directement depuis
+leurs mots et cellules (`detail::word_order`), sans admission de termes ; toute
+autre paire, un flottant face à un bignum de même longueur en bits, ou un petit
+entier au-delà de 2^53 face à un flottant utilise l'ordre structurel. `=:=`
+prend le même chemin (`detail::word_exact`) : les paires qu'il ordonne
+distinctement sont inégales, et un même mot ou deux références qu'il trouve
+égales sont égaux ; une réception filtrant la référence d'une réponse n'admet
+donc aucun terme. `lists:sort/1` et `lists:usort/1` trient les mots des éléments
+sur place : les listes de petits entiers uniquement ou d'atomes uniquement
+par mot ou orthographe, les autres par un tri stable selon l'ordre des mots.
 
 ## Affichage
 

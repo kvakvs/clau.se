@@ -1,8 +1,8 @@
 ---
 source: docs/ports.md
-sourceCommit: a8c3f8f6
-sourceSha256: 59defde90218e0d1374492f8e7fccd5a737dec02f9c4fc9f5f94fc392a26789f
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0b9c882a696b24690dffccf55456c63d826a600ed7e2be286259a5df3eb6bf57
+translatedAt: 2026-10-26
 ---
 # Ports
 
@@ -126,8 +126,10 @@ Ereignisse und schließt. Treiber:
 - `tcp_inet`, `udp_inet`: Sockets von `gen_tcp`, `gen_udp` und `inet` der
   Projektbibliothek auf Boost.Asio; Verbindungsaufbau, Annehmen und Empfangen
   sind asynchron ([Sockets](#sockets)).
+- `clause_registry` (Windows): die Registry von `win32reg`
+  ([die Registry](#the-registry)).
 
-Die internen Treiber von `file` und den Sockets werden mit
+Die internen Treiber von `file`, den Sockets und der Registry werden mit
 `{spawn_driver, Name}` unter Clause-Namen geöffnet, und ihre
 `port_control/3`-Operationen sind ein Clause-Protokoll: Programme nutzen die
 Bibliotheksmodule, nicht die Protokolle `prim_inet`/`efile` von OTP.
@@ -266,9 +268,10 @@ stdin und stdout Pipes des Ports sind:
   werden Argumente nach den Regeln von `CommandLineToArgvW` gequotet.
 - `{env, [{Name, Value | false}]}` setzt oder entfernt Variablen des Kindes,
   `{cd, Dir}` sein Verzeichnis, `stderr_to_stdout` führt stderr in den Port
-  zusammen; andernfalls teilt das Kind die stderr des Programms. `in` öffnet
-  keine stdin-Pipe und `out` keine stdout-Pipe (stattdessen das Null-Gerät).
-  `hide` und `overlapped_io` haben keine Wirkung.
+  zusammen; andernfalls teilt das Kind die stderr des Programms. `in` allein
+  öffnet keine stdin-Pipe und `out` allein keine stdout-Pipe (stattdessen das
+  Null-Gerät); mit beiden oder keiner der Optionen hat der Port beide Pipes,
+  wie in OTP. `hide` und `overlapped_io` haben keine Wirkung.
 - Ein Programm, das nicht gestartet werden kann, löst `error:Reason` mit dem
   POSIX-Grund aus (`enoent`, `eacces`, `enoexec`); ungültige Namen und Optionen
   lösen `badarg` aus.
@@ -300,10 +303,22 @@ stdin und stdout Pipes des Ports sind:
   zurück, den Rest der Eingabe ohne einen solchen an seinem Ende, dann `eof`;
   `io:get_chars/2,3` gibt bis zu `N` Zeichen zurück, dann `eof`. Anfragen
   mehrerer Prozesse werden in Eingangsreihenfolge beantwortet. Eingabe wird als
-  Bytes zurückgegeben (ein Listenelement pro Byte).
+  UTF-8 in Zeichen dekodiert, wie OTP sein Terminal liest; der Server hält die
+  noshell-Optionen von OTP für `standard_io` (`binary`, `encoding`, `echo`,
+  `log`; `io:getopts/0,1`, `io:setopts/1,2`): Der binary-Modus gibt binaries
+  zurück, `echo` schreibt verbrauchte Eingabe auf die Standardausgabe,
+  `get_password` ergibt ohne Shell `{error, enotsup}`, wie bei OTP.
+- Dateiserver beantworten `getopts` und `setopts` wie der Datei-I/O-Server von
+  OTP (`binary`/`list` und `encoding`; `file:open/2` nimmt `{encoding, E}` an):
+  I/O-Anfragen (`io:get_line`, `get_chars`, `put_chars`, `get_until`) kodieren
+  und dekodieren die Gerätekodierung, und `file:read/2`, `read_line/1` auf einer
+  kodierten Datei antworten wie latin1-Anfragen an `get_chars`/`get_line`
+  (`no_translation` über 255, was den Server stoppt). Ausgabe von
+  `io:format/3`, `io:put_chars/2`, `io:nl/1` an eine beliebige Pid ist eine
+  `put_chars`-Anfrage im I/O-Protokoll.
 - Das Modul `file` der Bibliothek steuert den Dateitreiber der Runtime,
   `{spawn_driver, "clause_file"}`, mit `port_control/3`. Seine Operationen
-  (`ports/file.cpp`: open, read, write, position, read_line, close sowie die
+  (`ports/file.cpp`: open, read, write, position, read_line, sync, close sowie die
   Pfadoperationen read_file, write_file, delete, rename, list_dir, make_dir,
   del_dir und read_file_info, `ports/file_info.cpp`; get_cwd, set_cwd,
   read_link, read_link_info, make_link und make_symlink,
@@ -313,11 +328,23 @@ stdin und stdout Pipes des Ports sind:
   ist Clauses eigenes. read_line liest 64 KB im Voraus und gibt Zeilen aus
   diesem Puffer zurück; jede andere Operation auf der Datei springt zuerst über
   die noch nicht zurückgegebenen Bytes zurück, sodass Positionen exakt bleiben.
+- Pfadoperationen führen die Systemaufrufe von OTP aus und keine weiteren: Der
+  Status eines Pfads wird erst gelesen, wenn ein Öffnen oder Löschen scheitert
+  (um `eisdir` oder `eperm` zurückzugeben); delete entfernt den Link einer Datei
+  und nie ein Verzeichnis, und read_file liest eine Datei bis zu der von ihrem
+  Deskriptor gemeldeten Größe, wie OTP, ohne ihr Ende durch Lesen zu prüfen.
+- `port_control/3` übergibt ein binary oder `[]` direkt an den Treiber (andere
+  iodata werden zuerst abgeflacht), und eine Antwort wird ohne Kopie zum
+  Ergebnis-binary: Antworten sind `ByteBuffer`s
+  (`runtime/include/byte_buffer.hpp`), Byte-Vektoren, die ohne Nullen wachsen,
+  sodass ein Lesevorgang die Bytes seiner Antwort einmal füllt.
 - `file:open/2` gibt die Pid eines I/O-Servers zurück, der einen Datei-Port
-  besitzt und mit dem Öffner verlinkt ist (Modi `read`, `write`, `append`,
-  `exclusive`, `binary`; andere Modi werden ignoriert, wie OTP Optionen
-  ignoriert, die es nicht nutzt; `write` kürzt die Datei, sofern nicht auch
-  `append` angegeben ist).
+  besitzt und sich schließt, wenn der Öffner endet, wie bei OTP (unter Windows
+  ist die Datei zum Lesen, Schreiben und Löschen freigegeben, wie OTP sie
+  öffnet, sodass eine geöffnete Datei gelöscht oder umbenannt werden kann)
+  (Modi `read`, `write`, `append`, `exclusive`, `binary`, `raw`; andere Modi
+  werden ignoriert, wie OTP Optionen ignoriert, die es nicht nutzt; `write`
+  kürzt die Datei, sofern nicht auch `append` angegeben ist).
 - `file:write_file/3` öffnet mit seinen Modi plus `binary` und `write`;
   `file:read_file_info/1,2` geben das `#file_info{}` von OTP aus dem Status des
   Pfads zurück (Links werden verfolgt), mit Zeiten als lokales oder universelles
@@ -327,6 +354,59 @@ stdin und stdout Pipes des Ports sind:
   `read_line/1`, `write/2`, `position/2` und `io:get_line/2`,
   `io:get_chars/3` darauf sind Anfragen an diesen Server; nach `close/1` geben
   Anfragen `{error, terminated}` zurück, und `close/1` bleibt `ok`.
+- Positionierte I/O und Dateiänderungen: `pread/2,3` und `pwrite/2,3`
+  positionieren auf einem Dateiserver und lesen oder schreiben dann (`cur`
+  liest weiter, die Position verschiebt sich), wie der Server von OTP; eine
+  `raw`-Datei nimmt nur ganzzahlige Offsets an (sonst `badarg`) und behält ihre
+  Position. `truncate/1` kürzt an der Position; `advise/4` nimmt die
+  Hinweis-Atome von OTP an (`posix_fadvise` unter Linux, anderswo ignoriert,
+  wie bei OTP); `allocate/3` reserviert Platz (`fallocate`, macOS
+  `F_PREALLOCATE`, `{error, enotsup}` unter Windows), wobei seine Argumente
+  zuerst geprüft werden (`badarg` für Nichtzahlen, `einval` für negative Werte
+  und Floats). Wie der Dateiserver von OTP antwortet ein Server, dessen
+  Schreiben, positioniertes Schreiben, sync, truncate oder advice scheitert,
+  mit dem Fehler und endet, sodass spätere Anfragen `{error, terminated}`
+  erhalten; eine raw-Datei läuft weiter. `write_file_info/2,3` und
+  `change_mode/2`, `change_owner/2,3`, `change_group/2`, `change_time/2,3`
+  ändern Besitzer, Berechtigungen und Zeiten in der Reihenfolge von prim_file
+  (Windows: Besitzer ignoriert, nur das Schreibschutzattribut aus dem
+  Schreibbit des Besitzers, auch die Erstellungszeit wird gesetzt).
+  `sendfile/2,5` lesen eine raw-Datei in Blöcken (höchstens 1 MiB,
+  `chunk_size`) und senden sie mit `gen_tcp:send/2` oder dem angegebenen fun,
+  dem Rückfallpfad von OTP: Clause hat kein natives sendfile. `format_error/1`
+  liefert die Texte von OTP, POSIX-Texte aus `erl_posix_msg:message/1`.
+- Zeilen und fehlgeschlagene Lesevorgänge: `read_line/1` und `io:get_line`
+  lesen ein CRLF-Ende als LF (die Position zählt das CR), wie OTP; ein
+  Dateiserver, dessen Lesevorgang scheitert, antwortet mit dem Fehler und endet,
+  und einer, dessen Zeilenlesen scheitert, endet ohne Antwort (der Aufrufer
+  erhält `{error, terminated}`), wie bei OTP.
+- `compressed` und `compressed_one`: Schreiben läuft durch einen
+  gzip-deflate-Stream (zlib, window bits 31), der beim Schließen abgeschlossen
+  wird, auch wenn der Server stoppt oder sein Öffner endet; Lesen dekomprimiert
+  eine Datei, die mit den Kennbytes von gzip beginnt (`compressed` liest
+  verkettete Teile als einen, `compressed_one` stoppt nach dem ersten), und
+  liest jede andere Datei unverändert. Positionen zählen unkomprimierte Bytes:
+  vorwärts durch Lesen oder Schreiben von Nullen, rückwärts nur beim Lesen
+  (erneut vom Anfang an), `eof` ergibt `einval`. Lesen einer zum Schreiben
+  geöffneten Datei oder Schreiben einer zum Lesen geöffneten ergibt `ebadf`;
+  `allocate/3` und bei raw-Dateien positionierte I/O ergeben `enotsup`; ein
+  Dateiserver stoppt nach `truncate`, `advise` und `sync` (`enotsup`), wie bei
+  OTP. Gleichzeitiges Lesen und Schreiben oder Anhängen ergibt
+  `{error, einval}`.
+- `{zstd, Options}`: wie `compressed`, über einen mit `Options` erzeugten
+  zstd-Kontext (`{error, badarg}`, wenn er sie ablehnt): Jeder Schreibvorgang
+  ist ein eigener Frame, und Schließen fügt einen leeren hinzu, wie die
+  Schicht von OTP schreibt; Lesen dekomprimiert die in 8-KiB-Blöcken gelesenen
+  Frames.
+- `ram`: Die Datei ist ihr iodata-Inhalt im Speicher, von einem Prozess wie
+  andere Dateien bedient und mit ihrem Öffner geschlossen; nur die Modi
+  `read`, `write` und `binary` (`read`, wenn keiner angegeben ist, alles andere
+  `badarg`, `raw` mit `ram` löst `badarg` aus). Lesen, Schreiben, Positionen,
+  `pread`/`pwrite` (die Position bleibt erhalten), `truncate`, `sync`, `advise`
+  und `allocate` antworten wie der ram-Dateitreiber von OTP: Schreiben hinter
+  dem Ende füllt die Lücke mit Nullen, Offsets und Größen jenseits von 32 Bit mit
+  Vorzeichen ergeben `einval`, Schreiben einer nur lesbaren Datei ergibt
+  `ebadf`, ihr Kürzen `eacces`.
 - Das I/O-Protokoll von OTP: Der Standardeingabe-Server und der Server jeder
   geöffneten Datei beantworten `{io_request, From, ReplyAs, Request}` mit
   `{io_reply, ReplyAs, Reply}`, was `io:request/1,2` und `io:requests/1,2`
@@ -358,18 +438,16 @@ stdin und stdout Pipes des Ports sind:
   geöffnete Dateien; `{ok, BytesCopied}`), `raw_read_file_info/1`,
   `read_file/2`, `delete/2`, `native_name_encoding/0` (`utf8`). `del_dir/1`
   antwortet `enoent` für einen fehlenden Pfad und `enotdir` für eine Datei.
-  `consult/1` und die Familie `eval`/`script` bleiben Stubs: Sie brauchen den
-  erzeugten Parser von OTP.
-- Das `file` von Clause ist die Dateischicht; `filelib` und `filename` von OTP
-  sind reines Erlang, das darauf läuft, wenn der Suchpfad eines Programms die
-  Quellen von OTP enthält (`filelib:fold_files/5` braucht `re`);
+- Das `file` von Clause ist die Dateischicht; `filelib` und `filename` von
+  Clause laufen darauf (`filelib:fold_files/5` nutzt `re`);
   `erl_prim_loader` wird über `file` bereitgestellt, mit den bloßen
   `error`-Antworten von OTP und einem Loader-Pfad von `["."]` (`set_path/1`),
-  seine Lade- und Archivfunktionen abgelehnt bis step 71 des Plans; `prim_file`
-  und `prim_buffer` fehlen weiterhin, sodass die Aufrufer von `raw_file_io*`
+  seine Lade- und Archivfunktionen werden abgelehnt; `prim_file` und
+  `prim_buffer` fehlen weiterhin, sodass die Aufrufer von `raw_file_io*`
   aus OTP nie in ein Programm gelangen.
 - Fehler folgen OTP: `{error, enoent}`, `eexist`, `eisdir` (ein Verzeichnis, das
-  als Datei geöffnet oder gelesen wird), `einval` (eine negative Position),
+  als Datei geöffnet oder gelesen wird), `einval` (eine negative Position;
+  `badarg` für eine Angabe, die keine Position ist),
   `ebadf` (Lesen einer nur schreibbaren oder Schreiben einer nur lesbaren
   Datei), `badarg` für ungültige Namen und Daten. Dateinamen sind Strings,
   Binaries oder Atome, kodiert als UTF-8.
@@ -379,17 +457,59 @@ stdin und stdout Pipes des Ports sind:
 Ein Socket ist ein Port, wie beim `inet_drv`-Backend von OTP:
 `is_port(Socket)` ist wahr, und Nachrichten im aktiven Modus sind
 `{tcp, Socket, Data}`, `{tcp_closed, Socket}`, `{tcp_error, Socket, Reason}`,
-`{udp, Socket, Address, Port, Data}`. Die Teilmenge: `gen_tcp:connect/3,4`,
+`{udp, Socket, Address, Port, Data}`. Die Teilmenge:
+`gen_tcp:connect/2,3,4` (Host und Port oder eine Socket-Adress-map),
 `listen/2`, `accept/1,2`, `send/2`, `recv/2,3`, `close/1`,
-`controlling_process/2`, `shutdown/2`; `gen_udp:open/1,2`, `send/4`,
-`recv/2,3`, `close/1`; `inet:setopts/2`, `inet:port/1`, `inet:peername/1`,
-`inet:sockname/1`; Modi `{active, true | false | once}`, `binary`/`list`,
-`{packet, 0 | 1 | 2 | 4 | raw}`, `{reuseaddr, Bool}`, `{backlog, N}`,
+`controlling_process/2`, `shutdown/2`; `gen_udp:open/1,2`, `connect/2,3`,
+`send/2,3,4,5` (die Zielformen und Zusatzdaten von OTP), `recv/2,3`,
+`close/1`; `inet:setopts/2`, `getopts/2`, `getstat/1,2`, `info/1`, `i/0,1,2`,
+`monitor/1`, `cancel_monitor/1`, `port/1`, `peername/1`, `peernames/1,2`,
+`sockname/1`, `socknames/1,2`; Modi `{active, true | false | once}`,
+`binary`/`list` (`{mode, M}`), `{packet, 0 | 1 | 2 | 4 | raw}`, `{backlog, N}`,
 `{ip, Address}`/`{ifaddr, Address}`, `inet`/`inet6`; IPv4- und IPv6-Adressen
-als Tupel, Hostnamen als Strings oder Atome (`loopback` eingeschlossen). Die
-Tuning-Optionen `nodelay`, `keepalive`, `send_timeout`, `send_timeout_close`,
-`delay_send` und `exit_on_close` werden akzeptiert und nicht angewendet; jede
-andere Option ergibt `exit(badarg)`, wie bei einer ungültigen in OTP.
+als Tupel, Hostnamen als Strings oder Atome (`loopback` eingeschlossen).
+
+Optionen jenseits des Datenmodus (`ports/socket_options.cpp`,
+`library/kernel/clause_socket_options.erl`) sind Treiber-records aus einem
+Code und einem Wert, angegeben beim Öffnen eines Sockets (gesetzt vor dem
+Binden oder Verbindungsaufbau) oder durch `setopts/2`; jede Option eines
+`setopts/2`-Aufrufs wird geprüft, bevor eine gesetzt wird. Die Systemoptionen
+(`reuseaddr`, `keepalive`, `dontroute`, `linger`, `broadcast`, `sndbuf`,
+`recbuf`, `nodelay`, `tos`, `tclass`, `ipv6_v6only`, `multicast_ttl`,
+`multicast_loop`, `multicast_if`, `add_membership`, `drop_membership`,
+`exclusiveaddruse` unter Windows, `priority` und `reuseport`, wo das System
+sie anbietet) gehen an `setsockopt` und werden mit `getsockopt` zurückgelesen;
+die Optionen, die `inet_drv` von OTP selbst hält (`buffer`, `header`,
+`deliver`, `exit_on_close`, `send_timeout`, Wasserstandsmarken,
+`packet_size`, ...), werden mit den Standardwerten von inet_drv gehalten und
+nicht angewendet ([Unterschiede](differences.md)). Wie bei inet_drv erhöht ein
+Empfangspuffer `buffer`, bis es gesetzt wird, und `getopts/2` lässt Optionen
+aus, die einem Socket-Typ fehlen (`broadcast` bei einem TCP-Socket, `nodelay`
+bei einem UDP-Socket, `tclass` bei IPv4), und weist unbekannte mit
+`{error, einval}` ab. Eine angenommene Verbindung übernimmt die Optionen ihres
+lauschenden Sockets. `send/5` mit Zusatzdaten setzt `tos`, `tclass` oder `ttl`
+nur für dieses Datagramm; unter Windows ergibt es `{error, einval}`, wie OTP.
+
+Jeder Socket zählt seinen Datenverkehr für `getstat/1,2` wie inet_drv:
+Empfangene Pakete sind Lesevorgänge (TCP) oder Datagramme, gesendete Pakete sind
+`send`-Aufrufe (mit ihrem Paket-Header) oder Datagramme, mit den gleitenden
+Durchschnittswerten von inet_drv; `send_pend` ist die gepufferte und noch nicht
+geschriebene Ausgabe. `getstatus` liefert die Status-Flags von inet_drv
+(`open`, `connected`, `connecting`, `listen`, `accepting`), die `info/1` und
+`i/0,1,2` mit den Namen und der Modulspalte von OTP (`inet_tcp`, `inet6_udp`,
+...) ausgeben. Abfragen eines geschlossenen Sockets antworten
+`{error, einval}`, wie OTP.
+
+Das Modul `socket` (`library/kernel/socket.erl`) nutzt dieselben Treiber-Ports
+im passiven binary-Modus. Ein Stream-Socket kann vor dem Lauschen oder
+Verbindungsaufbau gebunden werden (Operation 22 öffnet und bindet den
+System-Socket, den `listen` zum Acceptor macht oder `connect` verbindet); ein
+Datagramm-Socket wird durch `udp_open` gebunden, implizit bei seinem ersten
+Senden. Das Ende einer Verbindung beantwortet jedes wartende `recv` (auch
+eines, das mehr Bytes anfordert, als übrig sind). `socket` hält die Bytes, die
+ein recv nicht übernommen hat, in seinem eigenen Puffer, sodass `recv/2,3,4`
+die Antworten `{error, {timeout, Data}}` und `{error, {closed, Data}}` von OTP
+liefert.
 
 Implementierung (`runtime/src/ports/sockets.cpp`):
 
@@ -433,10 +553,28 @@ Implementierung (`runtime/src/ports/sockets.cpp`):
   Resolver des Systems, `getaddrinfo`) und `gethostbyname/1,2` (`h_name` ist
   der angefragte Name, keine Aliasse) antworten über einen für die Anfrage
   geöffneten Socket-Port.
-- `gen_tcp`, `gen_udp` und `inet` von Clause sind die Netzwerkschicht und
-  wachsen nach Bedarf der Programme in Richtung der Exportlisten von OTP; die
-  Module `socket` und `net` von OTP (die Socket-NIF-API) fehlen, ebenso
-  `prim_socket`, `prim_net`, `prim_inet` und `socket_registry`.
+- Dienste, Rückwärtsauflösung und Schnittstellen (`inet:getservbyname/2`,
+  `getservbyport/2`, `gethostbyaddr/1`, `getifaddrs/0,1`) sind mit `net`
+  geteilte `clause_net`-Builtins
+  ([Netzwerknamen](builtins.md#network-names)).
+- `gen_tcp`, `gen_udp`, `inet` und `net` von Clause sind die Netzwerkschicht;
+  das Modul `socket` von OTP (die Socket-NIF-API) fehlt, ebenso `prim_socket`,
+  `prim_net`, `prim_inet` und `socket_registry`.
+
+## Die Registry
+
+`win32reg` öffnet `{spawn_driver, "clause_registry"}` unter Windows
+(`runtime/src/ports/registry_windows.cpp`). Der Treiber hält den Zustand des
+Registry-Treibers von OTP (den angeforderten Zugriff, den aktuellen Schlüssel
+und seine Wurzel, anfangs `HKEY_CLASSES_ROOT`) und beantwortet die neun Befehle
+von OTP als synchrone `port_control/3`-Operationen mit den Antworten, die der
+Treiber von OTP als Port-Daten sendet: `o`, `e` und der errno-Name
+(Registry-Schäden ergeben `eio`, ein gelöschter Schlüssel `einval`, andere
+Windows-Fehler werden wie von der C-Runtime abgebildet), `k` und ein
+Schlüsselname, `v`, der Typ, Name und die Daten (Strings ohne ihre abschließende
+Null, DWORDs Big-Endian), `s` und der aktuelle Schlüssel. Auflistungen geben
+jede Antwort zurück, jeweils mit ihrer 32-Bit-Größe davor. Namen und Strings
+nutzen die ANSI-Codepage, wie beim Treiber von OTP.
 
 ## Nicht bereitgestellt
 

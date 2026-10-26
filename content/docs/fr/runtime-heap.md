@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 336caea7
-sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0e0336079bf5ea3110e7390081518b5a0f6fc13f50ae1303e65cfaf40d50cd8f
+translatedAt: 2026-10-26
 ---
 # Contrat du tas de processus
 
@@ -94,6 +94,20 @@ de BEAM).
   un `static_assert` maintient la taille de la cellule à huit mots après
   l'en-tête pour les deux largeurs.
 
+### Réutilisation des tampons
+
+Un tampon libéré dont la taille est une puissance de deux d'au moins 256 octets
+(les capacités des binaries extensibles) reste attaché au thread qui a abandonné
+sa dernière référence, pour son prochain tampon de taille identique (comme les
+[blocs de tas](#heap-blocks)). Chaque thread conserve au plus 32 tampons et
+8 Mo ; le cache est libéré à la fin du thread. Les octets d'un tampon réutilisé
+situés après ceux du nouveau binary restent tels quels : aucune vue ne les
+couvre. Sans cela, les boucles d'ajout aux binaries prenaient des pages neuves
+pour chaque tampon agrandi (le tas C++ rend les pages des grands blocs libérés).
+Les nouveaux tampons sont des `ByteBuffer` (`runtime/include/byte_buffer.hpp`),
+qui ne mettent jamais non plus leur espace à zéro ; la réponse d'un pilote de
+port (un fichier entier lu) est donc écrite une seule fois et reprise telle quelle.
+
 ### Références à handle
 
 Une référence à handle est une référence qui détient aussi un tampon hors tas,
@@ -153,7 +167,18 @@ restent des cellules `map`.
   talon. Le compilateur ne marque une mise à jour comme possédée que lorsque la
   fonction a construit elle-même la map source (`M = <map expression or
   comprehension>` dans le même corps de clause), ne lit `M` nulle part ailleurs
-  et ne la capture jamais dans une fun (`semantic/map_ownership`).
+  et ne la capture jamais dans une fun (`semantic/map_ownership`), ainsi que
+  dans les boucles de repli à partir de la deuxième étape
+  ([accumulateurs possédés](funs.md#inlined-funs)), où l'opération est choisie
+  à l'exécution.
+- Une mise à jour à une clé de petit entier se décide uniquement sur les mots
+  (`MapAccess::update_small_key`, aucun `Term` par argument, la recherche de clé
+  n'appelle aucune sonde virtuelle). Si elle est possédée, elle réutilise aussi
+  le talon source tant que son jeton est à jour : le talon est alors plus récent
+  que la dernière collecte, donc y écrire la nouvelle racine ne crée aucun
+  pointeur d'un vieil objet vers un jeune. Un repli qui met à jour chaque entrée
+  copie chaque nœud au plus une fois par collecte et n'écrit sinon qu'un mot de
+  valeur par étape.
 
 ## Zones
 
@@ -175,21 +200,30 @@ restent des cellules `map`.
   corps, reste en ligne après l'ouverture du premier fragment (fenêtres de
   fragments). Sans budget, chaque nouveau fragment est au moins aussi grand que
   les fragments précédents.
-- **Zones de littéraux.** Les littéraux composés de chaque module — chaînes et
-  listes constantes, tuples de constantes, flottants, littéraux bignum et
-  binaries constants — sont disposés par le compilateur sous forme de cellules
-  de tas dans une variable globale en lecture seule
-  (`ModuleDescriptor::literals`), enregistrée pour tout le runtime
-  (`detail::LiteralAreas`, un instantané trié sans verrou) lors de
-  l'enregistrement du module. Les termes de tous les processus peuvent y
-  pointer : l'admission vérifie `HeapStorage::readable` (tas, fragments,
-  puis littéraux), tandis que `TermAccess::object` lit des pointeurs de
-  confiance. Le ramasse-miettes
+- **Zones de littéraux (tas de littéraux).** Les littéraux composés de chaque
+  module — chaînes, listes, tuples et maps constants, flottants, littéraux bignum
+  et binaries constants de toute taille — sont encodés par le compilateur dans
+  une chaîne d'octets constante (`ModuleDescriptor::literals`,
+  `abi/literals.hpp`), qui reste dans les données en lecture seule de
+  l'exécutable. L'enregistrement les décode une fois par runtime dans un
+  contexte temporaire (pid numéro 0, jamais émis) avec les atomes et les
+  fabriques de termes du runtime, puis les copie dans une zone de la plage des
+  termes persistants qui n'est jamais retirée ; `detail::LiteralAreas` possède
+  cette zone pendant toute la vie du runtime et l'enregistre comme zone de
+  littéraux de module (un instantané trié sans verrou), si bien que même les
+  copies qui copient les termes persistants vivants la partagent. Les binaries
+  de plus de 64 octets gardent leur propre tampon. Les termes de tous les
+  processus peuvent y pointer : l'admission vérifie `HeapStorage::readable`
+  (tas, fragments, puis littéraux), tandis que `TermAccess::object` lit des
+  pointeurs de confiance. Le ramasse-miettes
   laisse les mots littéraux tels quels (`owned` reste limité au tas) ; les
   copies entre tas et vers les tampons de messages continuent d'y pointer (une
   racine littérale n'a pas besoin de copie) ; le vérificateur les accepte. Les
-  littéraux ne contiennent que des immédiats (uniquement des atomes fixes) et
-  des mots d'autres littéraux.
+  mots littéraux appartiennent au runtime (atomes compris), donc chaque runtime
+  a sa propre copie ; le code généré lit les mots du runtime qui revendique le
+  module dans `literal_cache` et ceux des autres runtimes via
+  `CLAUSE_literal_v1`. Une mise à jour de map possédée ne modifie jamais un
+  littéral sur place : seul un talon dans le propre tas du processus convient.
 - **Fragments.** Lorsqu'une requête ne tient pas et que le tas ne peut pas
   bouger, elle va dans le fragment le plus récent si elle y tient, sinon dans un
   nouveau fragment dimensionné pour la contenir (au moins la taille minimale du
@@ -260,9 +294,15 @@ Les blocs de tas, les fragments et les vieilles zones proviennent de
 pour les collectes suivantes de ce thread (comme les carriers d'ERTS conservent
 la mémoire) : un nouveau bloc prend le plus petit bloc en cache d'au moins sa
 taille et d'au plus le double, sinon de la mémoire neuve. Chaque thread garde au
-plus 8 blocs et 4M mots (32 Mo sur les cibles 64 bits) ; les blocs de moins de
+plus 8 blocs et 16M mots (128 Mo sur les cibles 64 bits) ; les blocs de moins de
 4 096 mots ne sont pas conservés, car les listes libres du tas C++ les servent à
-peu de frais. Sans cela, l'espace de destination (to-space) de chaque collecte
+peu de frais.
+Un bloc libéré qui ne tient pas évince d'abord les blocs conservés les plus
+anciens : un tas qui grandit libère des blocs toujours plus grands, et sans
+éviction les blocs de ses premières petites collectes remplissaient le cache ;
+un ensemble vivant de millions de mots prenait donc des pages neuves pour
+chaque jeune bloc, vieille zone et balayage complet.
+Sans cela, l'espace de destination (to-space) de chaque collecte
 prenait des pages neuves au système d'exploitation et payait un défaut de page
 par page touchée, et la libération d'un grand bloc rendait ses pages. Les blocs
 en cache ne sont imputés à aucun processus ni au compte global du runtime ; un
@@ -293,8 +333,9 @@ thread libère son cache lorsqu'il se termine.
 - L'espace de destination (to-space) d'une collecte est imputé même au-delà de
   la limite, car il remplace les blocs qu'il libère à la fin de la même
   collecte.
-- La pile double tant que la limite le permet, puis ne grandit que du cadre
-  en cours d'empilement.
+- Les 64 premiers mots de la pile vivent dans le contexte du processus et sont
+  imputés par le premier cadre empilé. La pile double ensuite tant que la limite
+  le permet, puis ne grandit que du cadre en cours d'empilement.
 
 ## Admission
 
@@ -321,8 +362,8 @@ mot stocké et `validate` ne vérifie que la représentation. Les fabriques
 réadmettent toujours les entrées via `ProcessHeap::retain`, en rejetant les
 entrées composées étrangères avec `wrong_owner`.
 
-Ces vérifications ne s'exécutent qu'en compilation Debug (`CHECKED_ADMISSION`,
-OPTM.2C). Une compilation Release fait confiance à tous les mots composés,
+Ces vérifications ne s'exécutent qu'en compilation Debug (`CHECKED_ADMISSION`).
+Une compilation Release fait confiance à tous les mots composés,
 d'atomes, de pids et de ports transmis à un builtin, un service ou une fabrique,
 comme ERTS fait confiance à ses Eterms : le code généré ne produit que des mots
 de son propre processus, des zones de littéraux et des atomes du runtime ; les
@@ -398,17 +439,22 @@ conservent leurs vérifications de durée de vie (`expired_context`) ; un Term
 lu dans un tampon n'épingle rien et ne doit pas survivre à son stockage.
 Le tampon n'est jamais collecté et est libéré avec son dernier propriétaire ;
 son bloc fait exactement les mots du terme, quel que soit le tas minimal de
-l'expéditeur. Les messages vers un processus s'exécutant sur un autre thread
-de travail ([workers](processes.md#workers)), les messages des timers et les
-étiquettes de moniteurs l'utilisent, si bien qu'ils ne sont jamais réencodés ;
+l'expéditeur. Les envois à d'autres processus
+([tampons d'arrivée](processes.md#arrival-buffers)), les messages des timers et
+les étiquettes de moniteurs l'utilisent, si bien qu'ils ne sont jamais réencodés ;
 les [termes persistants](runtime.md#persistent-terms) vivent dans leur propre
 plage d'adresses et sont copiés, sans partage, dans les tampons.
 
+**Parcours unique du message.** Un envoi à un autre processus parcourt le graphe
+de son message une seule fois, avant tout verrou (`OutgoingMessage`, avec le
+`GraphCopy` de [graph_copy.hpp](../runtime/src/memory/graph_copy.hpp)) ; ce
+parcours dimensionne chaque copie ultérieure et, comme toute copie en dehors
+d'un processus, copie les termes persistants.
+
 **Remise des messages.** Un envoi dont le message occupe au moins
-`MessageBuffer::ADOPTED_WORDS` (512) mots, comptés par
-`MessageBuffer::large(value, sender, minimum)` avec un parcours borné qui
-s'arrête à cette valeur, construit le tampon avant de prendre le verrou de
-l'exécuteur, si bien que l'expéditeur ne détient aucun verrou pendant la copie.
+`MessageBuffer::ADOPTED_WORDS` (512) mots passe toujours par un tampon, copié
+à partir de ce parcours avant tout verrou, si bien que l'expéditeur ne détient
+aucun verrou pendant la copie.
 Le destinataire reprend ensuite le tampon au lieu de le copier
 (`MessageBuffer::take`, `HeapStorage::adopt`), lorsque le tampon n'a pas
 d'autre propriétaire et que le destinataire a un bloc de tas et pas de budget :
@@ -416,10 +462,18 @@ le bloc rejoint ses fragments aux mêmes adresses, les listes de binaries hors
 tas et de maps du tampon rejoignent les siennes avec leurs imputations, et le
 tampon est laissé vide. Personne d'autre ne peut atteindre le bloc avant ou
 après, donc aucun mot n'est copié deux fois. Les fragments adoptés ne demandent
-une collecte qu'une fois que leurs mots atteignent ceux du jeune bloc, comme
-les fragments de messages d'ERTS, et la collecte suivante les traite comme des
-données jeunes. Les messages plus petits sont copiés, comme avant : c'est moins
-coûteux qu'un fragment pour chacun.
+une collecte qu'une fois qu'un receive a pris leur message et que leurs mots
+atteignent ceux du jeune bloc, comme ERTS ne compte un fragment de message
+qu'une fois reçu (`HeapStorage::received`) ; la collecte suivante les traite
+comme des données jeunes et copie un message encore en file comme toute racine.
+Les messages plus petits sont copiés une fois, ce qui coûte moins qu'un fragment
+pour chacun : directement dans le tas d'un destinataire qui ne s'exécute pas,
+sous le verrou de l'exécuteur, ou juste derrière un nœud d'arrivée pour un
+processus en cours d'exécution. Le destinataire prend une telle arrivée en
+copiant ses mots tels quels et en décalant les pointeurs entre eux de la
+distance de la copie, lisant les objets dans l'ordre des adresses comme le
+ramasse-miettes parcourt ses copies (**arrivées relocalisées**) ; le graphe
+n'est pas parcouru de nouveau.
 
 ## Collecte dans le code généré
 
@@ -577,7 +631,7 @@ déjà une erreur dans `lower_frames`).
 
 ### Prototype
 
-[tests/prototypes/safepoint](../tests/prototypes/safepoint/) contient une boucle
+[tests/prototypes/safepoint](../tests/prototypes/safepoint) contient une boucle
 de style comprehension sous forme post-`lower_frames` (`loop.ll`) : un terme `Y`
 calculé avant la boucle est stocké dans un emplacement de terme et rechargé
 après le point sûr de tête de boucle. `python tests/prototypes/safepoint/run.py`
@@ -593,7 +647,13 @@ mineure ([générations](#generations)) : allouer d'abord le nouveau bloc (un
 échec donne `out_of_memory` et laisse le tas intact), puis copier
 l'objet derrière chaque mot racine et parcourir
 le nouveau bloc de gauche à droite en copiant les enfants de chaque copie.
-L'en-tête d'un objet boxed déplacé est remplacé par un pointeur boxed vers sa
+Un emplacement est d'abord vérifié par rapport à la zone source de
+l'emplacement précédent (un test de plage), et les immédiats sont distingués
+en ligne. Les cellules cons sont parcourues sans analyse, et les emplacements
+d'une copie boxed sont trouvés à partir du seul type de son en-tête (un compte
+par type des mots non tracés, sans vérification de taille : les copies sont
+celles d'objets vérifiés) ; les objets d'au plus quatre mots sont copiés mot par
+mot. L'en-tête d'un objet boxed déplacé est remplacé par un pointeur boxed vers sa
 copie ; une cellule cons déplacée reçoit une tête nulle et une queue pointant
 vers sa copie. Le renvoi préserve le partage. Les racines sont réécrites sur
 place, la liste hors tas est balayée (copies rechaînées dans l'ordre de la
@@ -630,12 +690,23 @@ Collecte générationnelle, comme la fait ERTS, sans sa barrière d'écriture :
   complet.
 - **Dimensionnement du jeune bloc.** Une collecte mineure conserve la taille du
   jeune bloc, comme le fait ERTS, et au moins un huitième de la vieille zone
-  (ERTS). Le code généré n'effectue de collecte qu'aux points sûrs, si bien que
+  (ERTS). Le bloc mineur d'ERTS est `next_heap_size(young + stack)`, mais sa pile
+  remplit le reste d'un bloc plein, donc cela ne l'agrandit jamais ; la pile de
+  Clause est séparée, et la compter agrandissait le bloc à chaque collecte
+  mineure. Clause agrandit aussi le bloc pour que les jeunes mots au-dessus de
+  la marque de niveau haut (tout ce qui peut rester jeune) et la pile en
+  remplissent au plus 75 % : les mesures montrent que réduire les collectes
+  rapporte davantage que les blocs plus serrés d'ERTS. Le code généré
+  n'effectue de collecte qu'aux points sûrs, si bien que
   l'allocation entre deux d'entre eux (les retours d'une récursion de corps)
   peut déborder loin dans les fragments ; lorsqu'ils contiennent un quart du
   bloc ou plus, le bloc suivant grandit d'autant et n'est pas réduit. Sinon, un
-  jeune bloc de plus de 8 000 mots vivant à moins de 25 % est copié dans trois
+  jeune bloc de plus de 8 000 mots vivant à moins de 25 % est réduit à trois
   fois ses mots vivants (la règle mineure d'ERTS).
+- **Réduction sur place.** Les deux réductions (celle-ci et celle d'un balayage
+  complet) abaissent la capacité du bloc sur place, comme ERTS le réalloue : rien
+  n'est copié de nouveau, et la fin inutilisée du bloc reste allouée, sans être
+  imputée, jusqu'à ce que la collecte suivante libère le bloc.
 - **Limite hors tas.** Après une collecte mineure, la limite du tas binaire
   virtuel ne compte que les jeunes mots vivants : la vieille zone peut contenir
   des mots morts, qui ne doivent pas retarder le balayage complet qui libère les
@@ -674,9 +745,16 @@ confiance, et une cellule cons n'a pas besoin d'être analysée :
   de chaque objet atteint ; la copie est une réservation unique de cette somme,
   dans le bloc de tas ou un fragment, remplie par un second parcours dans le
   même ordre qui relit chaque cellule et fait pointer chaque emplacement vers la
-  copie de son enfant. Aucune table n'associe les objets source à leurs copies,
-  et seules les cellules de binaries et les talons de maps conservent leurs
-  décalages.
+  copie de son enfant. Les deux parcours suivent sur place les queues d'une
+  liste, si bien que seules les têtes attendent sur la pile, et distinguent les
+  littéraux partagés des cellules du tas par un test de plage sur l'étendue de
+  toutes les zones de littéraux de modules. Le premier parcours dimensionne la
+  pile du second, donc le second n'alloue rien et les mots d'un tampon de message
+  n'ont pas besoin d'être mis à zéro. Les deux piles et la liste des binaries
+  gardent leurs premières entrées en ligne, donc la copie d'un petit message ne
+  fait aucune allocation hôte. Aucune table n'associe les objets source à leurs
+  copies, et seules les cellules de binaries et les talons de maps conservent
+  leurs décalages.
 - La copie d'un binary hors tas est une nouvelle cellule partageant le tampon ;
   la destination prend une référence sur le tampon (en imputant ses propres mots
   hors tas si elle n'en détenait aucune) avant de réserver, et n'inscrit la

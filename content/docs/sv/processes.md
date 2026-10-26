@@ -1,8 +1,8 @@
 ---
 source: docs/processes.md
-sourceCommit: a8c3f8f6
-sourceSha256: c52f95bbde29faed486345896a09dfa1514cba322d235541606d955fe442ac48
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6a02551c3b999daa890fc74afa3f83587d1683b3d3b621abd5c8ecab3e316df7
+translatedAt: 2026-10-26
 ---
 # Processer
 
@@ -31,8 +31,10 @@ huvudprocessen, och exekutorn körs tills den avslutas:
   kopieras in i dess heap
   ([kopiering mellan heapar](runtime-heap.md#copying-between-heaps)).
 - En process avslutas när dess första anrop returnerar eller kastar ett
-  undantag. En avslutad process kontext, heap och stack frigörs direkt; dess
-  pid förblir en giltig term och `is_process_alive/1` returnerar false för den.
+  undantag. En avslutad process lämnar processtabellen direkt; dess pid
+  förblir en giltig term och `is_process_alive/1` returnerar false för den.
+  Dess kontext, heap och stack frigörs när arbetstråden som avslutade den
+  lämnar exekutorns mutex.
 - En process som väntar i en `receive` står inte i någon kö; en sändning till
   den köar den igen ([receive](#receive)).
 - När huvudprocessen avslutas, avslutas programmet med dess utfall
@@ -57,7 +59,9 @@ Exekutorn kör processer på `RuntimeOptions::schedulers` arbetstrådar: tråden
 som startade programmet och ytterligare en tråd per extra arbetstråd. Program
 tar antalet från `--schedulers N` (1 till 1 024,
 [runtime-alternativ](executables.md#runtime-options)); standardvärdet är en
-arbetstråd per logisk processor, som OTP:s `+S`.
+arbetstråd per logisk processor som programmet får köras på (dess
+affinitetsmask, som OTP:s onlineschemaläggare), eller per CPU i
+`--scheduler-cpus`.
 
 - Varje arbetstråd har sin egen körkö, liksom varje ERTS-schemaläggare: en
   process stannar hos den arbetstråd den senast kördes på, så att dess heap
@@ -77,15 +81,30 @@ arbetstråd per logisk processor, som OTP:s `+S`.
   en process. Timer- och I/O-trådarna, portuppgifter och arbetstrådar mellan
   tidsskivor köar en process åt dess egen arbetstråd, eller åt en ledig
   arbetstråd när dess egen är upptagen.
-- En exekutormutex skyddar körköerna, de väntande processerna, timrarna, de
-  registrerade namnen, varje process länkar och monitorer samt varje process
-  som inte körs. En körande process heap, stack, brevlåda och felkanal tillhör
-  enbart dess arbetstråd; Erlang-kod körs utan låset.
+- En exekutormutex skyddar de väntande processerna, timrarna, de registrerade
+  namnen, varje process länkar och monitorer samt varje process som inte körs.
+  En körande process heap, stack, brevlåda och felkanal tillhör enbart dess
+  arbetstråd; Erlang-kod körs utan låset. Körköerna och arbetstrådarnas
+  vilotillstånd har ett eget lås, som tas efter exekutorns mutex; lediga
+  arbetstrådar sover på det (skapande och nedmontering av processer).
+- En spawn bygger den nya processens kontext och kopierar in dess anrop utan
+  något lås. En som varken länkar eller övervakar publicerar den sedan i
+  processtabellen och köar den enbart under deras egna lås, utan att någonsin
+  ta exekutorns mutex; `spawn_link`, `spawn_monitor` och de övervakande formerna
+  av `spawn_opt`/`spawn_request` publicerar, länkar eller övervakar och köar
+  under exekutorns mutex. En arbetstråd frigör avslutade processers kontexter
+  direkt efter att den lämnar mutexen inför nästa tidsskiva.
+- En process kostar sex allokeringar under sin livstid (kostnad för att skapa
+  processer): dess kontext, kontextens runtime-bindningar med dess
+  schemaläggningstillstånd, dess heaplagring och första heapblock, dess
+  ankomster och dess livstidstoken. De första 64 stackorden och fyra listnoder
+  för brevlådan ligger i kontexten, monitorernas maps skapas av den första
+  monitorn, och runtimens register (kontexter, återvinning av persistenta
+  termer) håller ingen nod per process.
 - Länkar, monitorer och namn ändras under låset direkt, även för en process
-  som körs någon annanstans. Ett meddelande till en process som körs på en
-  annan arbetstråd kan inte läggas i dess heap än: det kopieras till en egen
-  buffert och levereras, efter tidigare buffrade, när mottagarens tidsskiva tar
-  slut ([meddelandebuffertar](runtime-heap.md#message-buffers)). En exitsignal
+  som körs någon annanstans. Ett meddelande väntar i en buffert bland
+  mottagarens ankomster tills mottagaren tar det
+  ([ankomstbuffertar](#arrival-buffers)). En exitsignal
   från `exit/2` eller `exit_signal/2` till en sådan process gör ingenting och
   dess process avslutar sin tidsskiva (`builtins::Blocked`); den väntar tills
   målets tidsskiva tar slut, körs sedan först och upprepar den inbyggda
@@ -119,9 +138,13 @@ Väckningar och nedstängning behöver ingen ytterligare mekanism, eftersom varj
   En process som fortfarande är i den tidsskiva där den började vänta kan inte
   få något meddelande då (dess avsändare väntar på att tidsskivan ska ta slut),
   så leveransen hittar den alltid parkerad.
+  Ett postat meddelande ([ankomstbuffertar](#arrival-buffers)) går inte heller
+  förlorat: parkeringen kontrollerar ankomsterna under deras lås, och en
+  postning som hittar mottagaren parkerad väcker den under exekutorns mutex.
 - En arbetstråd som inte hittar någon körbar process sover tills en annan
-  arbetstråd, en sändning eller timertråden köar en, eller programmet
-  avslutas. Arbetstrådar läser aldrig klockan för timrar; att parkera en
+  arbetstråd, en sändning, en spawn eller timertråden köar en, eller programmet
+  avslutas; den tittar på köerna och sover under körköernas lås, som varje
+  köläggning tar. Arbetstrådar läser aldrig klockan för timrar; att parkera en
   process med en tidsgräns tidigare än alla andra väcker endast timertråden.
 - Ett meddelande och en tidsgräns som löper ut för samma receive kan kapplöpa:
   det som kommer först köar processen och avbryter det andra, och receive tar
@@ -139,6 +162,28 @@ Väckningar och nedstängning behöver ingen ytterligare mekanism, eftersom varj
   processer som avslutas medan deras bevakare vaknar, ett program som avslutas
   medan processer snurrar, väntar och översvämmar varandra, samt en halt i en
   annan process.
+
+### CPU-bindning
+
+Arbetstrådar är obundna som standard: operativsystemet placerar dem på valfri
+CPU i programmets affinitetsmask, som OTP:s standard `+sbt u`.
+`--scheduler-cpus SET` ([runtime-alternativ](executables.md#runtime-options))
+binder arbetstråd N till mängdens N:te CPU, i turordning med omstart när det
+finns fler arbetstrådar, som OTP:s `+sbt`/`+sct`; timer- och I/O-trådarna förblir
+obundna.
+
+- `performance` är den snabbaste kärnklassen: Windows-kärnor med högst
+  `EfficiencyClass`, Linux `/sys/devices/cpu_core/cpus` (Intel hybrid) eller
+  CPU:erna med störst `cpu_capacity`; på en CPU vars kärnor är likadana, varje
+  CPU. `all` är varje CPU i affinitetsmasken. En lista (`0-15`, `2,4,6`, CPU:er
+  upp till 1023) får bara ange CPU:er i affinitetsmasken:
+  `--scheduler-cpus: CPU N is not available to the program`, exit 70.
+- Windows numrerar CPU:erna i processens processorgrupp (högst 64);
+  `performance` läser grupp 0.
+- macOS har ingen trådaffinitet: alternativet godtas, `performance` räknar den
+  första prestandanivån (`hw.perflevel0.logicalcpu`) för standardantalet
+  arbetstrådar, och bindning höjer bara varje arbetstråd till QoS-klassen
+  `USER_INTERACTIVE`, som macOS i första hand kör på P-kärnorna.
 
 ### Tidsgränser för receive
 
@@ -207,7 +252,7 @@ returnerar `Msg`.
 
 | `Dest` | Effekt |
 | --- | --- |
-| En pid för en levande process | `Msg` kopieras platt in i mottagarens heap ([kopiering mellan heapar](runtime-heap.md#copying-between-heaps)), så som OTP kopierar meddelanden, ett stort meddelande in i ett block som mottagaren tar över ([överlämning av meddelanden](runtime-heap.md#message-buffers)), och läggs till sist i dess signalinkorg |
+| En pid för en levande process | `Msg` kopieras platt in i mottagarens heap ([kopiering mellan heapar](runtime-heap.md#copying-between-heaps)), så som OTP kopierar meddelanden, ett stort meddelande in i ett block som mottagaren tar över ([överlämning av meddelanden](runtime-heap.md#message-buffers)), och läggs till sist i dess signalinkorg; till en mottagare som körs på en annan arbetstråd, in i en buffert bland dess ankomster som den tar nästa gång den tittar ([ankomstbuffertar](#arrival-buffers)) |
 | En pid för en process som har avslutats | Ingenting; sändningen lyckas |
 | Ett [registrerat namn](#registered-names) | Som för dess pid; `badarg` när ingen levande process har namnet |
 | `{Name, nonode@nohost}` av två atomer | Som för den pid som är registrerad som `Name`; ingenting när det inte finns någon |
@@ -221,11 +266,61 @@ returnerar `Msg`.
   receive tar det ([runtime-heap](runtime-heap.md#roots-and-safe-points)).
 - Mottagarens brevlåda (`Mailbox`) har en signalinkorg, dit sändningar läggs,
   och en meddelandekö som receive söker igenom från en sparad position:
-  anlända meddelanden flyttas sist i kön när en receive undersöker dem.
+  anlända meddelanden flyttas sist i kön när en receive undersöker dem. Båda
+  listorna återanvänder upp till 64 reservnoder i brevlådan, så en sändning och
+  mottagning av ett meddelande allokerar ingen nod från C++-heapen.
 - När mottagarens heap vägrar kopian (ett valfritt tak som `--max-heap`, eller
   att värden har slut på minne) levereras ingenting och den sändande processen
   misslyckas med ett runtime-fel (exit 70), som varje process som överskrider
-  ett tak.
+  ett tak; en mottagare som vägrar ett meddelande från sina ankomster
+  misslyckas själv.
+
+### Ankomstbuffertar
+
+En sändning till en process som körs på en annan arbetstråd tar inget lås alls
+(skapande och nedmontering av processer):
+
+- Runtimens processtabell (`ProcessTable`) är en array med öppen adressering
+  och atomära platser som en sändning på en arbetstråd läser utan något lås:
+  pid-nummer återanvänds aldrig, så en raderad plats förblir en gravsten tills
+  en insättning bygger om arrayen. Insättningar och raderingar tar ett
+  skrivarlås och håller även exekutorlåset, under vilket uppslagningar inte
+  behöver något mer.
+- Varje process har sina ankomster (`Arrivals`): en låsfri lista som avsändare
+  lägger meddelanden på, med en kopia av exekutorns körtillstånd för processen.
+  Avsändaren slår upp mottagarens ankomster och läser det tillståndet; en
+  avsändare vars senaste sändning till samma mottagare fann att den inte kördes
+  hoppar över uppslagningen.
+- Avsändaren går igenom meddelandet en gång, före varje lås
+  ([en enda meddelandegenomgång](runtime-heap.md#message-buffers)). Till en
+  körande mottagare kopierar den meddelandet direkt efter en listnod, i en
+  allokering (ett stort meddelande eller ett som håller binaries utanför heapen
+  till en `MessageBuffer`), och lägger till det; mottagaren kopierar senare
+  dessa ord till sin heap och omlokaliserar deras pekare. Varje annan
+  mottagare får meddelandet under exekutorlåset som förut: kopierat till dess
+  heap, eller lagt sist bland dess ankomster när den har börjat en tidsskiva
+  under tiden eller fortfarande har ankomster, så att en avsändares meddelanden
+  aldrig passerar varandra och avsändaren aldrig kopierar en anhopning under
+  låset. Båda utfallen av en kapplöpning är korrekta.
+- Mottagaren tar sina ankomster till sin heap och signalinkorg, äldst först:
+  64 åt gången när dess receive har undersökt varje meddelande och skulle
+  vänta, så att en flod når heapen lika snabbt som receive förbrukar den (OTP
+  håller sådana meddelanden i heapfragment tills de behövs); alla när den går
+  i dvala, och innan något annat levereras till den under exekutorlåset (ett
+  meddelande, `'EXIT'`, `'DOWN'`, port- eller aliasmeddelande), så att varje
+  avsändares meddelanden behåller sin ordning i förhållande till dess andra
+  signaler. `process_info` tar dem innan den räknar eller listar meddelanden.
+  Timermeddelanden och andra meddelanden till en körande process väntar också
+  bland ankomsterna.
+- En process parkeras under exekutorlåset först efter en sekventiellt
+  konsistent kontroll att ingen ankomst väntar; en tilläggning som hittar den
+  parkerad tar exekutorlåset och väcker den.
+- En avslutad process ankomster och ersatta tabellarrayer frigörs först när
+  varje arbetstråd har passerat en tidsskivegräns efter att de tagits ur bruk,
+  eller väntar på arbete (återvinning vid vila): en arbetstråd registrerar
+  återvinningsepoken vid varje tidsskivegräns, och en sändning håller det den
+  hittade endast inom sin tidsskiva.
+- En sändning till sig själv går direkt till avsändarens egen signalinkorg.
 
 ## Receive
 
@@ -494,6 +589,23 @@ Portar specificeras i [portar](ports.md): en port är länkad till den som
 öppnade den, deltar i länkar, monitorer, exitsignaler och registrerade namn
 som en process och kommunicerar med sin anslutna process via meddelanden.
 
+## Suspendering av processer
+
+`erlang:suspend_process/1,2` och `erlang:resume_process/1`
+(`scheduler/suspension.cpp`): varje suspendering är ett kvarhållande av målet i
+exekutorn, så en suspenderad process körs igen först när varje suspendering
+från varje suspenderare har återupptagits; meddelanden och signaler når den
+fortfarande (en exitsignal avslutar den fortfarande), och
+`process_info(Pid, status)` rapporterar `suspended`. När en suspenderare
+avslutas återupptas dess suspenderingar. En synkron suspendering av en process
+som körs på en annan arbetstråd väntar tills dess tidsskiva tar slut;
+`asynchronous` returnerar direkt, `{asynchronous, Tag}` skickar också
+`{Tag, suspended}` till anroparen, och `unless_suspending` svarar `false` när
+anroparen redan suspenderar processen. Att suspendera eller återuppta
+anroparen själv, en avslutad process, ett värde som inte är en pid eller med
+felaktiga alternativ ger `badarg`, liksom att återuppta en process som
+anroparen inte suspenderar.
+
 ## Inbyggda funktioner
 
 | Inbyggd funktion | Beteende |
@@ -508,8 +620,17 @@ som en process och kommunicerar med sin anslutna process via meddelanden.
 | `register(Name, Pid)`, `unregister(Name)`, `whereis(Name)`, `registered()` | Se [registrerade namn](#registered-names); `Name` måste vara en atom |
 | `demonitor(Ref)`, `demonitor(Ref, Options)` | `badarg` om inte `Ref` är en referens och `Options` en äkta lista av `flush` och `info` |
 | `exit(Dest, Reason)`, `exit_signal(Dest, Reason)` | `badarg` om inte `Dest` är en pid eller referens; `true` efter [exitsignalen](#exit-signals) |
-| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)` | Den tidigare inställningen; `badarg` för en annan flagga, ett icke-booleskt värde eller en negativ storlek eller en storlek som inte är ett heltal |
+| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)`, `process_flag(save_calls, N)` | Den tidigare inställningen; `badarg` för en annan flagga, ett icke-booleskt värde eller en negativ storlek eller en storlek som inte är ett heltal |
 | `erlang:send(Dest, Msg)`, `Dest ! Msg` | `Msg`, efter att det har skickats ([meddelanden](#messages)); `send/2` importeras inte automatiskt |
+| `spawn(Node, ...)`, `spawn_link(Node, ...)`, `spawn_monitor(Node, ...)` (`/2`, `/4`) | Denna nod (`nonode@nohost`): som utan `Node`. En annan nod: OTP:s oanvändbara pid för en nod som inte är vid liv, en process som avslutas direkt med orsaken `noconnection`, så att en länk eller monitor rapporterar `noconnection`; `badarg` för en nod som inte är en atom |
+| `erlang:send(Dest, Msg, Options)` | `ok`, eller `noconnect` för ett meddelande till en annan nod med alternativet `noconnect`; alternativen `nosuspend`, `noconnect`, `priority` (ett vanligt meddelande) |
+| `send_nosuspend(Dest, Msg)`, `send_nosuspend(Dest, Msg, [noconnect])` | `true`; `false` för en annan nod med `noconnect` |
+| `link(Pid, Options)`, `exit(Dest, Reason, Options)`, `exit_signal(Dest, Reason, Options)` | Som utan alternativ; `Options` är `[]` eller `[priority]` (en vanlig signal) |
+| `process_flag(Pid, save_calls, N)` | Den tidigare inställningen för en annan process (0..10000); behålls, men Clause sparar inga anrop; andra flaggor ger `badarg` |
+| `processes_iterator()`, `processes_next(Iter)` | Iterera över de levande processerna: `{Pid, Iter1}` eller `none`; en process som startas under genomgången kan dyka upp |
+| `bump_reductions(N)` | `true` för ett icke-negativt heltal; Clause räknar inga reduktioner |
+| `erlang:suspend_process(Pid)`, `erlang:suspend_process(Pid, Options)`, `erlang:resume_process(Pid)` | Se [suspendering av processer](#suspending-processes) |
+| `erlang:process_display(Pid, backtrace)` | `true` efter att anropsstacken för den levande processen `Pid` skrivits på standard-fel, en `Module:Function/Arity` per rad, den aktuella funktionen först; `badarg` för en annan typ eller en process som har avslutats |
 
 Den nya processen läggs sist i förälderns arbetstråds kö
 ([arbetstrådar](#workers)); `spawn` returnerar dess pid direkt.

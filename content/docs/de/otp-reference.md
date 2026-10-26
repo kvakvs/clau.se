@@ -1,16 +1,16 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: a8c3f8f6
-sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b492ebd048a1022e18083704f4e12f60003d3e503aac261ba808b985a981ea5c
+translatedAt: 2026-10-26
 ---
 # Referenz auf den Erlang/OTP-Quelltext
 
 Clause verfolgt den offiziellen Branch `maint-29`. Der geprüfte Pin liegt in
 [`references/otp-pin.cmake`](../references/otp-pin.cmake):
 
-- Revision `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2,
-  Upstream-Commit vom 2026-10-14), aktualisiert am 2026-10-14.
+- Revision `9710673e5916164dff9616327df7de39f1aa75a9` (OTP 29.1.2,
+  Upstream-Commit vom 2026-10-22), aktualisiert am 2026-10-24.
 - Installiertes Orakel für Goldens und Audits: OTP 29.1.1 / ERTS 17.1.
 
 `references/otp` ist ein ignorierter Checkout. Normale Builds und Tests
@@ -64,3 +64,4 @@ Historische Einträge behalten die Revision, gegen die sie entstanden sind.
 | 2026-10-01 – 10-03 | Vor jedem Muster-/Guard-Schritt neu geholt; unverändert | dieselbe |
 | 2026-10-03 | Plan 11, step 1: 14 Audit-Tests bestehen, 19 Korpora reproduzieren | dieselbe |
 | 2026-10-14 | Auf OTP 29.1.2 aktualisiert: Hashes von Grammatik, Scanner, Präprozessor und `phase6/otp.tsv` unverändert (`genop.tab` nur Kommentar); 17 Audit-Tests bestehen und 19 Korpora reproduzieren unter Orakel 29.1.1; die von Executable-, Lint-, Programm- und Ausgabe-Goldens erfasste Revision aktualisiert (Ausgaben unverändert, `external_terms` behält seine von der Atomreihenfolge abhängige Map-Ausgabe) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |
+| 2026-10-24 | Aktualisiert; Upstream änderte nur `.github/`-Workflows (32 Dateien), daher sind die Eingaben für Grammatik, Scanner, Präprozessor, Korpus und `phase6/otp.tsv` byteidentisch, und die Audits wurden nicht erneut ausgeführt; die von Goldens erfasste Revision aktualisiert | `9710673e5916164dff9616327df7de39f1aa75a9` |

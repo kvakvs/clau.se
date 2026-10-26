@@ -1,8 +1,8 @@
 ---
 source: docs/funs.md
-sourceCommit: a8c3f8f6
-sourceSha256: 114573ca575f133c3b45d3422218a8b98264b55c30167b405bb3008e3806c74e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 48b67a84428fd618682bf70ff7cc6bdc1eff671ca37080353b71fb6ab13088e5
+translatedAt: 2026-10-26
 ---
 # Valores de función
 
@@ -40,7 +40,9 @@ provienen de los fuentes fijados de `maint-29` (`erts/emulator/beam/utils.c`
 - `M:F(Args)` con una variable (o cualquier expresión) como módulo o función
   evalúa el módulo, después la función y luego los argumentos de izquierda a
   derecha. Un módulo o una función que no son átomos lanzan `badarg`; una
-  función que ningún módulo del programa exporta con esa aridad lanza `undef`.
+  función que ningún módulo del programa exporta con esa aridad lanza `undef`,
+  con `{M, F, Arity, []}` al inicio de su traza de pila (OTP muestra los
+  argumentos; `apply/3` y las llamadas a funs externos también los muestran).
   Una llamada en posición de cola es una llamada de cola.
 - `apply(Fun, Args)` y `apply(M, F, Args)` (autoimportadas salvo que el módulo
   defina `apply/2,3` o suprima la importación; también `erlang:apply/2,3`)
@@ -50,6 +52,11 @@ provienen de los fuentes fijados de `maint-29` (`erts/emulator/beam/utils.c`
   `M:F/length(Args)` como se describe arriba, por lo que más de 255 argumentos
   lanzan `undef`. Ambas son llamadas de cola en posición de cola y nunca son
   legales en guards.
+- `erlang:apply/2,3` alcanzadas por nombre en tiempo de ejecución
+  (`spawn(erlang, apply, [F, Args])`, `M:apply(...)` con `M` vinculado a
+  `erlang`, la acción de un temporizador) son builtins
+  (`builtins/erlang/apply.cpp`) que continúan en la función llamada con los
+  mismos errores.
 - `fun M:F/A` con variables lanza `badarg` salvo que `M` y `F` sean átomos y
   `A` sea un entero en 0..255; la función no necesita existir hasta que se llama
   al fun.
@@ -99,6 +106,67 @@ provienen de los fuentes fijados de `maint-29` (`erts/emulator/beam/utils.c`
 - Un fun anónimo en el valor por defecto de un campo de record es un único fun
   para cada construcción que usa el valor por defecto (OTP expande una copia
   por punto de uso).
+
+## Funs en línea
+
+Con `-O2` (`codegen/lowering_fun_inlining.cpp`, `lowering_list_loops.cpp`,
+`lowering_map_loops.cpp`), una llamada a un fun anónimo conocido en el punto
+de llamada se transforma insertando sus cláusulas en lugar de la llamada,
+de forma similar a la opción `inline_list_funcs` de OTP:
+
+- **Funs conocidos.** Un fun escrito en la llamada (`(fun(X) -> ... end)(Y)`,
+  o el primer argumento de un bucle de listas descrito abajo), o una variable
+  vinculada una sola vez a un fun anónimo sin nombre (`F = fun ... end`) que
+  se lee una sola vez o contiene como máximo 40 expresiones. Dentro del código
+  de otro fun, el fun de una variable solo se inserta en línea cuando todo lo
+  que captura también está vinculado allí. Los cuerpos insertados en línea se
+  anidan como máximo cuatro niveles; los bucles de binary y flotantes no
+  insertan nada en línea.
+- **Cláusulas en el punto de llamada.** Los argumentos se cotejan con las
+  cláusulas y guards del fun, y el cuerpo de la cláusula coincidente se ejecuta
+  en el marco del llamante. Si ninguna cláusula coincide, se llama al fun, de
+  modo que `function_clause` procede del propio código del fun como antes. Un
+  fun escrito en la llamada solo se construye en esa ruta y en las rutas
+  siguientes que necesitan su valor (construcción diferida de clausuras); el
+  fun de una variable se construye donde se vincula, como antes.
+- **Bucles de listas.** `lists:map/2`, `filter/2`, `foreach/2`, `all/2`,
+  `any/2`, `flatmap/2`, `foldl/3`, `foldr/3`, `mapfoldl/3` y `mapfoldr/3` del
+  propio módulo `lists` de Clause, con un fun conocido de la aridad correcta,
+  se convierten en un bucle sobre la lista en la función llamante. La llamada
+  al fun para cada elemento se inserta en línea; las listas se construyen en
+  orden inverso y se invierten una vez al final; `foldr/3` y `mapfoldr/3`
+  invierten primero la entrada, de modo que su fun sigue viendo los elementos
+  desde el último, después de que una cola impropia haya fallado. Como la
+  recursión de cuerpo que sustituyen, los bucles de listas solo realizan
+  recolecciones donde ceden la ejecución (cada 4.000 elementos si no hay otras
+  llamadas) y en las llamadas que hace su fun.
+- **Bucles de plegado de maps.** `maps:fold/3` del propio módulo `maps` de
+  Clause, con un fun conocido de aridad 3, se convierte en un bucle sobre las
+  entradas del map (la celda clásica de map, o las entradas de un árbol
+  copiadas una sola vez a una celda con forma de tupla, tal como las lee
+  `maps:fold/3`), en orden de claves como `maps:fold/3`. Un iterador de map o
+  un valor que no sea un map realiza la llamada real a `maps`, que lo maneja o
+  lanza su propio error.
+- **Acumuladores de propiedad exclusiva.** Cuando cada cláusula de un fun de
+  plegado (`maps:fold/3`, `lists:foldl/3`, `lists:foldr/3`) devuelve su
+  parámetro acumulador actualizado, `fun(K, V, Acc) -> Acc#{K := V + 1} end`,
+  sin que `Acc` se lea en otro lugar ni lo capture ningún fun, el bucle tiene
+  la propiedad exclusiva del resultado de cada paso: desde el segundo paso,
+  la actualización tiene propiedad exclusiva y modifica el map en el sitio
+  ([árboles de maps](runtime-heap.md#map-trees)). El primer paso copia, pues el
+  acumulador inicial puede estar retenido en otro lugar.
+- **Mismos resultados y motivos.** Los valores, el orden en que se ejecuta el
+  fun y los motivos de error son los de `lists`: una entrada que no sea una
+  lista para `map/2`, `foldl/3`, `all/2`, `any/2` y las colas impropias de
+  `filter/2`, `foreach/2`, `foldr/3`, `mapfoldl/3`, `mapfoldr/3` realizan la
+  llamada real a `lists`, que lanza su propio error; una cola impropia de
+  `map/2`, `foldl/3`, `all/2`, `any/2`, `flatmap/2` lanza `function_clause`
+  en el llamante. Un predicado no booleano lanza `{case_clause, V}` (`all/2`,
+  `any/2`) o `{bad_filter, V}` (`filter/2`); un resultado que no sea un par
+  de un fun de `mapfold`, `{badmatch, V}`.
+- **Las trazas de pila** de las excepciones dentro de funs insertados en línea
+  carecen de los marcos del fun y del auxiliar de `lists` o `maps`
+  ([diferencias](differences.md#errors-stack-traces-and-reports)).
 
 ## Representación
 

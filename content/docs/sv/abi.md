@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: 336caea7
-sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 9b1845341638452f441c091f8de4122b06281694d83cc28080968c0dbdbc9133
+translatedAt: 2026-10-26
 ---
 # ABI för genererad kod (revision 21)
 
@@ -71,7 +71,7 @@ atomstavningar (par av UTF-8-pekare/storlek), deskriptorer för native records
 [native records](native-records.md#representation)) i en extern
 `<prefix>.records`-tabell som andra moduler i en batch refererar till,
 fun-deskriptorer i en privat `<prefix>.funs`-tabell
-([funs](funs.md#representation)), det skrivskyddade literalområdet
+([funs](funs.md#representation)), de kodade modulliteralerna och literalcachen
 ([områden](runtime-heap.md#areas)), de skrivbara atom- och fun-cacher som
 genererad kod läser inline, samt `code_convention` för dess kroppar.
 Registreringen anropar `CLAUSE_register_module_v4(Runtime*)`, som validerar
@@ -91,6 +91,16 @@ Dubblerade moduler ersätter aldrig kod; vid varje fel publiceras ingenting
 - Andra atomuttryck än de fasta atomerna läser `atom_cache` när kontextens
   `FrameState::runtime` äger cachen, annars `CLAUSE_atom_v3`; de internerar
   aldrig ([atomer](terms.md#atoms)).
+- Sammansatta literaler är `literal_count` termer i `literals` (`literal_bytes`
+  byte, `abi/literals.hpp`): BEAM:s kompakta termkodning (bastaggarna `u`, `i`,
+  `a`: antal, heltal av valfri storlek som big-endian tvåkomplement, atomer som
+  modulens atomplats + 1 med 0 för `[]`) plus Clauses utökade taggar för listor
+  (längd, element, svans), tupler, flyttal (binary64), bitstrings (bitantal,
+  byte), maps och bytesträngar. Registreringen avkodar dem till runtimens
+  literalheap; den runtime som tar cachen i anspråk fyller `literal_cache`
+  (ett ord per literal), som genererad kod läser efter ägandekontrollen, och
+  andra runtimes kod anropar `CLAUSE_literal_v1(context, index, descriptor)`
+  ([områden](runtime-heap.md#areas)).
 - Ett startobjekt (`clausev1_start`) listar varje deskriptor i en
   `StartupDescriptor` och dess native `main` anropar
   `CLAUSE_main_v1(argc, argv, descriptor)`, som registrerar alla moduler och
@@ -246,26 +256,58 @@ signaturen `TermWord(Context *, const TermWord *)` som värdingång som anropar
   atomcacherna tillhör, kontextens pid-ord (`self`), ett målord vardera. En
   kropp läser sitt ramhuvud (`stack + frame`) och registren från den vid
   ingång och väljer gren efter huvudets återupptagningsord.
-- Binära mönster (64-bitarsmål): starttestet, sluttestet och heltalssegment
-  med en konstant bredd i hela byte upp till 56 bitar på en byte-justerad
-  position läser cellen inline (`abi::v1::heap_binary_*_word`,
-  `refc_*_word`: `data_` i en vy utanför heapen är dess buffertens första
-  byte); andra segment och ojusterade positioner anropar `CLAUSE_bits_v1`. Ett
-  `sub_binary`-subjekt (`sub_*_word`) läses via sitt original. En avslutande
-  `Rest/binary` eller `Rest/bits` med enhet 1 bump-allokeras inline som en
-  `sub_binary`-cell på 4 ord av originalet.
-- Binärloopar: när varje klausul i en funktion matchar en parameter som en
-  binary (eller ignorerar den), aldrig behåller hela binaryn och läser de
-  rester den binder endast som den parametern i egna svansanrop, får
-  funktionen en privat variant `<symbol>.loop`. Funktionens eget steg skapar
-  restcellen som ovan och går in i varianten med den (en rest som tjänsten
-  skapat, och som kan vara delad, går i stället in i funktionen igen).
-  Varianten skapar ingen restcell: varje eget svansanrop lagrar den nya
-  förskjutningen och bitlängden i parameterns cell, som endast denna loop
-  refererar till, och skickar samma cell vidare, så att en loop över en binary
-  allokerar en gång. Varianten läser cellens vy en gång per steg, före sina
-  klausuler, och hoppar över bitstring-testet av parametern. Varianten har
-  funktionens namn och aritet i stackspår.
+- Binära mönster: starttestet, sluttestet och heltalssegment med en konstant
+  bredd upp till ordstorleken minus 8 bitar (56 på 64-bitarsmål, 24 på
+  32-bitarsmål) läser cellen inline (`abi::v1::heap_binary_*_word`,
+  `refc_*_word`: `data_` i en vy utanför heapen är dess bufferts första byte),
+  på valfri bitposition. Ett segment med hela byte på en bytejusterad position
+  är en enda laddning; andra läser de byte som fältet berör och skiftar ut det.
+  Bredder som inte är hela byte hanteras inline endast som big-endian. Andra
+  segment anropar `CLAUSE_bits_v1`. Ett `sub_binary`-subjekt (`sub_*_word`)
+  läses via sitt original. En avslutande `Rest/binary` eller `Rest/bits` med
+  enhet 1 bump-allokeras inline som en `sub_binary`-cell på 4 ord av originalet.
+- Binärloopar: när inget klausulhuvud i en funktion jämför en parameter med en
+  bindning, och någon klausul skickar tillbaka en rest av den som samma
+  parameter i ett eget svansanrop, får funktionen en privat variant
+  `<symbol>.loop`. Funktionens eget steg skapar restcellen som ovan och går in
+  i varianten med den (en rest som tjänsten skapat, och som kan vara delad,
+  går i stället in i funktionen igen). Varianten skapar ingen restcell: varje
+  eget svansanrop lagrar den nya förskjutningen och bitlängden i parameterns
+  cell, som endast denna loop refererar till, och skickar samma cell vidare,
+  så att en loop över en binary allokerar en gång. Varianten läser cellens vy
+  en gång per steg, före sina klausuler, och hoppar över bitstring-testet av
+  parametern. Laddningar och lagringar av processtillstånd, ramar,
+  `sub_binary`-ord och binary-ord inline/utanför heapen har åtskilda LLVM
+  TBAA-taggar; en variant som inte anropar någon annan Erlang-funktion
+  markerar laddningarna av cellens original och av originalets huvud,
+  förskjutning och dataadress med `!invariant.load`, och får ytterligare ett
+  GVN-pass efter kedjan (funktionsattributet `clause-binary-loop`), så att vyn
+  flyttas ut ur loopen och den förskjutning och längd som ett varv lagrar är
+  registervärden i nästa varv. Varje annan läsning i kroppen av en rest, eller
+  i varianten av hela parametern, och varje fun som fångar en av dem, får en
+  ny `sub_binary`-cell med samma bitar (tjänsten skapar den utan plats på
+  heapen), så att ingen annan någonsin håller loopens cell; guards läser
+  själva värdet. Varianten har funktionens namn och aritet i stackspår.
+- Flyttalsloopar (64-bitarsmål): en parameter bland de första sex (de som
+  skickas i register) som varje klausul binder till en variabel (eller
+  ignorerar), som något eget svansanrop ger ett uttryck som alltid är ett
+  flyttal (en flyttalsliteral, `/`, ett `math`-anrop eller `+ - *` med en sådan
+  operand), och vars värde endast läses som operand i aritmetik, jämförelser
+  eller `math`-anrop, som samma parameter i ett eget svansanrop, eller i
+  resultatet eller ett svansanrop till en annan funktion (aldrig i en fun),
+  är en flyttalsparameter. Funktionen får en privat variant `<symbol>.float`
+  som tar varje flyttalsparameter som bitarna i dess double i argumentordet
+  (funktionsattributen `clause-float-parameters`, en bitmask, och
+  `clause-float-generic`, funktionen). Ett eget svansanrop från endera där
+  varje flyttalsparameters nya värde är en double i ett register går in i
+  varianten med dessa bitar, så att en flyttalsloop inte skapar någon cell per
+  steg; varianten skapar en cell för en parameter endast där den läser själva
+  ordet. Råa bitar når aldrig en plats som en skräpsamling läser: variantens
+  andra egna svansanrop går in i funktionen igen, och en överföring till
+  varianten som tar tjänstevägen (begärd skräpsamling, profilering, slut på
+  reduktioner, stacktillväxt) boxar double-värdena med modulens hjälpfunktion
+  `clause.float.box` och går i stället in via funktionens deskriptor. Varianten
+  har funktionens namn och aritet i stackspår.
 - En binärkonstruktion vars varje byte är känd vid kompileringstid (små
   heltalskonstanter och strängliteraler med konstanta bredder i hela byte,
   högst 64 byte) är en inline binärcell i modulens literalområde, liksom andra
@@ -280,6 +322,14 @@ signaturen `TermWord(Context *, const TermWord *)` som värdingång som anropar
 - En ren inbyggd funktion med literala argument evalueras vid kompileringstid,
   som OTP:s `sys_core_fold` gör: `atom_to_list(Atom)` av en atomliteral är det
   namnets literala sträng, utan anrop.
+- `integer_to_list(N)` av ett litet heltal skriver sina sifferceller i
+  heapblockets fria ord, och `list_to_integer(L)` av en korrekt lista med
+  siffror, efter ett valfritt minustecken, som är kort nog för att vara ett
+  litet heltal (17 siffror på 64-bitarsmål, 8 på 32-bitarsmål) läser den på
+  plats (`codegen/lowering_integer_text`). Varje annat argument, eller ett
+  block utan plats, går in i den inbyggda funktionen, som kastar varje fel.
+  Som vänsteroperand till `++` kontrollerar `integer_to_list(N)` `N` där det
+  står och sammanfogningen skriver siffrorna direkt på `Right`, utan kopiering.
 - `erlang:make_tuple(N, V)` med ett litet `N` i 1..64 bump-allokerar tupeln
   och fyller den med `llvm.experimental.memset.pattern` där heapen har plats;
   annars körs den inbyggda funktionen.
@@ -300,7 +350,14 @@ signaturen `TermWord(Context *, const TermWord *)` som värdingång som anropar
   ersättningscell, så att ingen laddning beror på en gren), räknar i register
   och bump-allokerar flyttalscellen på 2 ord när resultatet är ändligt,
   divisorn nollskild och heapen har plats; annars kastar
-  `CLAUSE_immediate_v1` `badarith` eller befordrar.
+  `CLAUSE_immediate_v1` `badarith` eller befordrar. En flyttalsliteral, och
+  resultatet av `/`, av inline-matematik eller av en operation med en sådan
+  operand (alltid ett flyttal när den lyckas), behåller också sin double i ett
+  register: operationer som läser den tar registret, och dess cell skapas
+  endast där något läser själva ordet (`CLAUSE_float_v1` när heapen saknar
+  plats); en reservväg via en tjänst som läser den får en egen cell. En
+  jämförelse av två sådana flyttal jämför double-värdena, exakt likhet deras
+  bitar (så att `0.0 =:= -0.0` förblir falskt).
 - Map-uttryck utan bas vars nycklar är atom- eller små heltalsliteraler
   (högst 32 olika) skrivs inline som klassiska map-celler, med nycklarna
   sorterade vid kompileringstid i exakt termordning och det sista värdet för
@@ -313,6 +370,17 @@ signaturen `TermWord(Context *, const TermWord *)` som värdingång som anropar
   har varje nyckel och heapen har plats. En saknad nyckel får ett mönster att
   misslyckas direkt; map-träd, andra nycklar, en saknad nyckel i andra fall
   och fel går via `CLAUSE_map_v1` (uppslag i små maps).
+- Varje sådan sökning efter en literal nyckel (en atom eller ett litet heltal
+  skrivet i källkoden) har en inline-cache per kodställe, en intern global
+  `[2 x word]` som delas av alla processer: indexet för det senast hittade
+  nyckelordet (först 1) och återstående omskrivningar (8). Sökningen jämför
+  först nyckelordet på det cachade indexet, så att en map med kodställets
+  vanliga form kostar en jämförelse; annars söker den igenom och lagrar det
+  hittade indexet så länge omskrivningar återstår. Båda orden är atomiska med
+  avslappnad minnesordning; ett kodställe som har förbrukat sina omskrivningar
+  läser endast, så att kodställen som ser många former i många processer inte
+  skickar cache-raden fram och tillbaka. Variabla nycklar (maps som används
+  som uppslagstabeller) söker endast igenom (inline-cacher för map-former).
 - Tupler och listor på högst 64 ord bump-allokeras inline i
   `[heap_top, heap_limit)` (huvud eller cons-celler skrivs på plats,
   `heap_top` flyttas fram), annars byggs de av `CLAUSE_construct_v1`;
@@ -479,3 +547,5 @@ värden via modul-/funktionsbyte, argumentarray och aritet, och returnerar en
 | 21 | `ModuleDescriptor::fun_cache` och inline-closures |
 | 22 | Direkta inbyggda funktioner: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
 | 23 | Snabba inbyggda funktioner: `BuiltinName::call` (`BuiltinCall`), 0 från `CLAUSE_builtin_call_v1` avböjer |
+| 24 | `RecordDescriptor::definition` (fältlistan som External Term Format-byte, för `records:get_definition/2`) och `ModuleDescriptor::features` (atomplatser för de aktiverade funktionerna, för `erl_features:used/1`) |
+| 25 | Kodade modulliteraler och literalheapen: `ModuleDescriptor::literals` innehåller kodade byte (`literal_bytes`), `literal_cache`, `literal_count`; `CLAUSE_literal_v1` |

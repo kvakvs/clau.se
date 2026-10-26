@@ -1,8 +1,8 @@
 ---
 source: docs/native-records.md
-sourceCommit: a8c3f8f6
-sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 7ac44f2d773e43162cf3d7661c9585bc357f2dbc7da1e3dabbc1db4b2f9dd4f5
+translatedAt: 2026-10-26
 ---
 # Native records
 
@@ -25,10 +25,10 @@ representation:
 | Kvalificerade och importerade | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, mönster; `-export_record`, `-import_record` |
 | Härledda (anonyma) | `X#_.f`, `X#_{...}`, mönstret `#_{...}` |
 
-Tillhandahålls inte: reflektionsmodulen `records` (anrop till `records:*` ger
-diagnostiken `unknown module`), `term_to_binary` av native records
-(`error:notsup`, [externt termformat](builtins.md#external-term-format)) och
-uppgradering av kod under drift.
+Reflektionsmodulen `records` tillhandahålls ([reflektion](#reflection)).
+Tillhandahålls inte: `term_to_binary` av native records (`error:notsup`,
+[externt termformat](builtins.md#external-term-format)) och uppgradering av kod
+under drift.
 
 ## Representation
 
@@ -36,7 +36,10 @@ uppgradering av kod under drift.
   oföränderlig `abi::v1::RecordDescriptor` bredvid dess moduldeskriptor: den
   definierande `ModuleDescriptor`, atomplatser för modul- och record-namnen,
   exportflaggan (`-export_record` vid kompilering) och atomplatserna för
-  fältnamnen i definitionsordning. Atomplatser löses via modulens registrerade
+  fältnamnen i definitionsordning, samt fältlistan som
+  `records:get_definition/2` returnerar som byte i External Term Format
+  (`{Field, Default}` med det vikta standardvärdet, eller enbart `Field`).
+  Atomplatser löses via modulens registrerade
   atomer, som namnen i `FrameDescriptor`. Program är statiska (ingen
   avladdning), så en deskriptor lever lika länge som programmet; en annan modul
   i batchen refererar till den via symbol. Standardvärden kompileras in vid
@@ -90,7 +93,10 @@ Meddelanden följer `erl_lint`:
 
 - Standardvärden måste vara literaler efter konstantvikning (tal, atomer,
   strängar, `[]`, cons-celler/tupler/maps av sådana, binaries med endast
-  strängar): `illegal default value for field a in native record r`.
+  strängar, samt aritmetik-, jämförelse- och `not`/`and`/`or`/`xor`-operatorerna
+  på dem, vikta som OTP:s kompilator viker dem); `++`, `--`, `andalso`, `orelse`
+  och en operator som misslyckas (`1 / 0`) är otillåtna:
+  `illegal default value for field a in native record r`.
 - Lokal konstruktion utan värde för ett fält utan standardvärde:
   `field a is not initialized in native record r`; okänt fält:
   `field zz undefined in record r`. Okända fält vid åtkomst, uppdatering och i
@@ -106,6 +112,28 @@ Meddelanden följer `erl_lint`:
   modulen sänker själv den definierande modulens literala standardvärden och
   refererar till dess exporterade deskriptor; okända fält ger `badfield` innan
   ett saknat värde ger `novalue` (`ErrorReason` 21).
+
+## Reflektion
+
+`records` svarar utifrån definitionen som ett record fångade:
+
+- `get/2`, `get_module/1`, `get_name/1` (`badarg` för något som inte är ett
+  record eller ett saknat fält), `get_field_names/1`, `is_exported/1`
+  (`{badrecord, X}`).
+- `create(Module, Name, Fields, #{is_exported => Boolean})` bygger en definition
+  vid körning i den angivna fältordningen, internerad av kodservern, så att lika
+  konstruktioner delar den; ett kompilerat record och ett skapat record med
+  samma modul, namn, exportflagga och fältordning är `=:=`. Fel i OTP:s ordning:
+  `{badrecord, Name}` för namn som inte är atomer, `{badmap, Options}`, `badarg`
+  för andra alternativ, sedan en genomgång av fälten (`badarg` för något som
+  inte är ett par, `{badfield, {{Module, Name}, Field}}` för ett namn som inte
+  är en atom), sedan `badarg` för ett upprepat fält.
+- `update(Src, Module, Name, Map)` behåller definitionen från Src:
+  `{badrecord, Src}`, `{badrecord, Name}` när Module och Name inte matchar,
+  `{badmap, Map}`, sedan `{badfield, ...}` i nyckelordning.
+- `get_definition(Module, Name)` avkodar deskriptorns fältlista:
+  `{#{is_exported => Boolean}, Fields}`, `badarg` för ett record som ingen
+  modul i programmet definierar.
 
 ## Utskrift och ordning
 

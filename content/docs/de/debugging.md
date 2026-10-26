@@ -1,8 +1,8 @@
 ---
 source: docs/debugging.md
-sourceCommit: a8c3f8f6
-sourceSha256: b93973504afffd4df57d0a39ac405818a080f79a56515e27f312fdcaec3e3e8b
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0777ed6e30e2880187db94d3e6bec6b8bd7e0562f40e44332b264e589eda46e7
+translatedAt: 2026-10-26
 ---
 # Debugging ausführbarer Dateien
 

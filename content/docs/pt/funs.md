@@ -1,8 +1,8 @@
 ---
 source: docs/funs.md
-sourceCommit: a8c3f8f6
-sourceSha256: 114573ca575f133c3b45d3422218a8b98264b55c30167b405bb3008e3806c74e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 48b67a84428fd618682bf70ff7cc6bdc1eff671ca37080353b71fb6ab13088e5
+translatedAt: 2026-10-26
 ---
 # Valores de função
 
@@ -40,7 +40,9 @@ códigos-fonte fixados `maint-29` (`erts/emulator/beam/utils.c` `erts_cmp`,
 - `M:F(Args)` com uma variável (ou qualquer expressão) como módulo ou função
   avalia o módulo, depois a função, depois os argumentos da esquerda para a
   direita. Um módulo ou função que não seja um átomo lança `badarg`; uma função
-  que nenhum módulo do programa exporte com essa aridade lança `undef`. Uma
+  que nenhum módulo do programa exporte com essa aridade lança `undef`, com
+  `{M, F, Arity, []}` no topo do seu rasto de pilha (o OTP mostra os
+  argumentos; `apply/3` e chamadas de funs externas também os mostram). Uma
   chamada em posição de cauda é uma chamada de cauda.
 - `apply(Fun, Args)` e `apply(M, F, Args)` (auto-importados, a não ser que o
   módulo defina `apply/2,3` ou suprima a importação; também `erlang:apply/2,3`)
@@ -49,6 +51,11 @@ códigos-fonte fixados `maint-29` (`erts/emulator/beam/utils.c` `erts_cmp`,
   `{badarity, {Fun, Args}}`); `apply/3` procura `M:F/length(Args)` como acima,
   pelo que mais de 255 argumentos lançam `undef`. Ambos são chamadas de cauda em
   posição de cauda e nunca são legais em guards.
+- `erlang:apply/2,3` alcançados por nome em tempo de execução
+  (`spawn(erlang, apply, [F, Args])`, `M:apply(...)` com `M` associado a
+  `erlang`, uma ação de temporizador) são builtins
+  (`builtins/erlang/apply.cpp`) que continuam na função chamada com os mesmos
+  erros.
 - `fun M:F/A` com variáveis lança `badarg`, a não ser que `M` e `F` sejam átomos
   e `A` um inteiro em 0..255; a função não precisa de existir até a fun ser
   chamada.
@@ -97,6 +104,66 @@ códigos-fonte fixados `maint-29` (`erts/emulator/beam/utils.c` `erts_cmp`,
 - Uma fun anónima no valor por omissão de um campo de record é uma única fun
   para todas as construções que usam esse valor (o OTP expande uma cópia por
   local).
+
+## Funs expandidas inline
+
+Em `-O2` (`codegen/lowering_fun_inlining.cpp`, `lowering_list_loops.cpp`,
+`lowering_map_loops.cpp`), uma chamada de uma fun anónima conhecida no local
+onde é chamada rebaixa as cláusulas da fun no lugar da chamada, de forma
+semelhante à opção `inline_list_funcs` do OTP:
+
+- **Funs conhecidas.** Uma fun escrita na chamada (`(fun(X) -> ... end)(Y)`,
+  ou o primeiro argumento de um ciclo de lista abaixo), ou uma variável
+  associada uma vez a uma fun anónima sem nome (`F = fun ... end`) que seja
+  lida uma vez ou contenha no máximo 40 expressões. Dentro do código de outra
+  fun, a fun de uma variável só é expandida inline quando tudo o que captura
+  também está associado aí. Os corpos expandidos inline aninham-se até quatro
+  níveis; os ciclos de binaries e de números de vírgula flutuante não expandem
+  nada inline.
+- **Cláusulas no lugar da chamada.** Os argumentos são comparados com as
+  cláusulas e guards da fun, e o corpo da cláusula correspondente executa no
+  frame do chamador. Quando nenhuma cláusula corresponde, a fun é chamada,
+  pelo que `function_clause` vem do código da própria fun como antes. Uma fun
+  escrita na chamada só é construída nesse caminho e nos caminhos abaixo que
+  precisam do seu valor (adiamento da construção da closure); a fun de uma
+  variável é construída onde é associada, como antes.
+- **Ciclos de listas.** `lists:map/2`, `filter/2`, `foreach/2`, `all/2`,
+  `any/2`, `flatmap/2`, `foldl/3`, `foldr/3`, `mapfoldl/3` e `mapfoldr/3` do
+  próprio módulo `lists` do Clause com uma fun conhecida da aridade certa
+  tornam-se um ciclo sobre a lista na função chamadora. A chamada da fun de
+  cada elemento é expandida inline; as listas são construídas ao contrário e
+  invertidas uma vez no fim; `foldr/3` e `mapfoldr/3` invertem primeiro a
+  entrada, pelo que a fun continua a ver os elementos a partir do último,
+  depois de uma cauda imprópria ter falhado. Como a recursão no corpo que
+  substituem, os ciclos de listas só fazem recolha onde cedem a execução
+  (a cada 4,000 elementos sem outras chamadas) e nas chamadas feitas pela fun.
+- **Ciclos de redução de maps.** `maps:fold/3` do próprio módulo `maps` do
+  Clause com uma fun conhecida de aridade 3 torna-se um ciclo sobre as
+  entradas do map (a célula clássica de map, ou as entradas de uma árvore
+  copiadas uma vez para uma célula com forma de tuplo, como `maps:fold/3` as
+  lê), por ordem de chave como `maps:fold/3`. Um iterador de map ou um valor
+  que não seja map faz a chamada real a `maps`, que o trata ou lança o seu
+  próprio erro.
+- **Acumuladores com posse exclusiva.** Quando todas as cláusulas de uma fun
+  de redução (`maps:fold/3`, `lists:foldl/3`, `lists:foldr/3`) devolvem o seu
+  parâmetro acumulador atualizado, `fun(K, V, Acc) -> Acc#{K := V + 1} end`
+  com `Acc` não lido em mais nenhum sítio e não capturado por nenhuma fun, o
+  ciclo tem a posse exclusiva do resultado de cada passo: a partir do segundo
+  passo, a atualização tem posse exclusiva e altera o map diretamente
+  ([árvores de maps](runtime-heap.md#map-trees)). O primeiro passo copia, pois
+  o acumulador inicial pode estar guardado noutro sítio.
+- **Mesmos resultados e motivos.** Os valores, a ordem em que a fun executa e
+  os motivos de erro são os de `lists`: uma entrada que não seja lista de
+  `map/2`, `foldl/3`, `all/2`, `any/2` e as caudas impróprias de `filter/2`,
+  `foreach/2`, `foldr/3`, `mapfoldl/3`, `mapfoldr/3` fazem a chamada real a
+  `lists`, que lança o seu próprio erro; uma cauda imprópria de `map/2`,
+  `foldl/3`, `all/2`, `any/2`, `flatmap/2` lança `function_clause` no
+  chamador. Um predicado não booleano lança `{case_clause, V}` (`all/2`,
+  `any/2`) ou `{bad_filter, V}` (`filter/2`), um resultado que não seja par de
+  uma fun de `mapfold` lança `{badmatch, V}`.
+- **Rastos de pilha** de exceções dentro de funs expandidas inline não incluem
+  os frames da fun nem do auxiliar de `lists` ou `maps`
+  ([diferenças](differences.md#errors-stack-traces-and-reports)).
 
 ## Representação
 

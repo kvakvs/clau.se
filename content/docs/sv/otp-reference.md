@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: a8c3f8f6
-sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b492ebd048a1022e18083704f4e12f60003d3e503aac261ba808b985a981ea5c
+translatedAt: 2026-10-26
 ---
 # Referens till Erlang/OTP-källkoden
 
@@ -10,8 +10,8 @@ Clause följer den officiella grenen `maint-29`. Den granskade låsta revisionen
 (pin) finns i
 [`references/otp-pin.cmake`](../references/otp-pin.cmake):
 
-- Revision `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2,
-  uppströmscommit daterad 2026-10-14), uppdaterad 2026-10-14.
+- Revision `9710673e5916164dff9616327df7de39f1aa75a9` (OTP 29.1.2,
+  uppströmscommit daterad 2026-10-22), uppdaterad 2026-10-24.
 - Installerat orakel som används för referensresultat (goldens) och
   granskningar: OTP 29.1.1 / ERTS 17.1.
 
@@ -68,3 +68,4 @@ Historiska poster behåller den revision de gjordes mot.
 | 2026-10-01 – 10-03 | Hämtad på nytt före varje step för mönster/guards; oförändrad | samma |
 | 2026-10-03 | Plan 11 step 1: 14 granskningstester godkända, 19 korpusar reproduceras | samma |
 | 2026-10-14 | Uppdaterad till OTP 29.1.2: hashar för grammatik, skanner, preprocessor och `phase6/otp.tsv` oförändrade (endast kommentar i `genop.tab`); 17 granskningstester godkända och 19 korpusar reproduceras med orakel 29.1.1; revisionen som registreras av referensresultat för körbara filer, lint, program och utskrift uppdaterad (utdata oförändrade, `external_terms` behåller sin map-utdata som beror på atomordning) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |
+| 2026-10-24 | Uppdaterad; uppströms ändrades endast arbetsflöden i `.github/` (32 filer), så indata för grammatik, skanner, preprocessor, korpus och `phase6/otp.tsv` är byte-identiska och granskningarna kördes inte om; revisionen som registreras i referensresultaten uppdaterad | `9710673e5916164dff9616327df7de39f1aa75a9` |

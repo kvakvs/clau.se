@@ -1,8 +1,8 @@
 ---
 source: docs/validation.md
-sourceCommit: 336caea7
-sourceSha256: b00092bc767953e496774561feaef35ac500b4db73b4344eafd6dda372c90e24
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 695fedb7d04a5c9f5f94ff65294e4c2ee14e817db6041f57d7f67af31e8aabc7
+translatedAt: 2026-10-26
 ---
 # Validación
 
@@ -45,6 +45,13 @@ cmake --build build/debug --target check-quality-all  # whole tree
 - Las pruebas largas dirigidas por un script de Python o CMake llevan un `COST`
   fijo de CTest: CTest aprende el coste de un envoltorio a partir de su propio
   tiempo de CPU, pequeño, y las iniciaría las últimas.
+- Las pruebas sensibles a la carga (`CLAUSE_LOAD_SENSITIVE_TESTS` en el
+  `CMakeLists.txt` principal: `frontend_cli`, `codegen_examples`,
+  `linking_debugger`, `executables_applications`) solo agotaban el tiempo o
+  perdían carreras de temporización durante una ejecución paralela completa.
+  Tienen una relación `DEPENDS` con todas las demás pruebas, por lo que empiezan
+  cuando termina el resto de la selección y disponen de los procesadores en
+  exclusiva; una dependencia que falla no hace que se omitan.
 - `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplica los límites por ejecución del
   ejecutor de goldens (60 s) y del ejecutor de casos semánticos (15 s) para
   compilaciones instrumentadas.
@@ -217,6 +224,7 @@ anfitrión, no resultados de la puerta.
 ```powershell
 make-benchmark.bat                         # Windows; set JOBS=N to cap parallel builds
 make-benchmark.bat --repeat 9 --only bench_gc,bench_msg
+make-benchmark.bat --cpus all                 # unpinned set; default --cpus performance
 make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
 ```
 
@@ -227,7 +235,35 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   `erlang:monotonic_time/1` tras una llamada de calentamiento e imprime
   `BENCH <name> <nanoseconds>`: generación de datos, procesamiento de datos,
   recolección de basura, paso de mensajes, E/S de archivos (en un directorio de
-  trabajo temporal vacío) y sockets de loopback.
+  trabajo temporal vacío bajo `build/bench/runs`, dentro del repositorio para
+  que una exclusión del antivirus para el repositorio lo cubra), sockets de
+  loopback y bibliotecas (`libraries.qlc`: transformaciones de `qlc_pt` de
+  consultas y módulos con la forma de los casos de `qlc_SUITE`, cronometrados
+  juntos). Los recuentos de iteraciones hacen que cada núcleo dure 1-2 s en
+  OTP, de modo que la resolución del temporizador y el ruido del anfitrión sean
+  pequeños en comparación; los núcleos de sockets aumentan el trabajo por
+  conexión, no el número de sockets. Fuera del cronometraje, tanto el
+  calentamiento como las llamadas cronometradas esperan a que los procesos que
+  lanzaron hayan terminado (error `processes_left` tras 10 s). Cada núcleo se
+  ejecuta en su propio proceso nuevo, que termina antes de que empiece el
+  siguiente, de modo que ningún núcleo paga por heaps que uno anterior amplió.
+- Cada ejecución de programa tiene su propio objeto de trabajo de Windows o
+  sesión POSIX; la siguiente ejecución empieza cuando han desaparecido todos
+  sus procesos, y los que sigan vivos 30 s después de la salida se terminan y
+  se notifican como un fallo.
+- CPU: todos los procesos de una ejecución, tanto de OTP como de Clause, se
+  ejecutan en el conjunto `--cpus`: `performance` (por defecto: los núcleos de
+  la `EfficiencyClass` más alta de Windows, `/sys/devices/cpu_core/cpus` de
+  Linux o los de mayor `cpu_capacity`, es decir, los núcleos P de una CPU
+  híbrida y todas las CPU en los demás casos), `all`, una lista como `0-15` o
+  `2,4,6`, o una máscara hexadecimal como `0x5554`. En Windows, el objeto de
+  trabajo de la ejecución lleva el límite de afinidad antes de reanudar el
+  programa; en Linux, el programa lo establece antes de `exec`; macOS no
+  permite fijar la afinidad y se ejecuta sin ella. Tanto OTP como Clause
+  arrancan un planificador en línea por CPU del conjunto, sin vincularlos a CPU
+  individuales. La cabecera del informe y cada registro del historial (`cpus`)
+  indican el conjunto; las razones de ejecuciones con conjuntos distintos no
+  son comparables.
 - Sistemas, en el mismo anfitrión en una sola ejecución, intercalados: OTP con
   su variante predeterminada (JIT), OTP `-emu_flavor emu` cuando está instalado
   (el instalador de Windows solo incluye el JIT, por lo que esas columnas
@@ -235,16 +271,14 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   Clause (por defecto: el commit más reciente con al menos un día de antigüedad
   respecto a HEAD; `--baseline REV`, `--no-baseline`) compilado en un worktree
   en caché bajo `build/bench-base/<hash>` que comparte `thirdparty/`.
-- Informe: por núcleo, la mediana de `--repeat` ejecuciones (5 por defecto) en
+- Informe: por núcleo, la mediana de `--repeat` ejecuciones (3 por defecto) en
   milisegundos con seis decimales y su dispersión, el cambio de Clause O2
   respecto a cada sistema (`+N%`: Clause es más rápido, el otro tarda un N% más;
   `-N%`: Clause tarda un N% más; `(Fx)` la razón de tiempos) con una media
   geométrica, `--lto` frente a OTP y O2, tiempos de reloj de los programas
-  incluido el arranque, tamaños de ejecutables, fallos y agotamientos de tiempo (`--timeout`, 600 s por
-  ejecución). Los recuentos de iteraciones mantienen una ejecución
-  predeterminada por debajo de 10 minutos; Clause, el sistema más lento, fija
-  los tamaños, por lo que algunos núcleos de OTP duran solo unos pocos
-  milisegundos.
+  incluido el arranque, tamaños de ejecutables, fallos y agotamientos de
+  tiempo (`--timeout`, 600 s por ejecución). Una ejecución predeterminada mide
+  durante unos 15 minutos.
 - Tamaños de ejecutables, en bytes: cada programa en `-O2`, con `--lto` y en
   `-O0` (una compilación adicional que solo se mide, nunca se ejecuta; ambas se
   omiten con `--no-lto`) y la línea base en `-O2`, con una fila de totales y los
@@ -254,13 +288,17 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   `clau`: `head`/`baseline` → bytes; `null` cuando falla una compilación).
 - Historial: `benchmarks/history/<host>.json` guarda un registro por día de
   ejecución (fecha de ejecución, hash y fecha del commit de HEAD, medianas de
-  Clause, OTP y la línea base, tamaños), y
+  Clause, OTP y la línea base, tamaños y las razones de tiempos de Clause
+  `otp_ratio` y `baseline.ratio` por núcleo), y
   `benchmarks/history/reports/<host>/<day>-<hash>.txt` los informes de texto;
   una nueva ejecución el mismo día reemplaza ambos. Se eliminan los registros e
   informes ejecutados más de 183 días antes del más reciente; una ejecución con
-  cambios de código fuente sin confirmar se informa pero no se registra. El
-  directorio de historial está en gitignore: permanece en el anfitrión que lo
-  ejecutó.
+  cambios de código fuente sin confirmar se informa pero no se registra. Las
+  tablas de historial del informe muestran las razones de los últimos 8 días
+  de ejecución, que siguen siendo comparables cuando los núcleos cambian su
+  trabajo; los registros anteriores al ajuste a 1-2 s conservan solo sus
+  razones. El directorio de historial está en gitignore: permanece en el
+  anfitrión que lo ejecutó.
 - Listados: con `--listings`, antes de medir, una ejecución escribe los
   listados [`--print-asm`](compile.md#assembly-listings) y `--print-ir` de cada
   programa (con `bench_util`, `--entry <program>` para que el código de
@@ -304,6 +342,7 @@ recuentos de pruebas son aprobaciones completas de CTest sin omisiones.
 | 2026-10-13 | Steps 58U–58W caché de inferencia | 278/279 | todas | CTest completo, fallo conocido de `codegen_measurements`; `check-quality-all` limpio |
 | 2026-10-14 | Step 41S `prim_eval` y la nueva ejecución de luerl (H3 cerrado) | 299/300 | todas | Véase la línea base actual |
 | 2026-10-17 | Plan 20 OPTM.2 (Term de una palabra, términos persistentes en su sitio y recuperados) y OPTM.3 (accesores sin comprobaciones) | 330/332 | todas | CTest completo: fallo conocido de `codegen_measurements`, y `library_freshness` (OTP del anfitrión) todavía espera los cuerpos de stub `not_implemented` que `b0e62a38` reemplazó; `check-quality-all` limpio |
+| 2026-10-19 | Plan 21 LIB10F ThreadSanitizer (Linux x86-64): goldens de ETS y digraph, `runtime_concurrency` | 10 | — | Ningún informe; `ets_portions` con un hilo de trabajo mostró una eliminación liberada en dos porciones, corregida al contabilizar un objeto liberado como uno recorrido |
 
 PG = paso del plan de patrones/guards; los registros de pasos del plan 11 están
 archivados en `.agents/00-finished.md`.

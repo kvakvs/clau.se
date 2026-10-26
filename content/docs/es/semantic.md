@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: a8c3f8f6
-sourceSha256: f1156b4ef9a29821e7a254cd605e1b92c22cf3304d574ae47f4d558a786f2c18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 5b75d27b8b6d10019ba765c950ca875904e7eb3d8dea6044ac59e240fccc259f
+translatedAt: 2026-10-26
 ---
 # Análisis semántico
 
@@ -61,9 +61,9 @@ de OTP, `erl_internal:add_predefined_functions` y el `check_behaviour` de
     L, column C)` cuando un behaviour anterior también lo requiere (un callback
     opcional cuenta cuando se exporta);
   - `behaviour M undefined` cuando `M` no está en el lote o no tiene
-    `behaviour_info/1` (los behaviours de OTP como `gen_server` no están en la
-    [biblioteca](library.md) de Clause), además de los errores de nombre de
-    módulo de OTP para nombres que no pueden ser módulos
+    `behaviour_info/1` (un behaviour de OTP que la [biblioteca](library.md) de
+    Clause aún no proporciona, como `application`), además de los errores de
+    nombre de módulo de OTP para nombres que no pueden ser módulos
     (`the module name must not be empty`, `... must be an atom`, ...).
 - Las advertencias no hacen fallar la compilación. Las opciones de `-compile`
   `nowarn_behaviours` (toda la comprobación, incluidos los errores de nombre de
@@ -258,9 +258,32 @@ specs.
   de la cabecera de cada cláusula; las llamadas recursivas también cuentan.
   Las entradas empiezan en `none()` (una función a la que nada llama nunca se
   ejecuta e infiere `none()`) y crecen a lo largo de las pasadas sobre el
-  lote: 8 pasadas unen, las posteriores amplían como los resultados
-  recursivos; las entradas que no se han estabilizado tras 16 pasadas se
-  convierten en `term()` (notificadas como ampliadas).
+  lote. Cada entrada sube una escala según cuántas veces haya cambiado: sus
+  primeros 4 cambios unen, los 2 siguientes amplían como los resultados
+  recursivos, los 2 siguientes también reducen a `term()` los contenedores
+  dentro de otro contenedor, y un cambio más da `term()` (notificado como
+  ampliado). Las entradas que no se han estabilizado tras 63 pasadas se
+  convierten en `term()` (notificadas como ampliadas). Una componente recursiva
+  se considera costosa cuando una resolución gasta más de 2^17 uniones del
+  retículo (contando las anidadas) y más de 1/16 del máximo de uniones gastadas
+  por una pasada hasta entonces; cuando las entradas de sus miembros vuelven
+  a cambiar, se convierten de inmediato en `term()` (notificadas como
+  ampliadas), de modo que las resoluciones posteriores ya no siguen las
+  fluctuaciones de entrada de sus llamadores.
+- Las pasadas posteriores a la primera solo recorren las componentes para las
+  que ha cambiado algo que leen (`semantic/types/inference_incremental`): una
+  componente conserva sus resúmenes y hechos de expresiones mientras no
+  cambien las entradas de sus miembros, todos los resúmenes que leyó (llamadas,
+  `fun F/A`, `apply`) y las entradas de las funciones llamadas que volvió a
+  evaluar, y los presupuestos de pasada y de reevaluación le respondan igual
+  (el presupuesto de reevaluación lleva gastado lo mismo que al inicio de su
+  último recorrido, o volvería a concederlo o denegarlo todo); su trabajo sigue
+  contando para el presupuesto de la pasada. Los resultados son iguales a los
+  de recorrer todas las componentes. La pasada final con entradas `term()` las
+  recorre todas. Tras una pasada, solo se vuelven a unir a partir de sus
+  llamadas las entradas de las funciones recorridas en ella o llamadas por una
+  función recorrida en ella; los hechos de argumentos y las entradas de las
+  demás quedan como en la última unión.
 - Los literales tienen hechos exactos: los enteros de cualquier tamaño y los
   caracteres son singletons, los átomos átomos singleton, los flotantes
   `float()`, las cadenas listas no vacías de sus caracteres (`[]` para `""`),
@@ -505,8 +528,13 @@ specs.
   seleccionados.
 - Un `receive` es la unión de sus cláusulas y de su cuerpo de `after`, que un
   tiempo de espera `infinity` nunca ejecuta.
-- Una componente recursiva empieza el resultado de cada miembro en `none()` y
-  vuelve a inferir todos los miembros hasta que ningún resultado cambia; cada
+- Una componente recursiva empieza el resultado de cada miembro en `none()` en
+  su primera resolución, y en las pasadas posteriores parte de los resúmenes
+  con los que terminó su última resolución: en ellas, el primer recorrido de
+  cada miembro sustituye su resumen por lo que encontró el recorrido (el
+  resumen anterior solo sirve como suposición para las llamadas anteriores a
+  ese momento), de modo que nunca quedan tipos de función obsoletos. Vuelve a
+  inferir los miembros hasta que ningún resultado cambia; cada
   ronda une el resultado nuevo con el anterior (lo amplía tras las primeras 8
   rondas, [dominio de inferencia](#inference-domain)), y una llamada recursiva
   pendiente no añade nada a una unión. Una función que nunca puede retornar
@@ -532,7 +560,13 @@ specs.
   último recorrido: cada recorrido anota los resúmenes que lee (llamadas,
   resultados de llamadas, `fun F/A`), un resumen cambiado marca a sus
   lectores, y un miembro no marcado conserva sus hechos de expresiones. La
-  primera ronda recorre todos los miembros.
+  primera ronda recorre todos los miembros. Un miembro conserva su último
+  recorrido entre resoluciones: una resolución reutiliza el resultado de ese
+  recorrido, con sus hechos de expresiones y su trabajo, mientras los miembros
+  que leyó tengan los mismos resultados y tipos de función, y todo lo demás
+  que leyó siga igual y reciba las mismas respuestas, como en una componente
+  conservada en las pasadas incrementales. Los resultados son iguales a los de
+  recorrerlo.
 - Un presupuesto de trabajo compartido acota la inferencia; el agotamiento
   pierde precisión y recurre al código genérico, nunca rechaza un programa.
 - Las especificaciones que contradicen la inferencia se diagnostican
@@ -658,7 +692,7 @@ Erlang, y las categorías por sus nombres integrados.
 | Nada | `none()` | Identidad | Una función que nunca retorna sigue siendo `none()` |
 | Cualquier cosa | `term()` | Absorbe todo hecho | `dynamic()` y `any()` son `term()` |
 | Enteros | `42`, `1 \| 3 \| 7` | Unión de singletons | Más de 8 singletons se convierten en su rango |
-| Rango de enteros | `1..10`, `0..255` | El menor rango que contiene ambos | Un límite que se ha movido entre rondas pasa al siguiente umbral: uno inferior a 1, después 0, después sin límite; uno superior a -1, después sin límite |
+| Rango de enteros | `1..10`, `0..255` | El menor rango que contiene ambos | Un límite que se ha movido entre rondas pasa al siguiente umbral: uno inferior a 1, después 0, después sin límite; uno superior a -1, después sin límite. Los límites dentro de contenedores también se amplían, cuando el hecho anterior tiene una tupla (de ese tamaño y etiqueta), un map (con esas claves) o una lista en el mismo lugar |
 | Enteros sin límite | `pos_integer()` (1 en adelante), `non_neg_integer()` (0 en adelante), `neg_integer()` (-1 hacia abajo), `integer()` | El menor intervalo que contiene ambos, impreso por su categoría | — |
 | Flotantes | `float()` | — | — |
 | Números | `number()` | Un rango o categoría de enteros unido con `float()` | Los enteros singleton con `float()` quedan como `1 \| float()` |
@@ -687,6 +721,13 @@ Erlang, y las categorías por sus nombres integrados.
   valores que contienen ambos (o más, pero `none()` solo cuando no comparten
   ninguno). Una intersección vacía significa que el camino no puede
   ejecutarse.
+- Los hechos son nodos de un grafo que nunca cambian, por lo que el grafo
+  conserva la respuesta de cada unión de dos hechos, intersección y prueba de
+  inclusión (`within`) durante el resto del lote: casi todas se repiten. Una
+  respuesta conservada sigue contando las uniones que ejecutó para el
+  [abandono según el coste](#inference), de modo que los resultados no dependen
+  de ella; no se conserva una respuesta calculada mientras el presupuesto de
+  nodos ampliaba un hecho.
 
 En `-O2` con especialización por tipos, el lowering usa estos hechos para
 eliminar comprobaciones ([especialización](specialization.md#proofs)); las
@@ -831,9 +872,19 @@ sum() -> 1 + 2.
   tipos de función, selección de llamadas y evaluación por llamada dentro y
   más allá de sus presupuestos; `dependent.erl`,
   [hechos dependientes](#dependent-facts); `trees.erl` y `parsers.erl`,
-  recursiones sobre árboles y formas de analizadores sintácticos generados.
+  recursiones sobre árboles y formas de analizadores sintácticos generados;
+  `widening.erl`, contadores dentro de contenedores que se amplían y se
+  estabilizan.
 - `tests/fixtures/inference/contracts/` contiene las comprobaciones de
   especificaciones (prueba de CTest `inference_contracts`).
+- `tests/fixtures/inference/budgets/walkers.erl` es una pasada del compilador
+  con la forma habitual de Erlang (un record de estado grande que se pasa entre
+  recorridos mutuamente recursivos cuyos resultados son uniones de muchos
+  records). La prueba de CTest `inference_walkers`
+  (`tests/compiler/inference/walkers.py`) mantiene sus pasadas, pasos de trabajo,
+  uniones del retículo y las resoluciones, rondas y recorridos de miembros del
+  grupo dentro de presupuestos aproximadamente un cuarto superiores a los
+  recuentos actuales, y ejecuta el programa.
 
 ### Impresión de tipos
 

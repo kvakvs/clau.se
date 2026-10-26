@@ -1,16 +1,16 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: a8c3f8f6
-sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b492ebd048a1022e18083704f4e12f60003d3e503aac261ba808b985a981ea5c
+translatedAt: 2026-10-26
 ---
 # Referência das fontes do Erlang/OTP
 
 O Clause acompanha o ramo oficial `maint-29`. A fixação revista encontra-se em
 [`references/otp-pin.cmake`](../references/otp-pin.cmake):
 
-- Revisão `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2, commit
-  upstream datado de 2026-10-14), atualizada em 2026-10-14.
+- Revisão `9710673e5916164dff9616327df7de39f1aa75a9` (OTP 29.1.2, commit
+  upstream datado de 2026-10-22), atualizada em 2026-10-24.
 - Oráculo instalado usado para goldens e auditorias: OTP 29.1.1 / ERTS 17.1.
 
 `references/otp` é um checkout ignorado. As compilações e os testes normais
@@ -67,3 +67,4 @@ Os registos históricos mantêm a revisão em relação à qual foram feitos.
 | 2026-10-01 – 10-03 | Obtida de novo antes de cada step de padrões/guards; inalterada | a mesma |
 | 2026-10-03 | Plano 11, step 1: 14 testes de auditoria passam, 19 corpora reproduzem-se | a mesma |
 | 2026-10-14 | Atualizada para OTP 29.1.2: hashes da gramática, do scanner, do pré-processador e de `phase6/otp.tsv` inalterados (`genop.tab` só num comentário); 17 testes de auditoria passam e 19 corpora reproduzem-se com o oráculo 29.1.1; atualizada a revisão registada pelos goldens de executáveis, lint, programas e impressão (saídas inalteradas, `external_terms` mantém a sua saída de map dependente da ordem dos átomos) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |
+| 2026-10-24 | Atualizada; o upstream alterou apenas workflows de `.github/` (32 ficheiros), pelo que as entradas da gramática, do scanner, do pré-processador, do corpus e de `phase6/otp.tsv` são idênticas byte a byte e as auditorias não foram repetidas; atualizada a revisão registada pelos goldens | `9710673e5916164dff9616327df7de39f1aa75a9` |

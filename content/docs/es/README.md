@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: a8c3f8f6
-sourceSha256: 2124516a48ed02c82259ea7ac1d86d673aaf9cff2feba5044f3db2a30ad0db18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: be550511f58d81353b8a28ffdeba68d3c2e49d69eb8cb6688c3867b834199234
+translatedAt: 2026-10-26
 ---
 # Documentación de Clause
 
@@ -12,10 +12,12 @@ pasos se encuentran en `.agents/`.
 
 | Tema | Documento |
 | --- | --- |
+| Compilación de Clause: requisitos, presets, opciones de configuración, pruebas, control de calidad, benchmarks | [building.md](building.md) |
 | Preprocesamiento (comportamiento de `epp`, inclusiones, macros, características) | [preprocessor.md](preprocessor.md) |
 | Análisis sintáctico, propiedad del AST, límites de sintaxis | [parser.md](parser.md) |
 | Proyectos TOML, selección de objetivos, directorio de compilación y cachés, fuentes ignorados | [projects.md](projects.md) |
 | CLI del compilador, artefactos, impresión del código fuente y del formato abstracto, caché de compilación, SDK de LLVM, PCRE2 y zlib, ejemplo | [compile.md](compile.md) |
+| Especificaciones ASN.1: entradas `.asn` y `[[targets.asn1]]`, opciones de asn1ct, cobertura, módulos generados | [asn1.md](asn1.md) |
 | Punto de entrada del ejecutable, argumentos, código de salida, flujos de salida, enlazado | [executables.md](executables.md) |
 | Información de depuración (`-g`), depuradores y la pila de llamadas de Erlang | [debugging.md](debugging.md) |
 | Perfilado opcional (`--profile FILE`): entradas y tiempo propio por función y proceso | [profiling.md](profiling.md) |
@@ -29,8 +31,6 @@ pasos se encuentran en `.agents/`.
 | Records nativos, cualificados y anónimos (OTP 29) | [native-records.md](native-records.md) |
 | Valores de función: `fun F/A`, `fun M:F/A`, clausuras, funs con nombre, llamadas dinámicas | [funs.md](funs.md) |
 | Builtins de producción: catálogo, llamadas puente, builtins de módulo, porciones, registro | [builtins.md](builtins.md) |
-| Módulos de biblioteca de `library/{erts,kernel,stdlib}` compilados con los programas, cómo los obtienen los programas, módulos disponibles y ausentes | [library.md](library.md) |
-| Salida de consola: `io:format`, `io:put_chars`, dispositivos, controles de formato, disposición de `~p` | [io.md](io.md) |
 | Ciclo de vida del runtime, memoria, servidor de código, términos persistentes, hilos, salida estándar, arranque | [runtime.md](runtime.md) |
 | Procesos: hilos de trabajo del planificador, mensajes y receive, enlaces, monitores, nombres registrados, temporizadores, introspección, alias, señales de salida | [processes.md](processes.md) |
 | Puertos: identidad, tabla de puertos, drivers, modos de datos, el hilo de E/S, puertos ocupados, subprocesos, E/S estándar, archivos y sockets | [ports.md](ports.md) |
@@ -45,3 +45,14 @@ Los registros de validación anteriores por paso y la evidencia en JSON se
 condensaron en el [historial de validación](validation.md#history); los
 originales completos permanecen en el historial de Git (presentes por última vez
 en el commit `2777c98`).
+
+## Bibliotecas
+
+Aplicaciones OTP propias de Clause en `library/`, en [libraries/](libraries).
+
+| Tema | Documento |
+| --- | --- |
+| Módulos de biblioteca de `library/{erts,kernel,stdlib}` compilados con los programas, cómo los obtienen los programas, módulos disponibles y ausentes | [library.md](library.md) |
+| Salida de consola: `io:format`, `io:put_chars`, dispositivos, controles de formato, disposición de `~p` | [io.md](io.md) |
+| Criptografía: versiones y fuentes de OpenSSL, compilación, enlazado, modo FIPS y programas FIPS fijados | [crypto.md](crypto.md) |
+| public_key: especificaciones ASN.1 y sus fuentes, módulos generados, `public_key.hrl` | [public_key.md](public_key.md) |

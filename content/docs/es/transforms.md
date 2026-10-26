@@ -1,8 +1,8 @@
 ---
 source: docs/transforms.md
-sourceCommit: a8c3f8f6
-sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: d5e6317f85b2929e53d917111bc1e41c6cf211dd4fad2c3950fd821c7e5d1bcc
+translatedAt: 2026-10-26
 ---
 # Parse transforms
 
@@ -151,8 +151,10 @@ parser de Clause, por lo que reciben las mismas comprobaciones sintácticas que
 el código fuente; la precedencia de operadores decide dónde se añaden
 paréntesis. Se aceptan `{Line, Column}`, un `Line` simple (mostrado como
 `file:line:`) y listas de propiedades con `location` y `file`; `generated` se
-ignora. Un atributo file cambia el archivo de las formas siguientes; cuando ese
-archivo existe, el código importado conserva sus líneas de depuración y los
+ignora. La línea 0, que la transformación `qlc` de OTP asigna al código
+generado, toma la ubicación del nodo importado antes de ella. Un atributo file
+cambia el archivo de las formas siguientes; cuando ese archivo existe, el
+código importado conserva sus líneas de depuración y los
 comentarios del fuente. Las formas mal construidas son errores en su anotación
 (`unknown expression bogus`, `expected {Name, Arity}`, `invalid annotation`) y
 el módulo falla; las formas `{error, _}`/`{warning, _}` de OTP se informan con

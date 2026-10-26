@@ -1,8 +1,8 @@
 ---
 source: docs/execution-model.md
-sourceCommit: a8c3f8f6
-sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: ef2ddb1d1fa5ece215035e006df8bf25bc2dd907c9e5b39d7eb0c991b4179977
+translatedAt: 2026-10-26
 ---
 # Exekveringsmodell: ramar och fortsättningar
 
@@ -103,7 +103,11 @@ den lagrar resultatet i det första registret och avslutar native-anropet.
   stackgränsen när den anropades ram inte är större. Liksom vid ett
   självsvansanrop kan en behållen plats innehålla en term från en tidigare
   medlem tills den anropade skriver den, så skräpsamlingar kan hålla en sådan
-  term vid liv något längre.
+  term vid liv något längre. Medlemmarna i en cykel delar en native-funktion:
+  varje medlems deskriptor anger den som kropp, dess återupptagningsindex löper
+  över medlemmarna, och en start (resume 0) väljer medlemmen från ramens
+  deskriptor, så ett svansanrop mellan medlemmar är en förgrening i stället för
+  en överföring. Felsökare ser medlemmarna som inlinade i den funktionen.
 - **Lämna ifrån sig (yield).** När ingen reduktion återstår pushar en ingång
   inte: den registrerar sig själv i `ProcessStack::resume_`, behåller sina
   argument som registerrötter (`ProcessStack::keep_registers`) och returnerar
@@ -195,7 +199,10 @@ fortsättningsindex är oförändrade. Inget obligatoriskt mål behöver den.
 - **Parametrar.** En kropp läser sina inledande argument från parametrarna när
   den startar och anropsresultatet från `x0` när den återupptas;
   `lower_frames` spiller något av dem till en plats endast när det är levande
-  över ett anrop eller en safepoint.
+  över ett anrop eller en safepoint. En flyttalsloopvariant ([abi](abi.md)) tar
+  vissa parametrar som bitarna i double-värden: endast dess inline-överföringar
+  skickar dem, och dess tjänstevägar går i stället in i funktionen med celler,
+  så register som en tjänst läser innehåller termer.
 - **Svanspositioner** är det sista uttrycket i en klausulkropp, följt genom
   block, parenteser samt klausulkroppar i `case`, `if` och `receive`. Anrop i
   operander till `catch`, `try`, `maybe` och `andalso`/`orelse` är inte
@@ -216,7 +223,7 @@ fortsättningsindex är oförändrade. Inget obligatoriskt mål behöver den.
 
 ## Jämförda alternativ
 
-[tests/prototypes/execution_model](../tests/prototypes/execution_model/)
+[tests/prototypes/execution_model](../tests/prototypes/execution_model)
 sänker samma Erlang-funktioner för hand (`sum/1` kroppsrekursion, `loop/2`
 svansrekursion, `fail/1` som kastar på djup N, `catcher/1` som fångar det) på
 tre sätt och kompilerar dem för varje mål ovan vid O0 och O2

@@ -1,8 +1,8 @@
 ---
 source: docs/specialization.md
-sourceCommit: a8c3f8f6
-sourceSha256: 30fb2421aad552fe8985671c5251c1200101aa35c3ee76024120620bcf97ef7a
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 301e336ab5a3cbaff9b8a4695f6274fa10da548e2c18d6824579845aeda49c54
+translatedAt: 2026-10-26
 ---
 # Спеціалізація типів
 

@@ -1,8 +1,8 @@
 ---
 source: docs/io.md
-sourceCommit: 336caea7
-sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 63cb0a2b2caa118ec3a36a1eea641d00d761085fea56a9c7edd8509ddbde219c
+translatedAt: 2026-10-26
 ---
 # Saída para a consola (`io`)
 
@@ -23,8 +23,9 @@ de `io` são Erlang na [biblioteca](library.md#contents).
   `standard_io` e `user` são a saída padrão, `standard_error` é o erro padrão
   (a saída padrão é despejada primeiro, para que as duas mantenham a sua
   ordem). Um pid, ou um átomo registado para um, é um servidor de I/O: o texto
-  é-lhe enviado em UTF-8 através de `file:write/2` (um ficheiro aberto do
-  módulo `file` do Clause) e a chamada devolve o que essa devolver. Um átomo
+  é-lhe enviado como um pedido `{put_chars, unicode, Utf8}` do protocolo de
+  I/O (`clause_io:put_chars/2`), o servidor escreve-o na sua codificação e a
+  chamada devolve a resposta. Um átomo
   não registado é `badarg`, um pid morto `error:terminated`, o próprio chamador
   `error:calling_self` e qualquer outro termo `function_clause`, como no OTP.
 - `io:put_chars(Chardata)` escreve chardata: carateres Unicode, binaries UTF-8

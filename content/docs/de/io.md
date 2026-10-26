@@ -1,8 +1,8 @@
 ---
 source: docs/io.md
-sourceCommit: 336caea7
-sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 63cb0a2b2caa118ec3a36a1eea641d00d761085fea56a9c7edd8509ddbde219c
+translatedAt: 2026-10-26
 ---
 # Konsolenausgabe (`io`)
 
@@ -24,9 +24,10 @@ Eingabefunktionen von `io` sind Erlang in der
   `standard_io` und `user` sind die Standardausgabe, `standard_error` ist die
   Standardfehlerausgabe (die Standardausgabe wird zuerst geleert, sodass beide
   ihre Reihenfolge behalten). Eine pid oder ein darauf registriertes Atom ist
-  ein I/O-Server: Der Text geht als UTF-8 über `file:write/2` an ihn (eine
-  geöffnete Datei des Clause-Moduls `file`), und der Aufruf gibt zurück, was
-  dieser zurückgibt. Ein nicht registriertes Atom ist `badarg`, eine tote pid
+  ein I/O-Server: Der Text geht als I/O-Protokollanfrage
+  `{put_chars, unicode, Utf8}` an ihn (`clause_io:put_chars/2`), der Server
+  schreibt ihn in seiner Kodierung, und der Aufruf gibt die Antwort zurück.
+  Ein nicht registriertes Atom ist `badarg`, eine tote pid
   `error:terminated`, der Aufrufer selbst `error:calling_self`, jeder andere
   Term `function_clause`, wie in OTP.
 - `io:put_chars(Chardata)` schreibt Chardata: Unicode-Zeichen, UTF-8-Binaries
@@ -53,8 +54,8 @@ Eingabefunktionen von `io` sind Erlang in der
   String-Erkennung), `k` (geordnete Maps) und `K` (Reihenfolge aus den
   Argumenten: `ordered`, `reversed`; Vergleichs-funs ergeben `badarg`).
   Maps werden in Schlüsselreihenfolge ausgegeben.
-- Alle Steuersequenzen von OTP 29 mit ihren Feldregeln: `~w ~W ~p ~P ~s ~e ~f ~g ~b
-  ~B ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` kürzt oder füllt auf `P` innerhalb von
+- Alle Steuersequenzen von OTP 29 mit ihren Feldregeln: `~w ~W ~p ~P ~s ~e ~f ~g ~b ~B
+  ~x ~X ~+ ~# ~c ~i ~n ~~`. `~s` kürzt oder füllt auf `P` innerhalb von
   `F`; `~w`, Ganzzahlen und Gleitkommazahlen geben `*`-Zeichen aus, wenn der
   Text nicht in `F` passt; `~c` wiederholt das Zeichen; Ganzzahlbasen kommen
   aus `P` (2..36); `~n` mit `F` schreibt `F` Zeilenumbrüche; Breiten werden

@@ -1,8 +1,8 @@
 ---
 source: docs/ports.md
-sourceCommit: a8c3f8f6
-sourceSha256: 59defde90218e0d1374492f8e7fccd5a737dec02f9c4fc9f5f94fc392a26789f
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0b9c882a696b24690dffccf55456c63d826a600ed7e2be286259a5df3eb6bf57
+translatedAt: 2026-10-26
 ---
 # Portar
 
@@ -129,7 +129,10 @@ Drivrutiner:
   `gen_udp` och `inet` ovanpå Boost.Asio; anslutningar, accepteranden och
   mottagningar är asynkrona ([socketar](#sockets)).
 
-De interna drivrutinerna för `file` och socketarna öppnas med
+- `clause_registry` (Windows): registret för `win32reg`
+  ([registret](#the-registry)).
+
+De interna drivrutinerna för `file`, socketarna och registret öppnas med
 `{spawn_driver, Name}` under Clause-namn, och deras `port_control/3`-operationer
 är ett Clause-protokoll: program använder biblioteksmodulerna, inte OTP:s
 protokoll `prim_inet`/`efile`.
@@ -262,9 +265,10 @@ och stdout är portens rör:
   argument enligt reglerna för `CommandLineToArgvW`.
 - `{env, [{Name, Value | false}]}` sätter eller tar bort variabler för barnet,
   `{cd, Dir}` dess katalog, `stderr_to_stdout` slår ihop stderr med porten;
-  annars delar barnet programmets stderr. `in` öppnar inget stdin-rör och
-  `out` inget stdout-rör (null-enheten i stället). `hide` och `overlapped_io`
-  har ingen effekt.
+  annars delar barnet programmets stderr. Enbart `in` öppnar inget stdin-rör
+  och enbart `out` inget stdout-rör (null-enheten i stället); med båda eller
+  ingetdera har porten båda, som i OTP. `hide` och `overlapped_io` har ingen
+  effekt.
 - Ett program som inte kan startas kastar `error:Reason` med POSIX-orsaken
   (`enoent`, `eacces`, `enoexec`); felaktiga namn och alternativ kastar
   `badarg`.
@@ -294,11 +298,23 @@ och stdout är portens rör:
   prompten och returnerar sedan nästa rad med dess radbrytning, resten av
   indata utan radbrytning i slutet, och sedan `eof`; `io:get_chars/2,3`
   returnerar upp till `N` tecken, sedan `eof`. Begäranden från flera processer
-  besvaras i ankomstordning. Indata returneras som bytes (ett listelement per
-  byte).
+  besvaras i ankomstordning. Indata avkodas som UTF-8 till tecken, så som OTP
+  läser sin terminal; servern behåller OTP:s noshell-alternativ för
+  `standard_io` (`binary`, `encoding`, `echo`, `log`; `io:getopts/0,1`,
+  `io:setopts/1,2`): binärläge returnerar binaries, `echo` skriver förbrukad
+  indata till standard-utdata, `get_password` är `{error, enotsup}` utan skal,
+  som i OTP.
+- Filservrar besvarar `getopts` och `setopts` som OTP:s fil-I/O-server
+  (`binary`/`list` och `encoding`; `file:open/2` tar `{encoding, E}`):
+  I/O-begäranden (`io:get_line`, `get_chars`, `put_chars`, `get_until`) kodar
+  och avkodar enhetens kodning, och `file:read/2`, `read_line/1` på en kodad
+  fil svarar som latin1-begäranden av typen `get_chars`/`get_line`
+  (`no_translation` över 255, vilket stoppar servern). Utdata från
+  `io:format/3`, `io:put_chars/2`, `io:nl/1` till valfri pid är en
+  `put_chars`-begäran i I/O-protokollet.
 - Bibliotekets modul `file` driver runtimens fildrivrutin,
   `{spawn_driver, "clause_file"}`, med `port_control/3`. Dess operationer
-  (`ports/file.cpp`: open, read, write, position, read_line, close och
+  (`ports/file.cpp`: open, read, write, position, read_line, sync, close och
   sökvägsoperationerna read_file, write_file, delete, rename, list_dir,
   make_dir, del_dir och read_file_info, `ports/file_info.cpp`; get_cwd,
   set_cwd, read_link, read_link_info, make_link och make_symlink,
@@ -308,10 +324,22 @@ och stdout är portens rör:
   läser 64 KB i förväg och returnerar rader från den bufferten; varje annan
   operation på filen söker först tillbaka över de bytes den inte har
   returnerat, så att positionerna förblir exakta.
-- `file:open/2` returnerar en I/O-servers pid som äger en filport och är
-  länkad till den som öppnade (lägena `read`, `write`, `append`, `exclusive`,
-  `binary`; andra lägen ignoreras, som OTP ignorerar alternativ den inte
-  använder; `write` trunkerar om inte även `append` anges).
+- Sökvägsoperationer gör OTP:s systemanrop och inget mer: en sökvägs status
+  läses först när en öppning eller borttagning misslyckats (för att svara
+  `eisdir` eller `eperm`), delete tar bort en fillänk och aldrig en katalog,
+  och read_file läser en fil upp till den storlek dess deskriptor rapporterar,
+  som OTP gör, utan att prova att läsa efter slutet.
+- `port_control/3` lämnar över en binary eller `[]` direkt till drivrutinen
+  (annan iodata plattas ut först), och ett svar blir resultatets binary utan
+  kopiering: svar är `ByteBuffer`s (`runtime/include/byte_buffer.hpp`),
+  bytevektorer som växer utan nollställning, så en läsning fyller svarets bytes
+  en gång.
+- `file:open/2` returnerar en I/O-servers pid som äger en filport och stängs
+  när den som öppnade avslutas, som i OTP (på Windows delas filen för läsning,
+  skrivning och borttagning, så som OTP öppnar den, så en öppen fil kan tas
+  bort eller byta namn) (lägena `read`, `write`, `append`, `exclusive`,
+  `binary`, `raw`; andra lägen ignoreras, som OTP ignorerar alternativ den
+  inte använder; `write` trunkerar om inte även `append` anges).
 - `file:write_file/3` öppnar med sina lägen plus `binary` och `write`;
   `file:read_file_info/1,2` returnerar OTP:s `#file_info{}` från sökvägens
   status (länkar följs), med tider som lokalt eller universellt datum och tid
@@ -321,6 +349,54 @@ och stdout är portens rör:
   och `io:get_line/2`, `io:get_chars/3` på den är begäranden till den servern;
   efter `close/1` returnerar begäranden `{error, terminated}` och `close/1`
   förblir `ok`.
+- Positionerad I/O och filändringar: `pread/2,3` och `pwrite/2,3` positionerar
+  och läser eller skriver sedan på en filserver (`cur` läser vidare,
+  positionen flyttas), som OTP:s server gör; en `raw`-fil tar endast
+  heltalsoffsetar (`badarg` annars) och behåller sin position. `truncate/1`
+  kapar vid positionen; `advise/4` tar OTP:s rådgivningsatomer (`posix_fadvise`
+  på Linux, ignoreras annars, som i OTP); `allocate/3` reserverar utrymme
+  (`fallocate`, macOS `F_PREALLOCATE`, `{error, enotsup}` på Windows), med
+  argumenten kontrollerade först (`badarg` för annat än tal, `einval` för
+  negativa tal och flyttal). Som OTP:s filserver svarar en server vars
+  skrivning, positionerade skrivning, sync, trunkering eller rådgivning
+  misslyckas med felet och avslutas, så senare begäranden får
+  `{error, terminated}`; en raw-fil fortsätter. `write_file_info/2,3` och
+  `change_mode/2`, `change_owner/2,3`, `change_group/2`, `change_time/2,3`
+  ändrar ägare, behörigheter och tider i prim_file:s ordning (Windows: ägare
+  ignoreras, endast skrivskyddsattributet från ägarens skrivbit, även
+  skapelsetiden sätts). `sendfile/2,5` läser en raw-fil i block (högst 1 MiB,
+  `chunk_size`) och skickar dem med `gen_tcp:send/2` eller angiven fun, OTP:s
+  reservlösning: Clause har ingen native sendfile. `format_error/1` ger OTP:s
+  texter, POSIX-texterna från `erl_posix_msg:message/1`.
+- Rader och misslyckade läsningar: `read_line/1` och `io:get_line` läser en
+  CRLF-radbrytning som LF (positionen räknar CR), som OTP; en filserver vars
+  läsning misslyckas svarar med felet och avslutas, och en vars radläsning
+  misslyckas avslutas utan svar (anroparen får `{error, terminated}`), som
+  OTP:s.
+- `compressed` och `compressed_one`: skrivning går genom en gzip
+  deflate-ström (zlib, window bits 31) som avslutas vid stängning, även när
+  servern stannar eller den som öppnade avslutas; läsning packar upp en fil
+  som börjar med gzip:s magiska bytes (`compressed` läser sammanfogade delar
+  som en, `compressed_one` stannar efter den första) och läser alla andra
+  filer som de är. Positioner räknar okomprimerade bytes: framåt genom att
+  läsa eller skriva nollor, bakåt endast vid läsning (från början igen),
+  `eof` är `einval`. Att läsa en skriven fil eller skriva en läst är `ebadf`;
+  `allocate/3` och, på raw-filer, positionerad I/O är `enotsup`; en filserver
+  stannar efter `truncate`, `advise` och `sync` (`enotsup`) som OTP:s.
+  Samtidig läsning och skrivning eller tillägg är `{error, einval}`.
+- `{zstd, Options}`: som `compressed`, genom en zstd-kontext som skapats med
+  `Options` (`{error, badarg}` när den avvisar dem): varje skrivning är en
+  egen ram och stängning lägger till en tom, så som OTP:s lager skriver;
+  läsning packar upp ramarna som läses i block om 8 KiB.
+- `ram`: filen är sitt iodata-innehåll i minnet, betjänas av en process som
+  andra filer och stängs med den som öppnade; endast lägena `read`, `write`
+  och `binary` (`read` när ingetdera anges, allt annat `badarg`, `raw` med
+  `ram` kastar `badarg`). Läsningar, skrivningar, positioner, `pread`/`pwrite`
+  (positionen behålls), `truncate`, `sync`, `advise` och `allocate` svarar som
+  OTP:s ram-fildrivrutin: skrivningar bortom slutet fyller mellanrummet med
+  nollor, offsetar och storlekar utanför 32-bitars heltal med tecken är
+  `einval`, skrivning till en skrivskyddad fil är `ebadf`, trunkering av den
+  `eacces`.
 - OTP:s I/O-protokoll: standard-indataservern och servern för varje öppen fil
   besvarar `{io_request, From, ReplyAs, Request}` med
   `{io_reply, ReplyAs, Reply}`, som `io:request/1,2` och `io:requests/1,2`
@@ -349,17 +425,16 @@ och stdout är portens rör:
   `list_dir_all/1`, `del_dir_r/1`, `copy/2,3` (namn, `{Name, Modes}` eller
   öppna filer; `{ok, BytesCopied}`), `raw_read_file_info/1`, `read_file/2`,
   `delete/2`, `native_name_encoding/0` (`utf8`). `del_dir/1` svarar `enoent`
-  för en saknad sökväg och `enotdir` för en fil. `consult/1` och familjen
-  `eval`/`script` förblir stubbar: de behöver OTP:s genererade parser.
-- Clauses `file` är fillagret; OTP:s `filelib` och `filename` är vanlig Erlang
-  som körs ovanpå det när ett programs sökväg innehåller OTP:s källkod
-  (`filelib:fold_files/5` behöver `re`); `erl_prim_loader` tillhandahålls
+  för en saknad sökväg och `enotdir` för en fil.
+- Clauses `file` är fillagret; Clauses `filelib` och `filename` körs ovanpå
+  det (`filelib:fold_files/5` använder `re`); `erl_prim_loader` tillhandahålls
   ovanpå `file` med OTP:s nakna `error`-svar och en laddningssökväg `["."]`
-  (`set_path/1`), dess laddnings- och arkivfunktioner avböjs fram till plan
-  step 71; `prim_file` och `prim_buffer` saknas fortfarande, så OTP:s
+  (`set_path/1`), dess laddnings- och arkivfunktioner avböjs;
+  `prim_file` och `prim_buffer` saknas fortfarande, så OTP:s
   anropare av `raw_file_io*` kommer aldrig in i ett program.
 - Fel följer OTP: `{error, enoent}`, `eexist`, `eisdir` (en katalog som
-  öppnas eller läses som en fil), `einval` (en negativ position), `ebadf`
+  öppnas eller läses som en fil), `einval` (en negativ position; `badarg` för
+  något som inte är en position), `ebadf`
   (läsning av en fil som bara är skrivbar eller skrivning till en som bara är
   läsbar), `badarg` för felaktiga namn och data. Filnamn är strängar,
   binaries eller atomer, kodade som UTF-8.
@@ -369,18 +444,56 @@ och stdout är portens rör:
 En socket är en port, som med OTP:s backend `inet_drv`: `is_port(Socket)` är
 sant och meddelanden i aktivt läge är `{tcp, Socket, Data}`,
 `{tcp_closed, Socket}`, `{tcp_error, Socket, Reason}`,
-`{udp, Socket, Address, Port, Data}`. Delmängden: `gen_tcp:connect/3,4`,
+`{udp, Socket, Address, Port, Data}`. Delmängden:
+`gen_tcp:connect/2,3,4` (en värd och port, eller en socketadress som map),
 `listen/2`, `accept/1,2`, `send/2`, `recv/2,3`, `close/1`,
-`controlling_process/2`, `shutdown/2`; `gen_udp:open/1,2`, `send/4`,
-`recv/2,3`, `close/1`; `inet:setopts/2`, `inet:port/1`, `inet:peername/1`,
-`inet:sockname/1`; lägena `{active, true | false | once}`, `binary`/`list`,
-`{packet, 0 | 1 | 2 | 4 | raw}`, `{reuseaddr, Bool}`, `{backlog, N}`,
+`controlling_process/2`, `shutdown/2`; `gen_udp:open/1,2`, `connect/2,3`,
+`send/2,3,4,5` (OTP:s destinationsformer och tilläggsdata), `recv/2,3`,
+`close/1`; `inet:setopts/2`, `getopts/2`, `getstat/1,2`, `info/1`, `i/0,1,2`,
+`monitor/1`, `cancel_monitor/1`, `port/1`, `peername/1`, `peernames/1,2`,
+`sockname/1`, `socknames/1,2`; lägena `{active, true | false | once}`,
+`binary`/`list` (`{mode, M}`), `{packet, 0 | 1 | 2 | 4 | raw}`, `{backlog, N}`,
 `{ip, Address}`/`{ifaddr, Address}`, `inet`/`inet6`; IPv4- och IPv6-adresser
 som tupler, värdnamn som strängar eller atomer (`loopback` inräknat).
-Justeringsalternativen `nodelay`, `keepalive`, `send_timeout`,
-`send_timeout_close`, `delay_send` och `exit_on_close` accepteras men
-tillämpas inte; alla andra alternativ ger `exit(badarg)`, som för ett ogiltigt
-alternativ i OTP.
+
+Alternativ utöver dataläget (`ports/socket_options.cpp`,
+`library/kernel/clause_socket_options.erl`) är drivrutinsrecord med en kod och
+ett värde, angivna när en socket öppnas (sätts innan den binds eller ansluts)
+eller med `setopts/2`; varje alternativ i ett `setopts/2`-anrop kontrolleras
+innan något sätts. Systemets alternativ (`reuseaddr`, `keepalive`, `dontroute`,
+`linger`, `broadcast`, `sndbuf`, `recbuf`, `nodelay`, `tos`, `tclass`,
+`ipv6_v6only`, `multicast_ttl`, `multicast_loop`, `multicast_if`,
+`add_membership`, `drop_membership`, `exclusiveaddruse` på Windows, `priority`
+och `reuseport` där systemet har dem) går till `setsockopt` och läses tillbaka
+med `getsockopt`; de alternativ OTP:s `inet_drv` behåller självt (`buffer`,
+`header`, `deliver`, `exit_on_close`, `send_timeout`, vattenmärken,
+`packet_size`, ...) behålls med inet_drv:s standardvärden och tillämpas inte
+([skillnader](differences.md)). Som i inet_drv höjer en mottagningsbuffert
+`buffer` tills det sätts, och `getopts/2` utelämnar alternativ som en
+sockettyp saknar (`broadcast` för en TCP-socket, `nodelay` för en UDP-socket,
+`tclass` för IPv4) och avvisar okända med `{error, einval}`. En accepterad
+anslutning övertar sin lyssnande sockets alternativ. `send/5` med tilläggsdata
+sätter `tos`, `tclass` eller `ttl` enbart för det datagrammet; på Windows är
+det `{error, einval}`, som i OTP.
+
+Varje socket räknar sin trafik som inet_drv gör för `getstat/1,2`: mottagna
+paket är läsningar (TCP) eller datagram, skickade paket är `send`-anrop (med
+sitt pakethuvud) eller datagram, med inet_drv:s löpande medelvärden;
+`send_pend` är köad utdata som inte skrivits. `getstatus` ger inet_drv:s
+statusflaggor (`open`, `connected`, `connecting`, `listen`, `accepting`), som
+`info/1` och `i/0,1,2` skriver ut med OTP:s namn och modulkolumn (`inet_tcp`,
+`inet6_udp`, ...). Frågor om en stängd socket besvaras med `{error, einval}`,
+som i OTP.
+
+Modulen `socket` (`library/kernel/socket.erl`) använder samma drivrutinsportar
+i passivt binärläge. En strömsocket kan bindas innan den lyssnar eller
+ansluter (operation 22 öppnar och binder systemsocketen, som `listen` gör
+till accepterare eller `connect` ansluter); en datagramsocket binds av
+`udp_open`, implicit vid sin första sändning. Slutet på en anslutning besvarar
+varje väntande `recv` (även en som begär fler bytes än som återstår).
+`socket` behåller de bytes som en recv inte tog i sin egen buffert, så
+`recv/2,3,4` ger OTP:s `{error, {timeout, Data}}` och
+`{error, {closed, Data}}`.
 
 Implementation (`runtime/src/ports/sockets.cpp`):
 
@@ -422,10 +535,27 @@ Implementation (`runtime/src/ports/sockets.cpp`):
   resolver, `getaddrinfo`) och `gethostbyname/1,2` (`h_name` är det
   efterfrågade namnet, inga alias) svarar genom en socketport som öppnas för
   förfrågan.
-- Clauses `gen_tcp`, `gen_udp` och `inet` är nätverkslagret och växer mot
-  OTP:s exportlistor när program behöver det; OTP:s moduler `socket` och
-  `net` (socket-NIF-API:t) saknas, liksom `prim_socket`, `prim_net`,
+- Tjänster, omvända uppslagningar och gränssnitt (`inet:getservbyname/2`,
+  `getservbyport/2`, `gethostbyaddr/1`, `getifaddrs/0,1`) är inbyggda
+  `clause_net`-funktioner som delas med `net`
+  ([nätverksnamn](builtins.md#network-names)).
+- Clauses `gen_tcp`, `gen_udp`, `inet` och `net` är nätverkslagret; OTP:s
+  modul `socket` (socket-NIF-API:t) saknas, liksom `prim_socket`, `prim_net`,
   `prim_inet` och `socket_registry`.
+
+## Registret
+
+`win32reg` öppnar `{spawn_driver, "clause_registry"}` på Windows
+(`runtime/src/ports/registry_windows.cpp`). Drivrutinen behåller tillståndet
+hos OTP:s registerdrivrutin (begärd åtkomst, aktuell nyckel och dess rot,
+inledningsvis `HKEY_CLASSES_ROOT`) och besvarar OTP:s nio kommandon som
+synkrona `port_control/3`-operationer med de svar OTP:s drivrutin skickar som
+portdata: `o`, `e` och errno-namnet (registerskada är `eio`, en borttagen
+nyckel `einval`, andra Windows-fel så som C-runtime mappar dem), `k` och ett
+nyckelnamn, `v`, typ, namn och data (strängar utan sin avslutande nolla,
+DWORD-värden i big-endian), `s` och aktuell nyckel. Listningar returnerar
+varje svar, vart och ett föregånget av sin 32-bitars storlek. Namn och
+strängar använder ANSI-teckentabellen, som OTP:s drivrutin.
 
 ## Tillhandahålls inte
 

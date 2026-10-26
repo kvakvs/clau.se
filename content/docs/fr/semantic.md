@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: a8c3f8f6
-sourceSha256: f1156b4ef9a29821e7a254cd605e1b92c22cf3304d574ae47f4d558a786f2c18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 5b75d27b8b6d10019ba765c950ca875904e7eb3d8dea6044ac59e240fccc259f
+translatedAt: 2026-10-26
 ---
 # Analyse sémantique
 
@@ -60,9 +60,9 @@ d'`erl_lint`.
     L, column C)` lorsqu'un behaviour antérieur l'exige aussi (un callback
     optionnel compte lorsqu'il est exporté) ;
   - `behaviour M undefined` lorsque `M` n'est pas dans le lot ou n'a pas de
-    `behaviour_info/1` (les behaviours d'OTP comme `gen_server` ne sont pas
-    dans la [bibliothèque](library.md) de Clause), ainsi que les erreurs de nom
-    de module d'OTP pour les noms qui ne peuvent pas être des modules
+    `behaviour_info/1` (un behaviour d'OTP que la [bibliothèque](library.md) de
+    Clause ne fournit pas encore, comme `application`), ainsi que les erreurs
+    de nom de module d'OTP pour les noms qui ne peuvent pas être des modules
     (`the module name must not be empty`, `... must be an atom`, ...).
 - Les avertissements ne font pas échouer la compilation. Les options
   `-compile` `nowarn_behaviours` (toute la vérification, erreurs de nom de
@@ -259,10 +259,34 @@ specs.
   (`semantic/types/inference_inputs`), mis en correspondance par les motifs de
   tête de chaque clause ; les appels récursifs comptent aussi. Les entrées
   partent de `none()` (une fonction que rien n'appelle ne s'exécute jamais et
-  infère `none()`) et croissent au fil des passes sur le lot : 8 passes
-  joignent, les suivantes élargissent comme pour les résultats récursifs ; les
-  entrées qui ne se sont pas stabilisées après 16 passes deviennent `term()`
-  (signalées comme élargies).
+  infère `none()`) et croissent au fil des passes sur le lot. Chaque entrée
+  gravit des paliers selon le nombre de ses changements : ses 4 premiers
+  changements joignent, les 2 suivants élargissent comme pour les résultats
+  récursifs, les 2 suivants remplacent aussi les conteneurs à l'intérieur d'un
+  conteneur par `term()`, et un changement supplémentaire donne `term()`
+  (signalé comme élargi). Les entrées qui ne se sont pas stabilisées après
+  63 passes deviennent `term()` (signalées comme élargies). Une composante
+  récursive est coûteuse dès qu'une résolution dépense plus de 2^17 jonctions
+  du treillis (jonctions imbriquées comprises) et plus de 1/16 du maximum de
+  jonctions dépensées par une passe jusque-là ; lorsque les entrées de ses
+  membres changent de nouveau, elles deviennent aussitôt `term()` (signalées
+  comme élargies), de sorte que ses résolutions suivantes ne suivent plus les
+  fluctuations des entrées de ses appelants.
+- Les passes après la première ne parcourent que les composantes pour
+  lesquelles quelque chose qu'elles lisent a changé
+  (`semantic/types/inference_incremental`) : une composante conserve ses
+  résumés et ses faits d'expressions tant que les entrées de ses membres,
+  chaque résumé qu'elle a lu (appels, `fun F/A`, `apply`) et les entrées des
+  appelés qu'elle a évalués de nouveau restent inchangés, et que les budgets de
+  passe et de réanalyse lui répondraient de la même façon (le budget de
+  réanalyse est aussi entamé qu'au début de son dernier parcours, ou
+  accorderait ou refuserait tout de nouveau) ; son travail compte toujours dans
+  le budget de la passe. Les résultats sont les mêmes qu'en parcourant chaque
+  composante. La passe finale avec des entrées `term()` les parcourt toutes.
+  Après une passe, seules les entrées des fonctions parcourues pendant
+  celle-ci ou appelées par une fonction parcourue pendant celle-ci sont jointes
+  de nouveau à partir de leurs appels ; les faits d'arguments et les entrées
+  des autres restent ceux de la dernière jonction.
 - Les littéraux ont des faits exacts : les entiers de toute taille et les
   caractères sont des singletons, les atomes des atomes singletons, les
   flottants `float()`, les chaînes des listes non vides de leurs caractères
@@ -506,8 +530,13 @@ specs.
 - Un `receive` est la jonction de ses clauses et de son corps `after`, qu'un
   délai `infinity` n'exécute jamais.
 - Une composante récursive fait partir le résultat de chaque membre de
-  `none()` et infère de nouveau tous les membres jusqu'à ce qu'aucun résultat
-  ne change ; chaque tour joint le nouveau résultat au précédent (l'élargit
+  `none()` lors de sa première résolution, puis, aux passes suivantes, des
+  résumés obtenus à la fin de sa dernière résolution : le premier parcours de
+  chaque membre y remplace son résumé par ce qu'il a trouvé (le résumé
+  précédent ne sert que d'hypothèse aux appels avant ce parcours), de sorte
+  qu'aucun type de fonction périmé ne subsiste. Elle infère de nouveau les
+  membres jusqu'à ce qu'aucun résultat ne change ; chaque tour joint le nouveau
+  résultat au précédent (l'élargit
   après les 8 premiers tours, [domaine d'inférence](#inference-domain)), et un
   appel récursif en attente n'ajoute rien à une jonction. Une fonction qui ne
   peut jamais retourner reste `none()`. Une composante qui n'a pas convergé
@@ -532,7 +561,13 @@ specs.
   dernier parcours : chaque parcours note les résumés qu'il lit (appels,
   résultats d'appels, `fun F/A`), un résumé modifié marque ses lecteurs, et un
   membre non marqué conserve ses faits d'expressions. Le premier tour parcourt
-  tous les membres.
+  tous les membres. Un membre conserve son dernier parcours d'une résolution
+  à l'autre : une résolution reprend le résultat de ce parcours, avec ses faits
+  d'expressions et son travail, tant que les membres qu'il a lus ont les mêmes
+  résultats et types de fonction, et que tout ce qu'il a lu d'autre est
+  inchangé et recevrait les mêmes réponses, comme pour une composante conservée
+  lors des passes incrémentales. Les résultats sont les mêmes qu'en le
+  parcourant.
 - Un budget de travail partagé borne l'inférence ; l'épuisement fait perdre de
   la précision et retombe sur du code générique, sans jamais rejeter un
   programme.
@@ -662,7 +697,7 @@ types Erlang, les catégories par leurs noms intégrés.
 | Rien | `none()` | Élément neutre | Une fonction qui ne retourne jamais reste `none()` |
 | N'importe quoi | `term()` | Absorbe tout fait | `dynamic()` et `any()` sont `term()` |
 | Entiers | `42`, `1 \| 3 \| 7` | Union de singletons | Plus de 8 singletons deviennent leur plage |
-| Plage d'entiers | `1..10`, `0..255` | Plus petite plage contenant les deux | Une borne qui a bougé entre deux tours passe au seuil suivant : une borne inférieure à 1, puis 0, puis non bornée ; une borne supérieure à -1, puis non bornée |
+| Plage d'entiers | `1..10`, `0..255` | Plus petite plage contenant les deux | Une borne qui a bougé entre deux tours passe au seuil suivant : une borne inférieure à 1, puis 0, puis non bornée ; une borne supérieure à -1, puis non bornée. Les bornes dans les conteneurs s'élargissent aussi lorsque le fait précédent contient au même endroit un tuple (de cette taille et de cette étiquette), une map (avec ces clés) ou une liste |
 | Entiers non bornés | `pos_integer()` (1 et plus), `non_neg_integer()` (0 et plus), `neg_integer()` (-1 et moins), `integer()` | Plus petit intervalle contenant les deux, affiché par sa catégorie | — |
 | Flottants | `float()` | — | — |
 | Nombres | `number()` | Une plage ou une catégorie d'entiers jointe avec `float()` | Des entiers singletons avec `float()` restent `1 \| float()` |
@@ -691,6 +726,13 @@ types Erlang, les catégories par leurs noms intégrés.
   valeurs que les deux contiennent (ou plus, mais `none()` seulement
   lorsqu'ils n'en partagent aucune). Une intersection vide signifie que le
   chemin ne peut pas s'exécuter.
+- Les faits sont les nœuds d'un graphe qui ne changent jamais ; le graphe
+  conserve donc la réponse de chaque jonction de deux faits, intersection et
+  test d'inclusion (`within`) pour le reste du lot : presque tous se répètent.
+  Une réponse conservée compte toujours les jonctions qu'elle a exécutées pour
+  [l'abandon selon le coût](#inference), de sorte que les résultats n'en
+  dépendent pas ; une réponse calculée pendant que le budget de nœuds
+  élargissait un fait n'est pas conservée.
 
 En `-O2` avec la spécialisation par type, l'abaissement utilise ces faits pour
 supprimer des vérifications ([spécialisation](specialization.md#proofs)) ; les
@@ -832,9 +874,18 @@ sum() -> 1 + 2.
   `clauses.erl` les types de fonction, la sélection d'appel et l'évaluation
   par appel en deçà et au-delà de leurs budgets ; `dependent.erl` les
   [faits dépendants](#dependent-facts) ; `trees.erl` et `parsers.erl` les
-  récursions sur des arbres et les formes de parseurs générés.
+  récursions sur des arbres et les formes de parseurs générés ; `widening.erl`
+  les compteurs dans des conteneurs qui s'élargissent et se stabilisent.
 - `tests/fixtures/inference/contracts/` contient les vérifications des
   spécifications (CTest `inference_contracts`).
+- `tests/fixtures/inference/budgets/walkers.erl` est une passe de compilateur
+  sous la forme habituelle en Erlang (un gros record d'état transmis entre des
+  fonctions de parcours mutuellement récursives dont les résultats sont des
+  unions de nombreux records). Le test CTest `inference_walkers`
+  (`tests/compiler/inference/walkers.py`) maintient ses passes, unités de
+  travail et jonctions du treillis, ainsi que les résolutions, tours et parcours
+  de membres du groupe de fonctions de parcours, dans des budgets supérieurs
+  d'environ un quart aux décomptes actuels, et exécute le programme.
 
 ### Affichage des types
 

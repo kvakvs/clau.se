@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 336caea7
-sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 2cf400ead0e2884a583331bb170855aa26c0961dcb974a1e54e32894bebbdbcf
+translatedAt: 2026-10-26
 ---
 # Runtime
 
@@ -173,10 +173,12 @@ de `persistent_term` ([builtins](builtins.md#persistent-terms)).
   (los builtins usan el hash de términos de `phash2`) y por igualdad exacta,
   comparada en su sitio.
 - Una lectura devuelve la palabra almacenada en su sitio, como los términos
-  persistentes literales de OTP: cualquier proceso puede retenerla y enviarla
-  (una copia a otro proceso conserva la palabra); las recolecciones no la
-  modifican y la admisión la acepta como un literal. Los búferes de mensajes
-  y los nuevos términos persistentes copian las palabras persistentes.
+  persistentes literales de OTP: cualquier proceso puede retenerla; las
+  recolecciones no la modifican y la admisión la acepta como un literal. Los
+  envíos a otros procesos, los búferes de mensajes y los nuevos términos
+  persistentes copian las palabras persistentes (un envío recorre su mensaje
+  una vez, antes del bloqueo del ejecutor, de modo que no pueda compartir un
+  área que podría retirarse entretanto).
 - **Recuperación.** El área de un valor reemplazado o borrado se retira bajo
   una nueva época. Desde entonces toda copia copia sus palabras, y cada
   proceso registrado cuando se retiró copia los objetos en retirada que
@@ -194,6 +196,126 @@ de `persistent_term` ([builtins](builtins.md#persistent-terms)).
   reemplazados y borrados retenidos por lectores, lectores y escritores
   concurrentes y recuperación (copias en retirada, evacuación, áreas y cargos
   liberados).
+
+## Tablas ETS
+
+Un registro por runtime (`ets/tables`), propiedad de `Runtime::Impl` y accesible
+mediante `ProcessContext::ets_tables()`, guarda las tablas de `ets`
+([builtins](builtins.md#ets)).
+
+- **Objetos.** Cada objeto almacenado (y los datos de un heredero) es un
+  `DetachedTerm` (`memory/detached_term`): una copia plana en un bloque propio,
+  realizada por la copia de grafos, fuera de todos los heaps. Los literales de
+  módulo siguen compartidos; los términos persistentes se copian, porque sus
+  áreas pueden retirarse; las celdas de binary comparten sus búferes. Los
+  bloques nunca se mueven ni pertenecen a ningún proceso, por lo que los
+  lectores los comparan y calculan su hash en su sitio y los copian a su propio
+  heap. Sus palabras se cargan a la cuenta de memoria del runtime.
+- **Índices** (`ets/index`). Las tablas `set`, `bag` y `duplicate_bag` usan un
+  índice hash: un array de cubetas de tamaño potencia de dos, cada una con un
+  vector pequeño de entradas (una por clave, con sus objetos en orden de
+  inserción), que duplica su tamaño por encima de dos claves por cubeta y lo
+  reduce a la mitad por debajo de una por cada ocho. Las claves se encuentran
+  mediante la dispersión de 64 bits de su hash `phash2` y la igualdad exacta.
+  Las tablas `ordered_set` usan un `std::set` con un nodo por clave en orden
+  de términos, donde las claves que se comparan iguales (`1`, `1.0`) son una
+  sola clave; reemplazar un objeto conserva su nodo.
+- **Partes y bloqueos** (`ets/table`). Una tabla hash con `write_concurrency`
+  (`true` o `auto`) divide sus claves en 64 partes según los bits altos del
+  hash, cada una con un índice y su propio `shared_mutex`; cualquier otra
+  tabla tiene una parte. Las operaciones sobre una sola clave comparten el
+  bloqueo de la tabla y las de tabla completa lo toman en exclusiva (listas de
+  objetos, `delete_all_objects/1`, fijación, eliminación), de modo que insertar
+  una lista es atómico y aislado como en OTP. Las lecturas copian los objetos
+  mientras mantienen el bloqueo compartido de su parte.
+- **Recorridos y fijación.** Una tabla hash se recorre parte por parte y cubeta
+  por cubeta, tanto hacia atrás como hacia delante; `next/2` desde una clave
+  que no contiene produce `badarg`. Mientras la tabla está fijada
+  (`safe_fixtable/2`, `foldl/3`), sus índices nunca cambian de tamaño, una clave
+  eliminada permanece como una marca de borrado que retiene un objeto para su
+  clave, y las claves nuevas se añaden al final de su cubeta, de modo que un
+  recorrido ve una vez cada clave que permaneció. La última liberación de la
+  fijación elimina las marcas y redimensiona los índices. Un ordered_set se
+  recorre desde cualquier clave hasta la más cercana.
+- **Registro.** Tablas por número identificador (una referencia ordinaria de la
+  secuencia del programa) y por nombre, y las tablas que cada proceso posee o
+  fija. El fin de un proceso (`Executor::release_tables`, bajo el bloqueo del
+  ejecutor antes de señalar enlaces y monitores) libera sus fijaciones y
+  transfiere cada tabla que poseía a un heredero vivo distinto de sí mismo,
+  que recibe `{'ETS-TRANSFER', Table, From, HeirData}` (ningún mensaje para un
+  heredero establecido sin datos), o la elimina. Orden de bloqueos: el del
+  ejecutor, el del registro y el de una tabla; los builtins nunca toman el
+  bloqueo del ejecutor mientras mantienen un bloqueo ETS, y `give_away/3`
+  envía su mensaje después de liberarlos.
+- **Porciones**. `tab2list/1` y las selecciones de todos los objetos
+  (`select/2`, `select_reverse/2`, `match/2`, `match_object/2`,
+  `select_count/2`) recorren la tabla con tantos objetos por porción como
+  permita el presupuesto del proceso y después ceden mediante una trampa
+  (`builtins/ets/table_walks.cpp`); el proceso que recorre una tabla hash la
+  fija desde su primera trampa hasta el final, como hace OTP, de modo que sus
+  ranuras permanecen en su sitio. `delete_all_objects/1` y `delete/1` vacían o
+  eliminan la tabla de una vez extrayendo sus índices (`Table::empty`,
+  `Table::destroy`), y después liberan los objetos antiguos por porciones
+  (`builtins/ets/disposal.cpp`, `Index::shed`); una tabla hash fijada se vacía
+  en su sitio y conserva sus marcas de borrado. Las tablas que deja un
+  propietario terminado las libera el hilo de trabajo después de liberar el
+  bloqueo del ejecutor. `select_delete/2` y `select_replace/2` siguen
+  ejecutándose de una vez.
+- **Contadores en su sitio.** `update_counter/3,4` sobre una clave cuyo objeto
+  es la copia propia de la tabla y cuyos contadores siguen siendo enteros
+  pequeños cambia los campos almacenados en su sitio, bajo el bloqueo de la
+  parte, como hace OTP; un bignum, un objeto literal de módulo o un objeto por
+  defecto toma la ruta general, que almacena una copia nueva.
+- El CTest `executables_ets_concurrency` cubre contadores, inserciones y
+  recorridos desde muchos procesos con uno y cuatro hilos de trabajo, y el fin
+  de propietarios de muchas tablas; `executables_ets_portions` muestra otros
+  procesos ejecutándose durante operaciones largas con un solo hilo de trabajo.
+- **Selecciones** ([especificaciones de coincidencia](#match-specifications)).
+  Una selección de tabla completa lee cada parte bajo sus bloqueos; una cuyos
+  patrones de cabecera vinculan todos la clave busca las claves. Una selección
+  por bloques recorre una tabla hash ranura por ranura (cada ranura bajo el
+  bloqueo de su parte) y un ordered_set por claves desde la última, por lo que
+  una continuación designa una ranura o una clave. `select_delete/2` y
+  `select_replace/2` modifican cada parte bajo su propio bloqueo (`Index::edit`);
+  una tabla hash fijada conserva entretanto las marcas de las claves eliminadas.
+
+## Especificaciones de coincidencia
+
+`runtime/src/match_spec/` compila y ejecuta especificaciones de coincidencia
+como hace `erl_db_util.c` de OTP, para `ets` y `erlang:match_spec_test/3`
+([builtins](builtins.md#ets)).
+
+- **Programas.** `compile` convierte una especificación en un `Program`: por
+  cláusula, un patrón de cabecera, expresiones de guard y de cuerpo sobre
+  ranuras de variables numeradas, y las variables que vincula la cabecera
+  (`'$$'`). Las constantes se pliegan como en OTP (`{{...}}` y `{const, X}` en
+  valores; un map constante conserva sus claves tal como están escritas) y se
+  guardan como copias `DetachedTerm`, de modo que un programa no pertenece a
+  ningún proceso. Dos dialectos: `table` (ets) y `trace` (las cabeceras son
+  listas de argumentos, una lista que termina en `'_'` coincide con un prefijo,
+  `'$N'` o `'_'` con la lista completa; los cuerpos pueden ejecutar acciones
+  de traza).
+- **Comprobaciones.** El compilador aplica las comprobaciones de OTP en su
+  mismo orden y, al realizar el análisis de lint (`erlang:match_spec_test/3`),
+  da los mensajes de OTP para la primera cláusula que tenga alguno, compilando
+  los operandos de llamadas y tuplas del último al primero como hace OTP; un
+  mensaje se corta a los 99 bytes como lo corta el búfer de OTP. Las funciones
+  de guard son las de la tabla de OTP (`match_spec/functions.cpp`), con los
+  contextos en que se puede llamar a cada una; anidar más de 1000 niveles
+  produce `system_limit`.
+- **Ejecución** (`match_spec/run.cpp`). Las cláusulas se prueban en orden. Una
+  cabecera vincula partes del objeto en su sitio (igualdad exacta para
+  constantes y variables repetidas, maps que contienen al menos las claves del
+  patrón); los guards las leen en su sitio y deben dar exactamente `true`; un
+  cuerpo copia cada valor que produce al heap del llamante. Una función de
+  guard que lanza una excepción hace fallar la cláusula; en un cuerpo produce
+  `'EXIT'` en su lugar y el cuerpo continúa, como también hacen `and`, `or`,
+  `andalso` y `orelse` sobre un término que no es booleano. La mayoría de las
+  funciones de guard son las operaciones sobre términos del servicio de
+  inmediatos (`terms/immediate_terms.hpp`).
+- **Especificaciones compiladas**: son referencias handle que contienen el
+  programa (`match_spec/handles.cpp`), por lo que sobreviven a
+  `term_to_binary/1` dentro del programa como las magic references de OTP 20+.
 
 ## Contabilidad del planificador
 

@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 336caea7
-sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 4e14e8fda395d76503e8c295505005d07d3fa8c33b4ba32f99c48caae55921ab
+translatedAt: 2026-10-26
 ---
 # Representación de términos
 
@@ -75,9 +75,10 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   estáticos inmortales, se encuentran sin el bloqueo y no cuentan ni en
   `size()` ni para `max_atoms`; el código generado los usa como constantes.
   Cualquier otra palabra de átomo es privada del runtime.
-- Los literales compuestos de constantes (cadenas, listas y tuplas de
-  inmediatos y otros literales, flotantes, bignums) son celdas del área de
-  literales del módulo, construidas en tiempo de compilación y compartidas
+- Los literales compuestos (cadenas, listas, tuplas y maps de literales,
+  flotantes, bignums, binaries constantes) son literales de módulo: se
+  codifican en tiempo de compilación, se decodifican una vez por runtime al
+  registrarse en su heap de literales y se comparten
   ([áreas de literales](runtime-heap.md#areas)); los literales enteros del
   rango pequeño son inmediatos.
 - Los demás literales átomo se cargan desde la caché de átomos del módulo
@@ -86,6 +87,15 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   módulo; un contexto cuyo `FrameState::runtime` coincide con la reclamación la
   lee sin llamada, y cualquier otro llama a `CLAUSE_atom_v3`. La reclamación se
   devuelve cuando el servidor de código del runtime libera el módulo.
+- El código C++ del runtime escribe los átomos literales como `"name"_atom`
+  (`atom_names.hpp`): un `CachedAtom` estático por grafía conserva la última
+  palabra internada para ella, y `AtomStorage::intern` la devuelve tras una
+  lectura del índice sin bloqueos cuando este runtime la emitió, omitiendo la
+  validación, el bloqueo compartido y el map de grafías. Una palabra de otro
+  runtime o de uno ya desmontado no supera esa comprobación y se reemplaza,
+  por lo que varios runtimes en un proceso siguen funcionando correctamente
+  (solo actualizan la caché). Las funciones auxiliares de los builtins reciben
+  `AtomName`, una grafía con o sin dicha caché.
 - El internado y la búsqueda son seguros frente a hilos de trabajo
   concurrentes del planificador ([hilos](runtime.md#threads)); una grafía
   conserva una sola palabra.
@@ -108,6 +118,9 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   explícitos. Lo mismo hacen `band`, `bor`, `bxor`, `bsr`, `div`, `rem` y las
   comparaciones de dos enteros pequeños
   ([formas en línea](abi.md#runtime-services)).
+- El servicio multiplica un bignum (o un producto pequeño desbordado) por un
+  entero pequeño limb por limb, directamente desde la celda del operando a la
+  nueva; las demás operaciones con bignums pasan por un valor multiprecisión.
 - `div` trunca hacia cero; `rem` toma el signo del dividendo; las operaciones
   bit a bit usan complemento a dos infinito; los desplazamientos negativos
   invierten la dirección; los desplazamientos a la derecha enormes se saturan a
@@ -187,17 +200,20 @@ codificaciones en palabras están en [abi.md](abi.md#terms).
   generado construye en línea las construcciones pequeñas de ancho constante
   ([marcos y transferencias](abi.md#frames-and-transfers)).
 - Concatenaciones al final, como los binarios escribibles de OTP: una
-  construcción que empieza con un binary completo (`<<Acc/binary, ...>>`)
-  construye su resultado en un búfer con espacio libre (el doble de su tamaño,
-  al menos 256 bytes) cuya celda fuera del heap en el proceso creador registra
-  sus bits en uso y su capacidad (cero en cualquier otra celda, incluidas las
-  copias). Una concatenación posterior cuya vista del acumulador termina
-  exactamente allí escribe los nuevos bytes en el espacio libre, que ninguna
-  vista cubre, y devuelve una vista más larga del mismo búfer: un sub-binary de
-  la propia celda fuera del heap del búfer, que puede llegar más allá de los
-  bits de esa celda. Cualquier otro acumulador (una vista más antigua, la de
-  otro proceso, una no alineada, un búfer lleno) se copia en un nuevo búfer de
-  tamaño doble. Las demás vistas del búfer nunca cambian.
+  construcción que empieza con un binary completo (`<<Acc/binary, ...>>`) de
+  más de 64 bytes construye su resultado en un búfer con espacio libre (su
+  tamaño redondeado hacia arriba a una potencia de dos, al menos 256 bytes)
+  cuya celda fuera del heap en el proceso creador registra sus bits en uso y
+  su capacidad (cero en cualquier otra celda, incluidas las copias). Una
+  concatenación posterior cuya vista del acumulador termina exactamente allí
+  escribe los nuevos bytes en el espacio libre, que ninguna vista cubre, y
+  devuelve una vista más larga del mismo búfer: un sub-binary de la propia
+  celda fuera del heap del búfer, que puede llegar más allá de los bits de esa
+  celda. Cualquier otro acumulador (una vista más antigua, la de otro proceso,
+  una no alineada, un búfer lleno) se copia una sola vez en un nuevo búfer, que
+  como mínimo duplica uno lleno. Las demás vistas del búfer nunca cambian. Los
+  búferes liberados se reutilizan
+  ([reutilización de búferes](runtime-heap.md#buffer-reuse)).
 - Segmentos flotantes: anchos 16/32/64; la construcción puede codificar
   infinito, pero el ajuste de patrones rechaza campos infinitos/NaN. Los ajustes
   de flotantes de ancho cero extraen `0.0`.
@@ -283,11 +299,21 @@ byte comparan bytes enteros de una vez. Orden: números < átomos < referencias
 bitstrings (los [funs](funs.md#comparison-and-printing) se ordenan entre sí).
 Los átomos se comparan por su grafía UTF-8 (orden de puntos de código); las
 tuplas por aridad y después por campos; los maps por tamaño, después por claves
-y después por valores; los bitstrings por bits lógicos. Dos enteros pequeños,
-dos flotantes o dos binarios de bytes enteros se ordenan directamente a partir
-de sus palabras o celdas (`detail::word_order`), y dos átomos a partir de sus
-grafías en la tabla de átomos (`AtomStorage::spelling`, mediante el índice
-numérico sin bloqueos), sin admisión de términos.
+y después por valores; los bitstrings por bits lógicos. Los números (enteros
+pequeños, flotantes, bignums por signo y limbs), los átomos (por sus grafías en
+la tabla de átomos, mediante el índice numérico sin bloqueos), las referencias
+locales (por número), los binaries de bytes enteros y las tuplas y listas de
+estos anidadas hasta 8 niveles se ordenan directamente a partir de sus palabras
+y celdas (`detail::word_order`), sin admisión de términos; cualquier otro par,
+un flotante frente a un bignum de la misma longitud en bits, o un entero
+pequeño mayor que 2^53 frente a un flotante usa el orden estructural. `=:=`
+sigue la misma ruta (`detail::word_exact`): los pares que ordena como distintos
+son desiguales, y una palabra o dos referencias que encuentra iguales son
+iguales, de modo que un receive que compara la referencia de una respuesta no
+admite ningún término. `lists:sort/1` y `lists:usort/1` ordenan las palabras de
+los elementos en su sitio: las listas solo de enteros pequeños y solo de átomos
+por palabra o grafía, y las demás mediante una ordenación estable por orden de
+palabras.
 
 ## Impresión
 

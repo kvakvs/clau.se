@@ -1,8 +1,8 @@
 ---
 source: docs/funs.md
-sourceCommit: a8c3f8f6
-sourceSha256: 114573ca575f133c3b45d3422218a8b98264b55c30167b405bb3008e3806c74e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 48b67a84428fd618682bf70ff7cc6bdc1eff671ca37080353b71fb6ab13088e5
+translatedAt: 2026-10-26
 ---
 # Funktionswerte
 
@@ -41,7 +41,9 @@ stammen aus den festgelegten `maint-29`-Quellen (`erts/emulator/beam/utils.c`
   oder Funktion wertet das Modul aus, dann die Funktion, dann die Argumente von
   links nach rechts. Ein Modul oder eine Funktion, das bzw. die kein Atom ist,
   löst `badarg` aus; eine Funktion, die kein Modul des Programms mit dieser
-  Stelligkeit exportiert, löst `undef` aus. Ein Aufruf in Endposition ist ein
+  Stelligkeit exportiert, löst `undef` aus, mit `{M, F, Arity, []}` an der
+  Spitze des Stacktraces (OTP zeigt die Argumente; `apply/3` und Aufrufe
+  externer funs zeigen sie ebenfalls). Ein Aufruf in Endposition ist ein
   Endaufruf.
 - `apply(Fun, Args)` und `apply(M, F, Args)` (automatisch importiert, sofern
   das Modul `apply/2,3` nicht definiert oder den Import unterdrückt; auch
@@ -50,6 +52,10 @@ stammen aus den festgelegten `maint-29`-Quellen (`erts/emulator/beam/utils.c`
   (`{badfun, Fun}`, `{badarity, {Fun, Args}}`); `apply/3` sucht
   `M:F/length(Args)` wie oben, sodass mehr als 255 Argumente `undef` auslösen.
   Beide sind in Endposition Endaufrufe und in Guards nie zulässig.
+- Zur Laufzeit über ihren Namen erreichte `erlang:apply/2,3`
+  (`spawn(erlang, apply, [F, Args])`, `M:apply(...)` mit an `erlang` gebundenem
+  `M`, eine Timer-Aktion) sind Builtins (`builtins/erlang/apply.cpp`), die bei
+  der aufgerufenen Funktion mit denselben Fehlern fortsetzen.
 - `fun M:F/A` mit Variablen löst `badarg` aus, sofern `M` und `F` nicht Atome
   sind und `A` keine Ganzzahl in 0..255 ist; die Funktion muss erst existieren,
   wenn die Fun aufgerufen wird.
@@ -100,6 +106,68 @@ stammen aus den festgelegten `maint-29`-Quellen (`erts/emulator/beam/utils.c`
 - Eine anonyme Fun im Standardwert eines Record-Felds ist eine einzige Fun für
   jede Konstruktion, die den Standardwert verwendet (OTP expandiert eine Kopie
   pro Stelle).
+
+## Inline eingebettete funs
+
+Bei `-O2` (`codegen/lowering_fun_inlining.cpp`, `lowering_list_loops.cpp`,
+`lowering_map_loops.cpp`) werden bei einem Aufruf eines an der Aufrufstelle
+bekannten anonymen fun dessen Klauseln anstelle des Aufrufs abgesenkt,
+ähnlich wie mit OTPs Option `inline_list_funcs`:
+
+- **Bekannte funs.** Ein im Aufruf geschriebener fun (`(fun(X) -> ... end)(Y)`
+  oder das erste Argument einer Listenschleife unten) oder eine einmal an
+  einen unbenannten anonymen fun (`F = fun ... end`) gebundene Variable, die
+  einmal gelesen wird oder höchstens 40 Ausdrücke enthält. Im Code eines
+  anderen fun wird der fun einer Variablen nur inline eingebettet, wenn alle
+  erfassten Werte ebenfalls dort gebunden sind. Inline eingebettete Rümpfe
+  werden höchstens vier Ebenen tief verschachtelt; binary- und
+  Gleitkommaschleifen betten nichts inline ein.
+- **Klauseln an Ort und Stelle.** Die Argumente werden gegen die Klauseln und
+  guards des fun abgeglichen, und der Rumpf der passenden Klausel läuft im
+  Frame des Aufrufers. Passt keine Klausel, wird der fun aufgerufen, sodass
+  `function_clause` wie zuvor aus dem eigenen Code des fun stammt. Ein im
+  Aufruf geschriebener fun wird nur auf diesem Pfad und den unten genannten
+  Pfaden gebaut, die seinen Wert benötigen (Closure-Sinking); der fun einer
+  Variablen wird wie zuvor dort gebaut, wo sie gebunden wird.
+- **Listenschleifen.** `lists:map/2`, `filter/2`, `foreach/2`, `all/2`,
+  `any/2`, `flatmap/2`, `foldl/3`, `foldr/3`, `mapfoldl/3` und `mapfoldr/3`
+  aus Clauses eigenem `lists`-Modul mit einem bekannten fun der richtigen
+  Stelligkeit werden zu einer Schleife über die Liste in der aufrufenden
+  Funktion. Der fun-Aufruf jedes Elements wird inline eingebettet; Listen
+  werden umgekehrt aufgebaut und am Ende einmal umgedreht; `foldr/3` und
+  `mapfoldr/3` drehen zuerst ihre Eingabe um, sodass ihr fun die Elemente
+  weiterhin vom letzten an sieht, nachdem ein unechtes Listenende bereits
+  gescheitert ist. Wie die ersetzte Rumpfrekursion führen Listenschleifen nur
+  dort Speicherbereinigungen durch, wo sie abgeben (alle 4,000 Elemente ohne
+  andere Aufrufe), und in den Aufrufen ihres fun.
+- **map-Faltungsschleifen.** `maps:fold/3` aus Clauses eigenem `maps`-Modul
+  mit einem bekannten fun der Stelligkeit 3 wird zu einer Schleife über die
+  Einträge der map (die klassische map-Zelle oder einmal in eine tupelförmige
+  Zelle kopierte Baumeinträge, wie `maps:fold/3` sie liest), in
+  Schlüsselreihenfolge wie `maps:fold/3`. Ein map-Iterator oder ein Wert, der
+  keine map ist, führt den tatsächlichen `maps`-Aufruf aus, der ihn behandelt
+  oder seinen eigenen Fehler auslöst.
+- **Akkumulatoren im Eigenbesitz.** Wenn jede Klausel eines Faltungs-fun
+  (`maps:fold/3`, `lists:foldl/3`, `lists:foldr/3`) ihren
+  Akkumulatorparameter aktualisiert zurückgibt,
+  `fun(K, V, Acc) -> Acc#{K := V + 1} end`, wobei `Acc` sonst nirgends
+  gelesen und von keinem fun erfasst wird, besitzt die Schleife das
+  Ergebnis jedes Schritts: Ab dem zweiten Schritt erfolgt die Aktualisierung
+  im Eigenbesitz und ändert die map direkt
+  ([map-Bäume](runtime-heap.md#map-trees)). Der erste Schritt kopiert, da der
+  ursprüngliche Akkumulator anderswo gehalten werden kann.
+- **Gleiche Ergebnisse und Gründe.** Werte, die Ausführungsreihenfolge des fun
+  und Fehlergründe entsprechen denen von `lists`: Eine Nichtlisten-Eingabe
+  für `map/2`, `foldl/3`, `all/2`, `any/2` und die unechten Listenenden von
+  `filter/2`, `foreach/2`, `foldr/3`, `mapfoldl/3`, `mapfoldr/3` führen den
+  tatsächlichen `lists`-Aufruf aus, der seinen eigenen Fehler auslöst; ein
+  unechtes Listenende von `map/2`, `foldl/3`, `all/2`, `any/2`, `flatmap/2`
+  löst `function_clause` im Aufrufer aus. Ein nichtboolesches Prädikat löst
+  `{case_clause, V}` (`all/2`, `any/2`) oder `{bad_filter, V}` (`filter/2`)
+  aus, ein Ergebnis eines `mapfold`-fun, das kein Paar ist, `{badmatch, V}`.
+- **Stacktraces** von Ausnahmen innerhalb inline eingebetteter funs fehlen
+  die Frames des fun und des `lists`- oder `maps`-Helfers
+  ([Unterschiede](differences.md#errors-stack-traces-and-reports)).
 
 ## Darstellung
 

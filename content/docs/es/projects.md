@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: a8c3f8f6
-sourceSha256: b1c98a208a0a72f7ad5b20a2915eb2b39a4142cc65314491f83b019398b3b85a
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: dc39c5b08aff56dfd597eb58f062bf4aebc96a1c580bdd77a24f38de9936c351
+translatedAt: 2026-10-26
 ---
 # Proyectos TOML
 
@@ -33,6 +33,7 @@ disable_features = ["compr_assign"]
 ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
+shell = false
 cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
@@ -51,6 +52,9 @@ my_dependency = "vendor/my_dependency"
   entrada. Los archivos explícitos deben terminar en `.erl`, o en `.abstr` para
   formas en formato abstracto ([transformaciones](transforms.md#interchange));
   las cabeceras son dependencias, no entradas.
+- Los grupos `[[targets.asn1]]` compilan especificaciones ASN.1 (`sources`,
+  `options`, `outdir`) en módulos que se incorporan al destino
+  ([ASN.1](asn1.md#inputs)).
 - `parse_transforms` (nombres de módulo) y `transform_paths` (directorios o
   patrones de archivos `.beam` precompilados) en `options` aplican parse
   transforms a los módulos del destino
@@ -63,6 +67,9 @@ my_dependency = "vendor/my_dependency"
   cada destino seleccionado
   ([vida de las exportaciones](executables.md#export-liveness)). Debe ser un
   booleano.
+- `shell = true` en `options` enlaza la shell interactiva en el ejecutable del
+  destino, como hace `--shell` ([shell interactiva](library.md#interactive-shell)).
+  Debe ser un booleano.
 - `cache_inference_in_dirs` (comodines de directorio) en `options` añade
   directorios cuyos módulos conservan sus resultados de inferencia en la caché
   de compilación ([caché de inferencia](#inference-cache)).

@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: a8c3f8f6
-sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6ba79590b0f18f68a50e1ced9d8509d74af70e49ac27abb7844cbc086624fd89
+translatedAt: 2026-10-26
 ---
 # Körbara filer
 
@@ -90,7 +90,8 @@ samma sätt; ett värde anges i nästa argument eller efter `=`.
 | `--max-stack BYTES` | Tak för varje process ramstack; standard utan tak |
 | `--min-heap-size WORDS` | Standardvärde för `min_heap_size` för varje process, minst 1, avrundat uppåt till en heapstorlek, som OTP:s `+hms`; högst `--max-heap`; standard 233 ([storlek](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Tak för det sammanlagda minnet för alla processer (heapar, binaries utanför heapen, stackar); standard utan tak |
-| `--schedulers N` | Schemaläggarens arbetstrådar som kör processer, 1 till 1 024; standard en per logisk processor, som OTP:s `+S` ([arbetstrådar](processes.md#workers)) |
+| `--schedulers N` | Schemaläggarens arbetstrådar som kör processer, 1 till 1 024; standard en per CPU i `--scheduler-cpus`, annars en per logisk processor som programmet får köras på (dess affinitetsmask), som OTP:s aktiva schemaläggare ([arbetstrådar](processes.md#workers)) |
+| `--scheduler-cpus SET` | Binder arbetstråd N till den N:te CPU:n i `SET`, cykliskt, som OTP:s `+sbt`/`+sct`: `performance` (den snabbaste kärnklassen: P-kärnor på en hybridprocessor, annars alla CPU:er), `all`, eller en lista som `0-15` eller `2,4,6`; varje angiven CPU måste finnas i affinitetsmasken. Obundet som standard ([CPU-bindning](processes.md#cpu-binding)) |
 | `--profile FILE` | Skriver en rapport över anrop och egen tid per funktion och per process till `FILE` när programmet avslutas ([profilering](profiling.md)); avstängt som standard |
 | `--args-file FILE` | Alternativfil som OTP:s `vm.args`: reserverat, rapporterar `runtime option --args-file is not implemented` |
 | `--` | Avslutar runtime-alternativen; alla följande argument går till `Entry` |
@@ -238,7 +239,13 @@ funktioner skriver till en processenhet genom den). Den förblir konservativ:
   producerar atomer (`list_to_atom/1`, `list_to_existing_atom/1`,
   `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`, `binary_to_term/1,2`,
   `fun_info/1,2`, `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`,
-  `pre_loaded/0`), behålls varje export i varje modul.
+  `pre_loaded/0`), behålls varje export i varje modul;
+- en modul kompilerad med `{clause_liveness, strict}` lovar att dess atomer
+  aldrig namnger anropad kod: dess record-taggar och atomliteraler utom dess
+  eget namn (men inte `M:F(...)` eller `apply/3` med en literal modul och en
+  funktion som bestäms vid körning), atomproducerande inbyggda funktioner och
+  `binary_to_term/1,2` räknas inte för någon av reglerna
+  ([strikt analys av levande kod](compile.md#strict-liveness)).
 
 En funktion som inget levande når får ingen kod alls. En utelämnad export
 behåller sitt namn i modulens exporttabell utan kod, så att

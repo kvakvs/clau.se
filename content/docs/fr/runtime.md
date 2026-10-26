@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 336caea7
-sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 2cf400ead0e2884a583331bb170855aa26c0961dcb974a1e54e32894bebbdbcf
+translatedAt: 2026-10-26
 ---
 # Runtime
 
@@ -172,10 +172,12 @@ et atteinte via `ProcessContext::persistent_terms()`, conserve les termes de
   builtins utilisent le hachage de termes de `phash2`) et une égalité exacte,
   comparée sur place.
 - Une lecture renvoie le mot stocké sur place, comme les termes persistants
-  littéraux d'OTP : tout processus peut le détenir et l'envoyer (une copie
-  dans un autre processus conserve le mot) ; les collectes le laissent intact,
-  et l'admission l'accepte comme un littéral. Les tampons de messages et les
-  nouveaux termes persistants copient les mots persistants.
+  littéraux d'OTP : tout processus peut le détenir ; les collectes le laissent
+  intact, et l'admission l'accepte comme un littéral. Les envois à d'autres
+  processus, les tampons de messages et les nouveaux termes persistants copient
+  les mots persistants (un envoi parcourt son message une seule fois, avant le
+  verrou de l'exécuteur, afin de ne pas partager une zone pouvant être retirée
+  entre-temps).
 - **Récupération.** La zone d'une valeur remplacée ou effacée est retirée sous
   une nouvelle époque. Dès lors, toute copie copie ses mots, et chaque
   processus enregistré lors du retrait copie les objets retirés qu'il détient
@@ -193,6 +195,129 @@ et atteinte via `ProcessContext::persistent_terms()`, conserve les termes de
   processus, les valeurs remplacées et effacées détenues par des lecteurs,
   les lecteurs et auteurs concurrents, et la récupération (copies retirées,
   évacuation, zones et imputations libérées).
+
+## Tables ETS
+
+Un registre par runtime (`ets/tables`), détenu par `Runtime::Impl` et atteint
+via `ProcessContext::ets_tables()`, conserve les tables de `ets`
+([builtins](builtins.md#ets)).
+
+- **Objets.** Chaque objet stocké (et les données d'un héritier) est un
+  `DetachedTerm` (`memory/detached_term`) : une copie à plat dans son propre
+  bloc, produite par la copie de graphe, hors de tout tas. Les littéraux des
+  modules restent partagés ; les termes persistants sont copiés, car leurs
+  zones peuvent être retirées ; les cellules de binary partagent leurs tampons.
+  Les blocs ne bougent jamais et n'appartiennent à aucun processus ; les
+  lecteurs les comparent et les hachent donc sur place et les copient dans
+  leur propre tas. Leurs mots sont imputés au compte mémoire du runtime.
+- **Index** (`ets/index`). Les tables `set`, `bag` et `duplicate_bag`
+  utilisent un index de hachage : un tableau de compartiments dont la taille
+  est une puissance de deux, chacun contenant un petit vecteur d'entrées (une
+  par clé, ses objets dans l'ordre d'insertion), doublant au-delà de deux clés
+  par compartiment et diminuant de moitié en dessous d'une clé pour huit.
+  Les clés sont trouvées par la dispersion sur 64 bits de leur hachage `phash2`
+  et l'égalité exacte. Les tables `ordered_set` utilisent un `std::set` avec
+  un nœud par clé dans l'ordre des termes, où les clés comparées égales (`1`,
+  `1.0`) constituent une seule clé ; remplacer un objet conserve son nœud.
+- **Parties et verrous** (`ets/table`). Une table de hachage avec
+  `write_concurrency` (`true` ou `auto`) répartit ses clés en 64 parties selon
+  les bits de poids fort du hachage, chacune étant un index avec son propre
+  `shared_mutex` ; toute autre table n'a qu'une partie. Le verrou de table est
+  partagé par les opérations sur une seule clé et pris en exclusif par celles
+  sur la table entière (listes d'objets, `delete_all_objects/1`, fixation,
+  suppression), de sorte qu'une insertion de liste est atomique et isolée comme
+  dans OTP. Les lectures copient les objets pendant que leur partie est
+  verrouillée en mode partagé.
+- **Parcours et fixation.** Une table de hachage se parcourt partie par partie
+  et compartiment par compartiment, dans les deux sens ; `next/2` depuis une
+  clé absente donne `badarg`. Tant que la table est fixée (`safe_fixtable/2`,
+  `foldl/3`), ses index ne changent jamais de taille, une clé supprimée reste
+  comme marqueur conservant un objet pour sa clé, et les nouvelles clés
+  rejoignent la fin de leur compartiment ; un parcours voit donc une seule
+  fois chaque clé restée présente. La dernière levée de fixation supprime les
+  marqueurs et redimensionne les index. Un ordered_set se parcourt depuis
+  n'importe quelle clé vers la plus proche.
+- **Registre.** Tables par numéro d'identifiant (une référence ordinaire issue
+  de la séquence du programme) et par nom, et tables que chaque processus
+  possède ou fixe. La fin d'un processus (`Executor::release_tables`, sous le
+  verrou de l'exécuteur avant le signalement des liens et des moniteurs) libère
+  ses fixations et transmet chaque table qu'il possédait à un héritier vivant
+  autre que lui-même, qui reçoit `{'ETS-TRANSFER', Table, From, HeirData}`
+  (aucun message pour un héritier défini sans données), ou la supprime. Ordre
+  des verrous : celui de l'exécuteur, du registre, d'une table ; les builtins
+  ne prennent jamais le verrou de l'exécuteur en détenant un verrou ETS, et
+  `give_away/3` envoie son message après les avoir libérés.
+- **Portions**. `tab2list/1` et les sélections de tous les objets (`select/2`,
+  `select_reverse/2`, `match/2`, `match_object/2`, `select_count/2`) parcourent
+  la table par portions d'autant d'objets que le budget du processus le permet,
+  puis cèdent l'exécution (`builtins/ets/table_walks.cpp`) ; une table de
+  hachage est fixée par le processus qui la parcourt, de sa première cession
+  jusqu'à la fin, comme dans OTP, pour que ses emplacements restent en place.
+  `delete_all_objects/1` et `delete/1` vident ou suppriment la table d'un coup
+  en retirant ses index (`Table::empty`, `Table::destroy`), puis libèrent les
+  anciens objets par portions (`builtins/ets/disposal.cpp`, `Index::shed`) ;
+  une table de hachage fixée est plutôt vidée sur place, en conservant ses
+  marqueurs. Les tables laissées par un propriétaire terminé sont libérées par
+  le thread de travail après la libération du verrou de l'exécuteur.
+  `select_delete/2` et `select_replace/2` s'exécutent encore d'un seul tenant.
+- **Compteurs sur place.** `update_counter/3,4` sur une clé dont l'objet est
+  la copie propre à la table et dont les compteurs restent de petits entiers
+  modifie les champs stockés sur place, sous le verrou de la partie, comme
+  dans OTP ; un bignum, un objet littéral de module ou un objet par défaut
+  prend le chemin général, qui stocke une nouvelle copie.
+- Le test CTest `executables_ets_concurrency` couvre les compteurs, les
+  insertions et les parcours depuis de nombreux processus sur un et quatre
+  threads de travail, et la fin de propriétaires de nombreuses tables ;
+  `executables_ets_portions` montre d'autres processus s'exécutant pendant les
+  opérations longues sur un seul thread de travail.
+- **Sélections** ([spécifications de filtrage](#match-specifications)). Une
+  sélection sur toute la table lit chaque partie sous ses verrous ; si toutes
+  ses têtes lient la clé, elle recherche les clés. Une sélection par blocs
+  parcourt une table de hachage emplacement par emplacement (chacun sous le
+  verrou de sa partie) et un ordered_set par clés depuis la dernière ; une
+  continuation désigne donc un emplacement ou une clé. `select_delete/2` et
+  `select_replace/2` modifient chaque partie sous son propre verrou
+  (`Index::edit`) ; une table de hachage fixée conserve entre-temps les
+  marqueurs des clés supprimées.
+
+## Spécifications de filtrage
+
+`runtime/src/match_spec/` compile et exécute les spécifications de filtrage
+comme le fait `erl_db_util.c` d'OTP, pour `ets` et
+`erlang:match_spec_test/3` ([builtins](builtins.md#ets)).
+
+- **Programmes.** `compile` transforme une spécification en `Program` : par
+  clause, un motif de tête, des expressions de guard et de corps sur des
+  emplacements de variables numérotés, et les variables liées par la tête
+  (`'$$'`). Les constantes sont réduites comme dans OTP (`{{...}}` et
+  `{const, X}` en valeurs ; une map constante conserve ses clés telles
+  qu'écrites) et conservées comme copies `DetachedTerm`, de sorte qu'un
+  programme n'appartient à aucun processus. Deux dialectes : `table` (ets) et
+  `trace` (les têtes sont des listes d'arguments, une liste se terminant par
+  `'_'` correspond à un préfixe, `'$N'` ou `'_'` à la liste entière ; les corps
+  peuvent exécuter des actions de traçage).
+- **Vérifications.** Le compilateur applique les vérifications d'OTP dans son
+  ordre et, lors du lint (`erlang:match_spec_test/3`), donne les messages d'OTP
+  pour la première clause qui en produit, les opérandes des appels et des
+  tuples étant compilés du dernier au premier comme dans OTP ; un message est
+  tronqué à 99 octets comme par le tampon d'OTP. Les fonctions de guard sont
+  celles de la table d'OTP (`match_spec/functions.cpp`), avec les contextes où
+  chacune peut être appelée ; une imbrication au-delà de 1000 niveaux donne
+  `system_limit`.
+- **Exécution** (`match_spec/run.cpp`). Les clauses sont essayées dans l'ordre.
+  Une tête lie des parties de l'objet sur place (égalité exacte pour les
+  constantes et les variables répétées, maps contenant au moins les clés du
+  motif) ; les guards les lisent sur place et doivent donner exactement
+  `true` ; un corps copie chaque valeur produite dans le tas de l'appelant.
+  Une fonction de guard qui lève une exception fait échouer la clause ; dans
+  un corps, elle donne `'EXIT'` à sa place et le corps continue, tout comme
+  `and`, `or`, `andalso` et `orelse` sur un terme non booléen. La plupart des
+  fonctions de guard sont les opérations sur les termes du service immédiat
+  (`terms/immediate_terms.hpp`).
+- Les **spécifications compilées** sont des références handle contenant le
+  programme (`match_spec/handles.cpp`) ; elles survivent donc à
+  `term_to_binary/1` au sein du programme comme les références magiques
+  d'OTP 20+.
 
 ## Gestion de l'ordonnanceur
 

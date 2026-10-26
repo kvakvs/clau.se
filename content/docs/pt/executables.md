@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: a8c3f8f6
-sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6ba79590b0f18f68a50e1ced9d8509d74af70e49ac27abb7844cbc086624fd89
+translatedAt: 2026-10-26
 ---
 # Executáveis
 
@@ -93,7 +93,8 @@ analisadas da mesma forma; um valor vai no argumento seguinte ou depois de `=`.
 | `--max-stack BYTES` | Limite da pilha de frames de cada processo; por omissão sem limite |
 | `--min-heap-size WORDS` | `min_heap_size` por omissão de todos os processos, pelo menos 1, arredondado por excesso para um tamanho de heap, como o `+hms` do OTP; no máximo `--max-heap`; por omissão 233 ([dimensionamento](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Limite da memória de todos os processos em conjunto (heaps, binaries off-heap, pilhas); por omissão sem limite |
-| `--schedulers N` | Workers do escalonador que executam processos, de 1 a 1024; por omissão um por processador lógico, como o `+S` do OTP ([workers](processes.md#workers)) |
+| `--schedulers N` | Workers do escalonador que executam processos, de 1 a 1024; por omissão um por CPU de `--scheduler-cpus`, ou então um por processador lógico em que o programa pode executar (a sua máscara de afinidade), como os escalonadores online do OTP ([workers](processes.md#workers)) |
+| `--scheduler-cpus SET` | Vincula o worker N ao N-ésimo CPU de `SET`, de forma circular, como o `+sbt`/`+sct` do OTP: `performance` (a classe de núcleos mais rápida: núcleos P de um CPU híbrido, todos os CPUs nos restantes casos), `all`, ou uma lista como `0-15` ou `2,4,6`; cada CPU listado tem de estar na máscara de afinidade. Por omissão sem vinculação ([vinculação a CPUs](processes.md#cpu-binding)) |
 | `--profile FILE` | Escreve em `FILE`, quando o programa termina, um relatório das entradas e do tempo próprio por função e por processo ([perfilagem](profiling.md)); desativado por omissão |
 | `--args-file FILE` | Ficheiro de opções como o `vm.args` do OTP: reservado, indica `runtime option --args-file is not implemented` |
 | `--` | Termina as opções do runtime; os argumentos seguintes vão todos para `Entry` |
@@ -244,7 +245,14 @@ processo). A análise é conservadora:
   um builtin que produz átomos (`list_to_atom/1`, `list_to_existing_atom/1`,
   `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`, `binary_to_term/1,2`,
   `fun_info/1,2`, `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`,
-  `pre_loaded/0`), todos os exports de todos os módulos ficam.
+  `pre_loaded/0`), todos os exports de todos os módulos ficam;
+- um módulo compilado com `{clause_liveness, strict}` garante que os seus
+  átomos nunca designam código chamado: as suas etiquetas de record e os
+  literais de átomo que não sejam o seu próprio nome (mas não `M:F(...)` ou
+  `apply/3` com um módulo literal e uma função determinada em tempo de
+  execução), os builtins que produzem átomos e `binary_to_term/1,2` não contam
+  para nenhuma das regras
+  ([vivacidade estrita](compile.md#strict-liveness)).
 
 Uma função que nada vivo alcança não recebe qualquer código. Um export deixado
 de fora mantém o seu nome na tabela de exports do módulo sem código, pelo que

@@ -1,8 +1,8 @@
 ---
 source: docs/compile.md
-sourceCommit: a8c3f8f6
-sourceSha256: 070de594787444f6afefbf3760848986bda8c85ff204932e596a67502385ae50
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 8750451f2d6635ee9906c50ddec592267fcd6a3f5fb5fd2d3d66a16943a91117
+translatedAt: 2026-10-26
 ---
 # Compilation
 
@@ -46,7 +46,9 @@ avec des options qui ne changent rien à ce qu'émet Clause :
 `{nowarn_unused_function, [...]}`) et les indications d'optimisation, de
 débogage et de rapport (`inline`, `{inline, [F/A]}`, `{inline_size, N}`,
 `{inline_effort, N}`, `inline_list_funcs`, `debug_info`, `deterministic`,
-`report*`, `verbose`, ...). `{parse_transform, Module}` exécute la
+`report*`, `verbose`, ...) et l'option propre à Clause
+`{clause_liveness, strict}` ([vivacité stricte](#strict-liveness)).
+`{parse_transform, Module}` exécute la
 transformation sur l'Erlang/OTP de l'hôte avant l'analyse
 ([parse transforms](transforms.md)). `on_load`, `nifs`, `export_all`, les
 autres options `compile` et les modules paramétrés sont rejetés ; le
@@ -58,6 +60,37 @@ export de `main/1`, `-mode` accepté). Les formes type/spec sont analysées mais
 ne modifient jamais le code généré. Les modes purement syntaxiques
 (`--parse-check`, `--print-ast`, `--print-source`, ...) acceptent la grammaire
 complète.
+
+## Vivacité stricte
+
+`-compile({clause_liveness, strict}).` indique à la
+[vivacité des exports](executables.md#export-liveness) que le module ne nomme
+jamais le code qu'il appelle par ses propres atomes. Ses littéraux atomes ne
+conservent les exports d'aucun autre module (son propre nom conserve toujours
+les siens, car les tuples d'erreur le nomment pour `format_error/1`), ses
+étiquettes de records n'en conservent aucun, et ses builtins produisant des
+atomes et `binary_to_term/1,2` ne comptent ni comme source de noms de modules
+ni comme appel dynamique. Il ne peut pas non plus passer les noms d'autres
+modules aux builtins qui les appellent par leur nom, comme `spawn/4` avec un
+nœud ou `erlang:get_module_info/1,2`. Ses propres appels par nom comptent
+toujours : `M:F(...)` ou `apply/3` avec un module littéral et une fonction
+connue au runtime conservent les exports de ce module, et les appels avec un
+module connu au runtime sont des appels dynamiques, atteignant les modules
+nommés par les atomes des autres modules.
+
+L'option ne change aucun code généré, seulement les exports qu'un exécutable
+conserve. Une promesse incorrecte omet un export que le module appelle par son
+nom, ce qui lève alors `undef`. Les modules de bibliothèque l'activent lorsque
+leurs atomes ne sont que des données : `epp` (noms de jetons et de macros, la
+machine, noms d'applications), `erl_error` (un atome de substitution dans les
+listes d'arguments affichées ; `error_info` nomme les modules du code qui lève
+l'erreur), `erl_features` (la liste des fonctionnalités d'un fichier beam) et
+`file` (raisons d'erreur, étiquettes de requêtes ; les modules nommés par une
+requête d'E/S sont les atomes du demandeur). Sans elle, l'`apply/3` de
+`file:io_request/3` et le `list_to_atom/1` d'`epp` conservaient chaque export d'un
+programme qui prétraite un fichier, tout `erl_eval` compris ; avec elle (et les
+conditions `-if` évaluées en C++), son surcoût de compilation par rapport à un
+hello-world baisse d'environ 40 %.
 
 ## Exécuter l'exemple de module compilé
 
@@ -147,14 +180,19 @@ texte avec des annotations de type. L'afficheur (`print_source`,
 | `--target-triple TRIPLE` | Machine cible ; `--target` sert à sélectionner une cible de projet |
 | `-O0` / `-O2` / `-Os` | Code générique par défaut + LLVM O0 / spécialisation bornée + LLVM O2 / LLVM Os, sans spécialisation, une section par symbole et élimination par l'éditeur de liens du code et des données non référencés |
 | `--no-type-specialization` | Désactive les variantes quel que soit l'ordre des options |
+| `--jobs <n>` | Optimise et émet les modules objets sur `n` fils d'exécution (par défaut : tous les fils matériels), chaque module dans son propre contexte LLVM ; les objets sont identiques quel que soit le nombre ; `--jobs 1`, les inspections d'IR et d'assembleur gardent tous les modules dans un même contexte |
 | `--lto` | Lie les modules sous forme de bitcode avec l'optimisation à l'édition de liens de LLD (cibles Windows MSVC et ELF ; exige `-o` ou un build de projet qui lie) ([édition de liens](executables.md#linking)) |
 | `--keep-exports` | Garde chaque export d'un exécutable appelable au lieu de laisser de côté ceux qu'il ne peut atteindre ; exige `-o`, un build de projet qui lie ou une inspection d'IR/d'assembleur ([vivacité des exports](executables.md#export-liveness)) |
+| `--shell` | Lie le shell Erlang interactif et chaque module de bibliothèque, en gardant chaque export appelable ; sans `--entry`, l'exécutable démarre le shell, donc `clau --shell -o erl` sans entrées construit un shell sur la seule bibliothèque ; exige `-o` ou un build de projet qui lie ([shell interactif](library.md#interactive-shell)) |
+| `--fips=PATH` | Fixe le programme en mode FIPS avec le fournisseur FIPS d'OpenSSL fourni par l'utilisateur dans `PATH` (module et `fipsmodule.cnf`, copiés à côté de l'exécutable) ; implique `--with-crypto` ; un fournisseur absent ou mal formé fait échouer le build ([FIPS](crypto.md#fips)) |
+| `--with-crypto[=PATH]` | Lie l'archive crypto du runtime et ajoute le module `crypto` de la bibliothèque au lot, pour les programmes qui n'atteignent `crypto` que par appels dynamiques (les programmes qui l'appellent sont de toute façon liés avec lui) ; `PATH` est une installation ou un arbre source d'OpenSSL ≥ 3.1.2 à lier à la place de celui avec lequel Clause a été construit ; exige `-o` ou un build de projet qui lie ([crypto](crypto.md#linking-programs)) |
 | `-g` | Tables de lignes Erlang dans les objets et les exécutables liés (CodeView/PDB sur les cibles MSVC, DWARF ailleurs) ([débogage](debugging.md)) |
 | `--print-ir` / `--print-optimized-ir` | IR vérifié avant/après les passes LLVM, avec les lignes du source Erlang en commentaires |
 | `--print-asm` | L'assembleur cible de chaque module après le pipeline sélectionné, chaque suite de code machine commentée par l'instruction IR et la ligne Erlang dont elle provient ([listings d'assembleur](#assembly-listings)) |
 | `--print-types` | Chaque module sous forme de source Erlang annoté des types inférés ([sémantique](semantic.md#--print-types)) ; s'arrête avant LLVM |
 | `--verbose` | Événements de phase `[pp]`, `[parse]` et `[comp]` sur stderr, puis le résumé `[index] ...` de l'[index des répertoires](projects.md#directory-index) |
-| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` sur stderr : `plan` par manifeste de projet (son chargement et l'expansion des motifs de chaque cible sélectionnée), `preprocess`, `parse` et `transform` (modules avec parse transforms) par fichier source, `compile` par lot (nombre de modules, cible de projet), `link` par exécutable ; ` (cached)` suit une étape qui a réutilisé un résultat [en cache](projects.md#build-caches). Avant le total `compile` d'un lot viennent ses phases avec le même sujet : `index`, `calls`, `liveness` (exécutables et inspections avec un point d'entrée), `declared-types`, `inference-cache` (avec `N of M covered modules reused`, [cache d'inférence](projects.md#inference-cache)), `inference`, `inference-store`, `contracts`, `lower`, `optimize`, `emit` (celles qui se sont exécutées). Après `inference` : des lignes `inference pass N` avec les pas de travail de la passe rapportés au budget de travail de l'inférence (`N of BUDGET work steps`) et la façon dont elle s'est terminée (`inputs changed`, `fun results changed`, `settled`, ou la passe finale après des passes non stabilisées), en nommant la fonction en cours d'exécution lorsque le budget s'est épuisé ; puis `inference slowest <module>:<function>/<arity>` pour les 10 fonctions (les groupes récursifs nomment un membre `and N more`) qui ont pris le plus de temps sur l'ensemble des passes, avec leurs pas de travail et la part de ce travail dans le budget des passes qui les ont exécutées (`877450 work steps, 43.9% of 10 passes of 200000 budget`), et `widened to term()` lorsqu'un budget a élargi l'un de leurs faits ; puis `inference rounds <module>:<function>/<arity> and N more` pour les 10 groupes récursifs les plus lents : résolutions sur l'ensemble des passes, tours exécutés par rapport au plafond par résolution (8 + 4 par membre), résolutions ayant atteint le plafond ou dépensé leur huitième du budget de la passe (chaque membre élargi à `term()`), résolutions abandonnées d'emblée parce qu'une passe antérieure l'avait fait (`remembered`) ou terminées avec le budget de la passe épuisé, parcours de membres (et ceux sautés parce que rien de ce qu'ils lisent n'avait changé) et la part qui a changé un résumé (agrandi, entrées de type fonction changées, ou revenu à l'un des 4 derniers résumés du membre), et les membres changés par tour de la dernière résolution en dix groupes de tours. Une compilation en cache n'affiche aucune phase |
+| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` sur stderr : `plan` par manifeste de projet (son chargement et l'expansion des motifs de chaque cible sélectionnée), `preprocess`, `parse` et `transform` (modules avec parse transforms) par fichier source, `compile` par lot (nombre de modules, cible de projet), `link` par exécutable ; ` (cached)` suit une étape qui a réutilisé un résultat [en cache](projects.md#build-caches). Avant le total `compile` d'un lot viennent ses phases avec le même sujet : `index`, `calls`, `liveness` (exécutables et inspections avec un point d'entrée), `declared-types`, `inference-cache` (avec `N of M covered modules reused`, [cache d'inférence](projects.md#inference-cache)), `inference`, `inference-store`, `contracts`, `lower`, `optimize`, `emit` (celles qui se sont exécutées ; avec une sortie objet sur plusieurs fils `--jobs`, `optimize` déplace aussi chaque module dans son propre contexte LLVM et le vérifie, et `emit` vérifie et émet les modules en parallèle). Après `inference` : des lignes `inference pass N` avec les pas de travail de la passe rapportés au budget de travail de l'inférence (`N of BUDGET work steps`) et la façon dont elle s'est terminée (`inputs changed`, `fun results changed`, `settled`, ou la passe finale après des passes non stabilisées), en nommant la fonction en cours d'exécution lorsque le budget s'est épuisé, puis (chaque passe après la première) `; skipped: N components, W work steps` : composants conservés depuis leur dernier parcours parce que rien de ce qu'ils lisent n'a changé et travail qu'avaient coûté ces parcours (compté dans les pas de travail de la passe), puis `; N lattice joins` exécutées par la passe (celles imbriquées comprises), avec `, costly: C components given term() inputs` lorsque des composants récursifs coûteux ont perdu leurs entrées locales ([inférence](semantic.md#inference)), puis (chaque passe qui a collecté des entrées locales) `; inputs: F functions, S slots changed (kinds)` avec le genre de changement de chaque emplacement d'entrée modifié (`first` depuis aucune entrée, `integer bound`, `union member` au niveau supérieur, `shape`, `deeper` pour l'imbrication de conteneurs, `function types`, `term()`) et `N fun reads not final` (valeurs fun F/A qui ont lu un résumé modifié par la suite), puis `; graph: N nodes (+M), W widenings` depuis la passe précédente et `; clean: C of K components (A inputs differ, B callees differ), X changed, T ms (P% of pass), S work steps` : composants dont les entrées des membres et les résumés des appelés directs sont égaux à ceux de la passe précédente, ceux parmi eux dont les résumés ont tout de même changé, et le temps et le travail qui leur ont été consacrés ; puis `inference lattice` (sans durée) avec le nombre d'exécutions de chaque opération de treillis sur toutes les passes (`join` de deux membres, celles imbriquées comprises, `widen`, `meet`, `within`, `subtract`, `truncate`) et le nombre d'appels qui répètent une opération avec les mêmes opérandes plus tôt dans leur passe et dans toute passe (les réponses que garde le graphe les servent, et les opérations imbriquées qu'une réponse avait exécutées ne sont ni réexécutées ni recomptées), puis les jointures d'un nombre de membres autre que deux et les recherches d'imbrication de conteneurs, avec celles dont le graphe a gardé la réponse (suivre les répétitions ralentit l'inférence profilée d'environ 7 %) ; puis `inference churn` avec le temps passé à collecter les entrées et le nombre d'emplacements d'entrée locaux modifiés une fois, deux fois, ... sur toutes les passes, et `inference churned <module>:<function>/<arity> #<argument>` (sans durée) pour les 10 emplacements les plus modifiés avec le genre de leur dernier changement et leurs faits avant et après celui-ci (chacun limité à 200 caractères) ; puis (sans durée) jusqu'à 10 composants `inference clean-changed <module>:<function>/<arity>` qui étaient inchangés dans leurs dépendances mais ont changé, avec la passe qui l'a observé la première et le nombre d'occurrences (une dépendance autre que les entrées et les appels directs, comme fun F/A) ; puis (sans durée) `inference facts N` après chaque passe qui a collecté des entrées : les faits de chaque résumé et entrée locale, leur taille d'arbre maximale et moyenne (nœuds comptés une fois par chemin), l'union la plus large, le nombre atteignant les budgets de profondeur de conteneur, de membres d'union et d'éléments de tuple/map, les résumés ayant le plus (32) de types fonction et les faits dépendants ; puis `inference largest` avec le plus grand fait de chacun des 3 composants qui ont pris le plus de temps (limité à 200 caractères) ; puis `inference slowest <module>:<function>/<arity>` pour les 10 fonctions (les groupes récursifs nomment un membre `and N more`) qui ont pris le plus de temps sur l'ensemble des passes, avec leurs pas de travail et la part de ce travail dans le budget des passes qui les ont exécutées (`877450 work steps, 43.9% of 10 passes of 200000 budget`), `widened to term()` lorsqu'un budget a élargi l'un de leurs faits, et les jointures de treillis que leurs parcours ont exécutées et les nœuds du graphe qu'ils ont créés ; puis `inference costliest <module>:<function>/<arity>` pour les 10 fonctions d'au moins 10 ms qui ont pris le plus de temps par pas de travail, avec ce temps en microsecondes, leurs pas de travail, jointures de treillis (et jointures par pas de travail) et nœuds créés ; puis `inference rounds <module>:<function>/<arity> and N more` pour les 10 groupes récursifs les plus lents : résolutions sur l'ensemble des passes, tours exécutés par rapport au plafond par résolution (8 + 4 par membre), résolutions ayant atteint le plafond ou dépensé leur huitième du budget de la passe (chaque membre élargi à `term()`), résolutions abandonnées d'emblée parce qu'une passe antérieure l'avait fait (`remembered`) ou terminées avec le budget de la passe épuisé, parcours de membres (et ceux sautés parce que rien de ce qu'ils lisent n'avait changé, et ceux rejoués : une résolution ultérieure a repris le dernier parcours du membre parce que rien de ce qu'il lisait n'avait changé) et la part des parcours et rejeux qui a changé un résumé (agrandi, entrées de type fonction changées, ou revenu à l'un des 4 derniers résumés du membre), et les membres changés par tour de la dernière résolution en dix groupes de tours, puis `; N solves repeated the previous fixed point, M reached it after R rounds in total` : résolutions terminées sur les résumés avec lesquels la passe précédente s’était terminée, et résolutions les ayant atteints avant de converger, avec les tours nécessaires (ce que partir de ces résumés permettrait de sauter). Une compilation en cache n'affiche aucune phase |
+| `--asn1-option OPTION`, `--asn1-outdir DIR`, `--generate-asn1` | Compile les entrées `.asn`/`.asn1`/`.set.asn` en `Module.erl` et `Module.hrl` avec une option asn1ct (répétable), dans `DIR` (ajouté au chemin d'inclusion), ou les génère seulement ([ASN.1](asn1.md#inputs)) |
 | `--print-env` | Affiche l'environnement de compilation résolu en TOML sur stdout et termine sans traiter les sources ([rapport d'environnement](#environment-report)) |
 | `--print-inputs` | Prétraite et analyse les entrées, ajoute les modules qu'elles nomment comme le fait la compilation, puis liste chaque source du lot sur stdout et s'arrête avant la compilation ([projets](projects.md#cli-and-target-selection)) |
 
@@ -255,6 +293,7 @@ type_specialization = true  # O2 without --no-type-specialization
 debug_info = false
 lto = false
 keep_exports = false        # --keep-exports or the project option
+shell = false               # --shell or the project option
 emit = "none"               # or obj, llvm-ir, llvm-bc
 artifact_dir = "/work/build/aot"
 ```
@@ -403,6 +442,30 @@ version est téléchargée dans `thirdparty/zlib-1.3.2` et vérifiée (SHA-256
 `bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16`) sur chaque
 hôte. La licence de zlib est la licence zlib. Le LLVM du compilateur garde sa
 propre zlib ; les deux ne se rencontrent jamais dans un même binaire.
+
+## zstd
+
+Le module zstd du runtime utilise zstd **1.5.7**, la version qu'embarque OTP 29
+(`erts/emulator/zstd/vendor.info`), de sorte que les trames sont identiques à
+celles d'OTP. CMake compile ses sources de bibliothèque (common, compress,
+decompress ; monothread, sans le décodeur en assembleur ;
+`cmake/ZstdDependencies.cmake`, `clause_add_runtime_zstd`) dans la bibliothèque
+d'objets `clause_runtime_zstd`, dont les objets rejoignent `clause_runtime`
+comme ceux de zlib ; `-DCLAUSE_RUNTIME_ZSTD_ROOT=<source directory>` est
+prioritaire, sinon la version est téléchargée dans `thirdparty/zstd-1.5.7` et
+vérifiée (SHA-256
+`eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3`), la même
+archive qu'utilise le build LLVM de Windows. La licence de zstd est BSD-3-Clause
+(ou GPL-2.0).
+
+## OpenSSL
+
+Les builtins `crypto` du runtime utilisent libcrypto d'OpenSSL, épinglé à
+4.1.0, toute version depuis 3.1.2 (la dernière avec un fournisseur validé FIPS)
+étant acceptée, dans une archive `clause_runtime_crypto` séparée que seuls les
+programmes appelant `crypto` lient. Sa provenance, sa compilation depuis les
+sources par Clause et `clau`, l'édition de liens (`--with-crypto[=PATH]`) et le
+mode FIPS (`--fips=PATH`) sont décrits dans [crypto](crypto.md).
 
 Autres prérequis : CMake ≥ 3.28, un compilateur C++23, Boost ≥ 1.90, toml++
 3.4.0 et les outils de qualité. OTP n'est nécessaire que pour les audits

@@ -1,8 +1,8 @@
 ---
 source: docs/transforms.md
-sourceCommit: a8c3f8f6
-sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: d5e6317f85b2929e53d917111bc1e41c6cf211dd4fad2c3950fd821c7e5d1bcc
+translatedAt: 2026-10-26
 ---
 # Parse transforms
 
@@ -142,8 +142,10 @@ Returnerade former, och `.abstr`-indata (positionella eller projektets
 parser, så att de får samma syntaxkontroller som källkod;
 operatorprioriteten avgör var parenteser läggs till. `{Line, Column}`, en
 ensam `Line` (visas som `file:line:`) och egenskapslistor med `location` och
-`file` godtas; `generated` ignoreras. Ett filattribut byter fil för de
-följande formerna; när den filen finns behåller importerad kod sina
+`file` godtas; `generated` ignoreras. Rad 0, som OTP:s `qlc`-transform ger
+sin genererade kod, tar platsen för den nod som importerades före den. Ett
+filattribut byter fil för de följande formerna; när den filen finns behåller
+importerad kod sina
 felsökningsrader och källkommentarer. Felformade former är fel vid sin
 annotering (`unknown expression bogus`, `expected {Name, Arity}`,
 `invalid annotation`) och modulen misslyckas; OTP:s

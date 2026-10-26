@@ -1,8 +1,8 @@
 ---
 source: docs/execution-model.md
-sourceCommit: a8c3f8f6
-sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: ef2ddb1d1fa5ece215035e006df8bf25bc2dd907c9e5b39d7eb0c991b4179977
+translatedAt: 2026-10-26
 ---
 # Modelo de execução: frames e continuações
 
@@ -105,7 +105,12 @@ resultado no primeiro registo e termina a chamada nativa.
   quando o frame da função chamada não é maior. Tal como numa chamada de cauda a
   si própria, um slot mantido pode conter um termo de um membro anterior até a
   função chamada o escrever, pelo que as recolhas podem manter esse termo vivo
-  um pouco mais.
+  um pouco mais. Os membros de um ciclo partilham uma função nativa: o
+  descritor de cada membro identifica-a como corpo, os seus índices de retoma
+  são contados ao longo dos membros e um início (retoma 0) seleciona o membro
+  a partir do descritor do frame, pelo que uma chamada de cauda entre membros
+  é um desvio em vez de uma transferência. Os depuradores veem os membros
+  como integrados inline nessa função.
 - **Yield.** Sem reduções restantes, uma entrada não faz push: regista-se em
   `ProcessStack::resume_`, mantém os seus argumentos como raízes de registos
   (`ProcessStack::keep_registers`) e devolve código que termina a fatia de
@@ -197,7 +202,11 @@ os índices de continuação ficam inalterados. Nenhum alvo exigido precisa dele
 - **Parâmetros.** Um corpo lê os seus primeiros argumentos dos parâmetros quando
   começa e o resultado da chamada de `x0` quando é retomado; `lower_frames` só
   guarda qualquer deles num slot quando está vivo através de uma chamada ou de
-  um safepoint.
+  um safepoint. Uma variante de ciclo com números de vírgula flutuante
+  ([abi](abi.md)) recebe alguns parâmetros como os bits de doubles: só as
+  suas transferências inline os passam, e os seus caminhos de serviço entram
+  na função com células em vez disso, pelo que os registos que um serviço lê
+  contêm termos.
 - **Posições de cauda** são a última expressão do corpo de uma cláusula,
   seguida através de blocos, parênteses e corpos de cláusulas de `case`, `if` e
   `receive`. As chamadas em operandos de `catch`, `try`, `maybe` e
@@ -218,7 +227,7 @@ os índices de continuação ficam inalterados. Nenhum alvo exigido precisa dele
 
 ## Alternativas comparadas
 
-[tests/prototypes/execution_model](../tests/prototypes/execution_model/)
+[tests/prototypes/execution_model](../tests/prototypes/execution_model)
 converte à mão as mesmas funções Erlang (`sum/1` com recursão no corpo, `loop/2`
 com recursão de cauda, `fail/1` a lançar à profundidade N, `catcher/1` a
 capturá-lo) de três formas e compila-as para todos os alvos acima em O0 e O2

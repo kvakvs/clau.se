@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: a8c3f8f6
-sourceSha256: b1c98a208a0a72f7ad5b20a2915eb2b39a4142cc65314491f83b019398b3b85a
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: dc39c5b08aff56dfd597eb58f062bf4aebc96a1c580bdd77a24f38de9936c351
+translatedAt: 2026-10-26
 ---
 # Проєкти TOML
 
@@ -32,6 +32,7 @@ disable_features = ["compr_assign"]
 ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
+shell = false
 cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
@@ -50,6 +51,8 @@ my_dependency = "vendor/my_dependency"
   `.abstr` для форм в абстрактному форматі
   ([перетворення](transforms.md#interchange)); заголовки — це залежності, а не
   вхідні дані.
+- Групи `[[targets.asn1]]` компілюють специфікації ASN.1 (`sources`, `options`,
+  `outdir`) у модулі, що входять до цілі ([ASN.1](asn1.md#inputs)).
 - `parse_transforms` (імена модулів) і `transform_paths` (каталоги або шаблони
   попередньо скомпільованих файлів `.beam`) в `options` застосовують parse
   transforms до модулів цілі ([перетворення](transforms.md#options)).
@@ -60,6 +63,9 @@ my_dependency = "vendor/my_dependency"
   цілі доступним для виклику, як `--keep-exports` робить для кожної вибраної
   цілі ([живучість експортів](executables.md#export-liveness)). Має бути
   булевим значенням.
+- `shell = true` в `options` компонує інтерактивну оболонку з виконуваним
+  файлом цілі, як `--shell` ([інтерактивна оболонка](library.md#interactive-shell)).
+  Має бути булевим значенням.
 - `cache_inference_in_dirs` (шаблони каталогів) в `options` додає каталоги,
   модулі яких зберігають результати виведення типів у кеші збирання
   ([кеш виведення](#inference-cache)).

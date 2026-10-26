@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: a8c3f8f6
-sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6ba79590b0f18f68a50e1ced9d8509d74af70e49ac27abb7844cbc086624fd89
+translatedAt: 2026-10-26
 ---
 # Exécutables
 
@@ -96,7 +96,8 @@ l'argument suivant ou après `=`.
 | `--max-stack BYTES` | Plafond de la pile de cadres de chaque processus ; non plafonné par défaut |
 | `--min-heap-size WORDS` | `min_heap_size` par défaut de chaque processus, au moins 1, arrondi à une taille de tas supérieure, comme `+hms` d'OTP ; au plus `--max-heap` ; 233 par défaut ([dimensionnement](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Plafond de la mémoire de l'ensemble des processus (tas, binaries hors tas, piles) ; non plafonné par défaut |
-| `--schedulers N` | Workers de l'ordonnanceur exécutant les processus, de 1 à 1 024 ; un par processeur logique par défaut, comme `+S` d'OTP ([workers](processes.md#workers)) |
+| `--schedulers N` | Threads de travail de l'ordonnanceur exécutant les processus, de 1 à 1 024 ; par défaut, un par CPU de `--scheduler-cpus`, sinon un par processeur logique sur lequel le programme est autorisé à s'exécuter (son masque d'affinité), comme les ordonnanceurs en ligne d'OTP ([threads de travail](processes.md#workers)) |
+| `--scheduler-cpus SET` | Lie le thread de travail N au N-ième CPU de `SET`, de façon cyclique, comme `+sbt`/`+sct` d'OTP : `performance` (la classe de cœurs la plus rapide : les P-cores d'un CPU hybride, tous les CPU sinon), `all`, ou une liste telle que `0-15` ou `2,4,6` ; chaque CPU listé doit être dans le masque d'affinité. Sans liaison par défaut ([liaison aux CPU](processes.md#cpu-binding)) |
 | `--profile FILE` | Écrit dans `FILE`, à la fin du programme, un rapport des entrées et du temps propre par fonction et par processus ([profilage](profiling.md)) ; désactivé par défaut |
 | `--args-file FILE` | Fichier d'options comme `vm.args` d'OTP : réservé, rapporte `runtime option --args-file is not implemented` |
 | `--` | Termine les options du runtime ; les arguments suivants vont tous à `Entry` |
@@ -252,7 +253,14 @@ processus). Elle reste conservatrice :
   produisant des atomes (`list_to_atom/1`, `list_to_existing_atom/1`,
   `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`, `binary_to_term/1,2`,
   `fun_info/1,2`, `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`,
-  `pre_loaded/0`), tous les exports de tous les modules restent.
+  `pre_loaded/0`), tous les exports de tous les modules restent ;
+- un module compilé avec `{clause_liveness, strict}` promet que ses atomes ne
+  désignent jamais du code appelé : ses étiquettes de record et ses littéraux
+  atomes autres que son propre nom (mais pas `M:F(...)` ou `apply/3` avec un
+  module littéral et une fonction déterminée à l'exécution), les builtins
+  produisant des atomes et `binary_to_term/1,2` ne comptent pour aucune des
+  deux règles
+  ([vivacité stricte](compile.md#strict-liveness)).
 
 Une fonction qu'aucun code vivant n'atteint n'obtient aucun code. Un export
 laissé de côté garde son nom dans la table d'exports du module, sans code, de

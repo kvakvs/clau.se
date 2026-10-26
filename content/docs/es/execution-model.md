@@ -1,8 +1,8 @@
 ---
 source: docs/execution-model.md
-sourceCommit: a8c3f8f6
-sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: ef2ddb1d1fa5ece215035e006df8bf25bc2dd907c9e5b39d7eb0c991b4179977
+translatedAt: 2026-10-26
 ---
 # Modelo de ejecución: marcos y continuaciones
 
@@ -109,7 +109,12 @@ primera llamada de cada proceso y de cada invocación del anfitrión: retornar a
   marco del llamado no es más grande. Como en una llamada de cola a sí misma,
   una ranura conservada puede contener un término de un miembro anterior hasta
   que el llamado la escriba, por lo que las recolecciones pueden mantener vivo
-  ese término un poco más de tiempo.
+  ese término un poco más de tiempo. Los miembros de un ciclo comparten una
+  única función nativa: el descriptor de cada miembro la designa como cuerpo,
+  sus índices de reanudación abarcan todos los miembros y un inicio (resume 0)
+  elige el miembro a partir del descriptor del marco, por lo que una llamada de
+  cola entre miembros es un salto en lugar de una transferencia. Los depuradores
+  muestran los miembros como integrados en esa función.
 - **Cesión (yield).** Sin reducciones restantes, una entrada no apila: se
   registra en `ProcessStack::resume_`, conserva sus argumentos como raíces de
   registro (`ProcessStack::keep_registers`) y devuelve código que termina la
@@ -205,7 +210,11 @@ Ningún destino requerido lo necesita.
 - **Parámetros.** Un cuerpo lee sus primeros argumentos de los parámetros
   cuando empieza y el resultado de la llamada de `x0` cuando se reanuda;
   `lower_frames` vuelca cualquiera de ellos a una ranura solo cuando está vivo a
-  través de una llamada o de un punto seguro.
+  través de una llamada o de un punto seguro. Una variante de bucle con flotantes
+  ([abi](abi.md)) recibe algunos parámetros como los bits de valores double:
+  solo sus transferencias en línea los pasan, y sus rutas de servicio entran en
+  la función con celdas en su lugar, de modo que los registros que lee un servicio
+  contienen términos.
 - **Posiciones de cola**: son la última expresión del cuerpo de una cláusula,
   siguiendo a través de bloques, paréntesis y los cuerpos de las cláusulas de
   `case`, `if` y `receive`. Las llamadas en `catch`, `try`, `maybe` y en los
@@ -227,7 +236,7 @@ Ningún destino requerido lo necesita.
 
 ## Alternativas comparadas
 
-[tests/prototypes/execution_model](../tests/prototypes/execution_model/) hace
+[tests/prototypes/execution_model](../tests/prototypes/execution_model) hace
 manualmente el lowering de las mismas funciones Erlang (`sum/1` con recursión
 de cuerpo, `loop/2` con recursión de cola, `fail/1` que lanza una excepción a
 profundidad N, `catcher/1` que la captura) de tres maneras y las compila para

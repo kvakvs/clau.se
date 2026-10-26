@@ -1,8 +1,8 @@
 ---
 source: docs/runtime-heap.md
-sourceCommit: 336caea7
-sourceSha256: 8549242b795751ec135403e46efd9594eb697d8d4beb804ad5f7aa8dc1b4f7c0
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 0e0336079bf5ea3110e7390081518b5a0f6fc13f50ae1303e65cfaf40d50cd8f
+translatedAt: 2026-10-26
 ---
 # Kontrakt för processheapen
 
@@ -86,6 +86,20 @@ processheap och delas genom referensräkning (BEAM:s ProcBin och `Binary`).
 - `std::shared_ptr` är två pekare i varje STL som stöds; en `static_assert`
   håller cellstorleken fast på åtta ord efter huvudet för båda bredderna.
 
+### Återanvändning av buffertar
+
+En frigjord buffert vars storlek är en tvåpotens på minst 256 byte
+(kapaciteterna hos binaries som kan utökas) stannar hos tråden som släppte dess
+sista referens, för den trådens nästa buffert av exakt samma storlek (som
+[heapblock](#heap-blocks)). Varje tråd behåller högst 32 buffertar och 8 MB;
+cachen frigörs när tråden avslutas. En återanvänd bufferts byte efter den nya
+binaryns egna lämnas som de var: ingen vy täcker dem. Utan detta tog loopar som
+utökar binaries nya sidor för varje utökad buffert (C++-heapen lämnar tillbaka
+sidorna i stora frigjorda block). Nya buffertar är `ByteBuffer`s
+(`runtime/include/byte_buffer.hpp`), som inte heller nollställer sitt utrymme,
+så en portdrivrutins svar (en hel filläsning) skrivs en gång och tas över som
+det är.
+
 ### Handtagsreferenser
 
 En handtagsreferens är en referens som också håller en buffert utanför heapen,
@@ -139,7 +153,16 @@ håller sina HAMT-noder på heapen. Mindre maps förblir `map`-celler.
   markerar en uppdatering som ägd endast när funktionen själv byggde källmapen
   (`M = <map expression or
   comprehension>` i samma klausulkropp), inte läser `M` någon annanstans och
-  aldrig fångar den i en fun (`semantic/map_ownership`).
+  aldrig fångar den i en fun (`semantic/map_ownership`), och i fold-loopar från
+  det andra steget ([ägda ackumulatorer](funs.md#inlined-funs)), där operationen
+  väljs vid körning.
+- En uppdatering vid en småheltalsnyckel avgörs enbart med ord
+  (`MapAccess::update_small_key`, ingen `Term` per argument, nyckelsökningen
+  anropar ingen virtuell sond). Om den är ägd återanvänder den även källstubben
+  medan dess token är aktuell: stubben är då yngre än den senaste
+  skräpsamlingen, så att skriva den nya roten i den skapar ingen pekare från
+  gammalt till ungt. En fold som uppdaterar varje post kopierar varje nod högst
+  en gång per skräpsamling och skriver annars ett värdeord per steg.
 
 ## Områden
 
@@ -158,19 +181,29 @@ håller sina HAMT-noder på heapen. Mindre maps förblir `map`-celler.
   allokering mellan två safepoints, till exempel returerna i en kroppsrekursion,
   förblir inline efter att det första fragmentet öppnats (fragmentfönster). Utan
   budget är varje nytt fragment minst lika stort som fragmenten före det.
-- **Literalområden.** Varje moduls sammansatta literaler — strängar och
-  konstanta listor, tupler av konstanter, flyttal, bignum-literaler och
-  konstanta binaries — läggs ut av kompilatorn som heapceller i en enda
-  skrivskyddad global (`ModuleDescriptor::literals`), registrerad
-  runtime-omfattande (`detail::LiteralAreas`, en låsfri sorterad
-  ögonblicksbild) när modulen registreras. Termer i varje process får peka in i
+- **Literalområden (literalheap).** Varje moduls sammansatta literaler —
+  strängar, konstanta listor, tupler och maps, flyttal, bignum-literaler och
+  konstanta binaries av valfri storlek — kodas av kompilatorn till en konstant
+  bytesträng (`ModuleDescriptor::literals`, `abi/literals.hpp`), som ligger kvar
+  i den körbara filens skrivskyddade data. Registreringen avkodar dem en gång
+  per runtime i en tillfällig kontext (pid nummer 0, aldrig utfärdat) med
+  runtimens atomer och termfabriker, och kopierar dem sedan till ett område i
+  adressintervallet för persistenta termer som aldrig tas ur bruk;
+  `detail::LiteralAreas` äger området under runtimens livstid och registrerar
+  det som ett modulliteralområde (en låsfri sorterad ögonblicksbild), så även
+  kopior som kopierar levande persistenta termer delar det. Binaries över 64
+  byte behåller en egen buffert. Termer i varje process får peka in i
   dem: tillträde kontrollerar
   `HeapStorage::readable` (heap, fragment, sedan literaler), medan
   `TermAccess::object` läser betrodda pekare. Skräpsamlaren
   lämnar literalord som de är (`owned` förblir endast heap); kopior mellan
   heapar och in i meddelandebuffertar fortsätter peka på dem (en literalrot
-  behöver ingen kopia); verifieraren godtar dem. Literaler innehåller endast
-  omedelbara värden (endast fasta atomer) och andra literalers ord.
+  behöver ingen kopia); verifieraren godtar dem.
+  Literalorden är runtimens egna (inklusive atomer), så varje runtime har en
+  egen kopia; genererad kod läser orden för den runtime som gjort anspråk på
+  dem från `literal_cache` och andra runtimers via `CLAUSE_literal_v1`. En ägd
+  map-uppdatering ändrar aldrig en literal på plats: endast en stubbe i
+  processens egen heap kvalificerar sig.
 - **Fragment.** När en begäran inte ryms och heapen inte får flyttas hamnar den
   i det nyaste fragmentet om den ryms där, annars i ett nytt fragment av
   passande storlek (minst den minsta heapstorleken) som kedjas till processen.
@@ -236,9 +269,15 @@ Heapblock, fragment och gamla områden kommer från `memory/heap_blocks`. Ett
 block som en skräpsamling frigör stannar hos sin tråd för trådens nästa
 skräpsamlingar (så som ERTS-bärare (carriers) behåller minne): ett nytt block
 tar det minsta cachade blocket som är minst lika stort och högst dubbelt så
-stort, annars nytt minne. Varje tråd behåller högst 8 block och 4M ord (32 MB
+stort, annars nytt minne. Varje tråd behåller högst 8 block och 16M ord (128 MB
 på 64-bitarsmål); block under 4 096 ord behålls inte, eftersom C++-heapens
-fria listor betjänar dem billigt. Utan detta tog varje skräpsamlings målutrymme
+fria listor betjänar dem billigt.
+Ett frigjort block som inte ryms frigör först de äldsta behållna blocken:
+en växande heap frigör allt större block, och utan utkastning fyllde blocken
+från dess tidiga, små skräpsamlingar cachen, så att en levande mängd på
+miljontals ord tog nya sidor för varje ungt block, gammalt område och
+fullständig genomsökning.
+Utan detta tog varje skräpsamlings målutrymme
 (to-space) nya sidor från operativsystemet och betalade ett sidfel per sida det
 rörde, och att frigöra ett stort block lämnade tillbaka dess sidor. Cachade
 block debiteras inte någon process eller det runtime-omfattande kontot; en
@@ -267,8 +306,9 @@ tråd frigör sin cache när den avslutas.
   skräp.
 - En skräpsamlings målutrymme debiteras även utöver gränsen, eftersom det
   ersätter de block som den frigör i slutet av samma skräpsamling.
-- Stacken fördubblas så länge gränsen tillåter det och växer sedan endast med
-  den ram som pushas.
+- Stackens första 64 ord ligger i processkontexten och debiteras av den första
+  ram som pushas. Stacken fördubblas sedan så länge gränsen tillåter det och
+  växer därefter endast med den ram som pushas.
 
 ## Tillträde
 
@@ -294,7 +334,7 @@ Efter tillträde avkodar `TermAccess::object` sort, antal och nyttolast via
 indata igen via `ProcessHeap::retain` och avvisar främmande sammansatta indata
 med `wrong_owner`.
 
-Dessa kontroller körs endast i Debug-byggen (`CHECKED_ADMISSION`, OPTM.2C).
+Dessa kontroller körs endast i Debug-byggen (`CHECKED_ADMISSION`).
 Ett Release-bygge litar på varje sammansatt ord, atom-, pid- och portord som
 lämnas till en inbyggd funktion, tjänst eller fabrik, som ERTS litar på sina
 Eterms: genererad kod producerar endast ord från den egna processen,
@@ -366,27 +406,39 @@ Fabriker, reservationer och meddelandebuffertar behåller sina livstidskontrolle
 (`expired_context`); en Term läst från en buffert fäster inget och får inte
 överleva sitt underlag.
 Bufferten skräpsamlas aldrig och frigörs med sin sista ägare; dess block är
-exakt termens ord, oavsett avsändarens minsta heap. Meddelanden till en process
-som körs på en annan arbetare ([arbetare](processes.md#workers)),
-timermeddelanden och monitortaggar använder den, så de kodas aldrig om;
+exakt termens ord, oavsett avsändarens minsta heap. Sändningar till andra processer
+([ankomstbuffertar](processes.md#arrival-buffers)), timermeddelanden
+och monitortaggar använder den, så de kodas aldrig om;
 [persistenta termer](runtime.md#persistent-terms) lever i ett eget
 adressintervall och kopieras till buffertar i stället för att delas.
 
+**En enda meddelandegenomgång.** En sändning till en annan process går igenom
+meddelandets graf en gång, före varje lås (`OutgoingMessage`, med `GraphCopy`
+från [graph_copy.hpp](../runtime/src/memory/graph_copy.hpp)); genomgången
+dimensionerar varje senare kopia och kopierar, liksom varje kopia utanför en
+process, persistenta termer.
+
 **Överlämning av meddelanden.** En sändning vars meddelande tar minst
-`MessageBuffer::ADOPTED_WORDS` (512) ord, räknat av
-`MessageBuffer::large(value, sender, minimum)` med en begränsad genomgång
-som stannar där, bygger bufferten innan exekutorlåset tas, så att avsändaren inte
-håller något lås under kopieringen. Mottagaren tar sedan över bufferten i
+`MessageBuffer::ADOPTED_WORDS` (512) ord går alltid via en buffert, kopierad
+utifrån den genomgången före varje lås, så att avsändaren inte håller något lås
+under kopieringen. Mottagaren tar sedan över bufferten i
 stället för att kopiera den (`MessageBuffer::take`, `HeapStorage::adopt`), när
 bufferten inte har någon annan ägare och mottagaren har ett heapblock och ingen
 budget: blocket ansluter till dess fragment på samma adresser, buffertens
 listor för binaries och maps utanför heapen ansluter till mottagarens egna med
 sina debiteringar, och bufferten lämnas tom. Ingen annan kan nå blocket före
 eller efter, så inget ord kopieras två gånger. Övertagna fragment begär en
-skräpsamling först när deras ord når det unga blockets, så som ERTS
-meddelandefragment gör, och nästa skräpsamling behandlar dem som ung data.
-Mindre meddelanden kopieras, som förut: det är billigare än ett fragment
-vardera.
+skräpsamling först när en receive har tagit deras meddelande och deras ord
+når det unga blockets, så som ERTS räknar ett meddelandefragment först när det
+tagits emot (`HeapStorage::received`); nästa skräpsamling behandlar dem som ung
+data och kopierar ett meddelande som fortfarande står i kö som vilken rot som
+helst.
+Mindre meddelanden kopieras en gång, billigare än ett fragment vardera: direkt
+in i heapen hos en mottagare som inte körs, under exekutorlåset, eller direkt
+efter en ankomstnod för en körande mottagare. Mottagaren tar en sådan ankomst
+genom att kopiera dess ord som de är och flytta pekarna mellan dem med kopians
+avstånd, och läser objekten i adressordning så som skräpsamlaren genomsöker
+sina kopior (**omlokaliserade ankomster**); grafen gås inte igenom igen.
 
 ## Skräpsamling i genererad kod
 
@@ -536,7 +588,7 @@ safepoint, och ingen native-pekare korsar en överhuvudtaget (redan ett fel i
 
 ### Prototyp
 
-[tests/prototypes/safepoint](../tests/prototypes/safepoint/) innehåller en loop
+[tests/prototypes/safepoint](../tests/prototypes/safepoint) innehåller en loop
 i comprehension-stil i form efter `lower_frames` (`loop.ll`): en term `Y` som
 beräknas före loopen lagras i en termplats och läses om efter safepointen i
 loophuvudet. `python tests/prototypes/safepoint/run.py` kompilerar den för
@@ -552,7 +604,12 @@ en mindre skräpsamling ([generationer](#generations)): allokera först det nya
 blocket (ett misslyckande ger `out_of_memory` och lämnar heapen orörd), kopiera
 sedan objektet bakom varje rotord
 och genomsök det nya blocket från vänster till höger medan barnen till varje
-kopia kopieras. Ett flyttat boxat objekts huvud ersätts av en boxad pekare till
+kopia kopieras. En plats kontrolleras först mot föregående plats källområde
+(ett intervalltest), och omedelbara värden skiljs åt inline. Cons-celler
+genomsöks utan tolkning, och en boxad kopias platser hittas enbart från sorten
+i dess huvud (ett antal ospårade ord per sort, inga storlekskontroller:
+kopiorna är av verifierade objekt); objekt på upp till fyra ord kopieras ord
+för ord. Ett flyttat boxat objekts huvud ersätts av en boxad pekare till
 dess kopia; en flyttad cons-cell får ett nollställt head och en tail som pekar
 på dess kopia. Vidarebefordran bevarar delning. Rötter skrivs om på plats,
 listan utanför heapen genomsöks (kopior länkas om i listordning, döda celler
@@ -587,12 +644,22 @@ Generationsbaserad skräpsamling, så som ERTS gör den, utan dess skrivbarriär
   celler väntar till nästa fullständiga genomsökning.
 - **Storlek för unga.** En mindre skräpsamling behåller det unga blockets
   storlek, så som ERTS gör, och minst en åttondel av det gamla området (ERTS).
-  Genererad kod samlar skräp endast vid safepoints, så allokering mellan två
+  ERTS mindre block är `next_heap_size(young + stack)`, men dess stack fyller
+  resten av ett fullt block, så det får det aldrig att växa; Clauses stack är
+  separat, och att räkna med den fick blocket att växa vid varje mindre
+  skräpsamling. Clause ökar också blocket så att de unga orden ovanför
+  högvattenmärket (allt som kan förbli ungt) och stacken fyller högst 75 % av
+  det: mätningar visar att färre skräpsamlingar lönar sig mer än ERTS snävare
+  block. Genererad kod samlar skräp endast vid safepoints, så allokering mellan två
   sådana (returerna i en kroppsrekursion) kan svämma över långt in i fragment;
   när de rymmer en fjärdedel av blocket eller mer växer nästa block med dem och
-  krymps inte. Annars kopieras ett ungt block på över 8 000 ord med mindre än
-  25 % levande data in i tre gånger dess levande ord (ERTS regel för mindre
+  krymps inte. Annars krymper ett ungt block på över 8 000 ord med mindre än
+  25 % levande data till tre gånger dess levande ord (ERTS regel för mindre
   skräpsamlingar).
+- **Krympning på plats.** Båda krympningarna (denna och den vid en fullständig
+  genomsökning) minskar blockets kapacitet på plats, så som ERTS omallokerar
+  det: inget kopieras igen, och blockets oanvända svans förblir allokerad utan
+  debitering tills nästa skräpsamling frigör blocket.
 - **Gräns utanför heapen.** Efter en mindre skräpsamling räknar gränsen för den
   virtuella binary-heapen endast de unga levande orden: det gamla området kan
   innehålla döda ord, som inte får skjuta upp den fullständiga genomsökning som
@@ -626,8 +693,14 @@ via betrodda pekare, och en cons-cell behöver ingen tolkning:
   (ingen rekursion) summerar orden för varje nått objekt; kopian är en
   reservation av den summan, i heapblocket eller ett fragment, fylld av en andra
   genomgång i samma ordning som läser varje cell igen och pekar varje plats på
-  dess barns kopia. Ingen tabell mappar källobjekt till kopior, och endast
-  binary-celler och map-stubbar behåller sina offsets.
+  dess barns kopia. Båda genomgångarna följer en listas tails på plats, så att
+  endast heads väntar på stacken, och skiljer delade literaler från heapceller
+  med ett intervalltest mot spannet av alla modulliteralområden. Den första
+  genomgången dimensionerar den andras stack, så den andra allokerar inget och
+  en meddelandebufferts ord behöver inte nollställas. Båda stackarna och
+  binary-listan håller sina första poster inline, så kopiering av ett litet
+  meddelande gör ingen värdallokering. Ingen tabell mappar källobjekt till
+  kopior, och endast binary-celler och map-stubbar behåller sina offsets.
 - Kopian av en binary utanför heapen är en ny cell som delar bufferten; målet
   håller bufferten (och debiterar sina egna ord utanför heapen om det inte
   höll något av den) innan det reserverar, och listar cellen först efter att

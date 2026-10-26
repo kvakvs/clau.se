@@ -1,8 +1,8 @@
 ---
 source: docs/funs.md
-sourceCommit: a8c3f8f6
-sourceSha256: 114573ca575f133c3b45d3422218a8b98264b55c30167b405bb3008e3806c74e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 48b67a84428fd618682bf70ff7cc6bdc1eff671ca37080353b71fb6ab13088e5
+translatedAt: 2026-10-26
 ---
 # Valeurs fonctionnelles
 
@@ -41,8 +41,10 @@ de sondages sur OTP 29.1.1.
 - `M:F(Args)` avec une variable (ou toute expression) comme module ou fonction
   évalue le module, puis la fonction, puis les arguments de gauche à droite. Un
   module ou une fonction qui n'est pas un atome lève `badarg` ; une fonction
-  qu'aucun module du programme n'exporte avec cette arité lève `undef`. Un
-  appel en position terminale est un appel terminal.
+  qu'aucun module du programme n'exporte avec cette arité lève `undef`, avec
+  `{M, F, Arity, []}` en tête de sa trace de pile (OTP montre les arguments ;
+  `apply/3` et les appels de funs externes les montrent aussi). Un appel en
+  position terminale est un appel terminal.
 - `apply(Fun, Args)` et `apply(M, F, Args)` (auto-importées sauf si le module
   définit `apply/2,3` ou supprime l'import ; également `erlang:apply/2,3`)
   évaluent leurs arguments, puis exigent que `Args` soit une liste propre
@@ -51,6 +53,10 @@ de sondages sur OTP 29.1.1.
   `M:F/length(Args)` comme ci-dessus, donc plus de 255 arguments lèvent
   `undef`. Les deux sont des appels terminaux en position terminale et ne sont
   jamais légaux dans les guards.
+- `erlang:apply/2,3` atteintes par leur nom à l'exécution (`spawn(erlang, apply, [F,
+  Args])`, `M:apply(...)` avec `M` lié à `erlang`, l'action d'un minuteur) sont
+  des builtins (`builtins/erlang/apply.cpp`) qui poursuivent dans la fonction
+  appelée avec les mêmes erreurs.
 - `fun M:F/A` avec des variables lève `badarg` sauf si `M` et `F` sont des
   atomes et `A` un entier dans 0..255 ; la fonction n'a pas besoin d'exister
   avant l'appel de la fun.
@@ -100,6 +106,64 @@ de sondages sur OTP 29.1.1.
 - Une fun anonyme dans la valeur par défaut d'un champ de record est une seule
   fun pour toutes les constructions qui utilisent la valeur par défaut (OTP
   développe une copie par site).
+
+## Funs développées en ligne
+
+À `-O2` (`codegen/lowering_fun_inlining.cpp`, `lowering_list_loops.cpp`,
+`lowering_map_loops.cpp`), un appel de fun anonyme connue au point d'appel
+développe les clauses de la fun à la place de l'appel, comme le fait l'option
+`inline_list_funcs` d'OTP :
+
+- **Funs connues.** Une fun écrite dans l'appel (`(fun(X) -> ... end)(Y)`, ou le
+  premier argument d'une boucle de liste ci-dessous), ou une variable liée une
+  seule fois à une fun anonyme sans nom (`F = fun ... end`) qui est lue une
+  seule fois ou contient au plus 40 expressions. Dans le code d'une autre fun,
+  la fun d'une variable n'est développée en ligne que si toutes ses captures y
+  sont aussi liées. Les corps développés s'imbriquent sur quatre niveaux au
+  plus ; les boucles sur binary et flottants ne développent rien en ligne.
+- **Clauses sur place.** Les arguments sont confrontés aux clauses et aux
+  guards de la fun, et le corps de la clause correspondante s'exécute dans la
+  trame de l'appelant. Si aucune clause ne correspond, la fun est appelée,
+  donc `function_clause` provient de son propre code comme auparavant. Une fun
+  écrite dans l'appel n'est construite que sur ce chemin et sur les chemins
+  ci-dessous qui ont besoin de sa valeur (construction différée de fermeture) ;
+  la fun d'une variable est construite à sa liaison, comme auparavant.
+- **Boucles de liste.** `lists:map/2`, `filter/2`, `foreach/2`, `all/2`, `any/2`,
+  `flatmap/2`, `foldl/3`, `foldr/3`, `mapfoldl/3` et `mapfoldr/3` du module
+  `lists` propre à Clause, avec une fun connue de la bonne arité, deviennent
+  une boucle sur la liste dans la fonction appelante. L'appel de fun de chaque
+  élément est développé en ligne ; les listes sont construites à l'envers et
+  inversées une fois à la fin ; `foldr/3` et `mapfoldr/3` inversent d'abord leur
+  entrée, donc leur fun voit toujours les éléments à partir du dernier, après
+  l'échec sur une queue impropre. Comme la récursion non terminale qu'elles
+  remplacent, les boucles de liste ne font de ramassage qu'aux points de cession
+  (tous les 4 000 éléments sans autres appels) et dans les appels de leur fun.
+- **Boucles de pliage de map.** `maps:fold/3` du module `maps` propre à Clause,
+  avec une fun connue d'arité 3, devient une boucle sur les entrées de la map
+  (la cellule de map classique, ou les entrées d'un arbre copiées une fois dans
+  une cellule en forme de tuple, comme les lit `maps:fold/3`), dans l'ordre des
+  clés comme `maps:fold/3`. Un itérateur de map ou une valeur autre qu'une map
+  déclenche le véritable appel `maps`, qui le traite ou lève sa propre erreur.
+- **Accumulateurs possédés.** Quand chaque clause d'une fun de pliage
+  (`maps:fold/3`, `lists:foldl/3`, `lists:foldr/3`) renvoie son paramètre
+  accumulateur mis à jour, `fun(K, V, Acc) -> Acc#{K := V + 1} end` avec `Acc`
+  lu nulle part ailleurs et capturé par aucune fun, la boucle possède le
+  résultat de chaque étape : à partir de la deuxième étape, la mise à jour est
+  possédée et modifie la map sur place
+  ([arbres de maps](runtime-heap.md#map-trees)). La première étape copie, car
+  l'accumulateur initial peut être détenu ailleurs.
+- **Mêmes résultats et raisons.** Les valeurs, l'ordre d'exécution de la fun
+  et les raisons d'erreur sont ceux de `lists` : une entrée autre qu'une liste
+  pour `map/2`, `foldl/3`, `all/2`, `any/2` et les queues impropres de
+  `filter/2`, `foreach/2`, `foldr/3`, `mapfoldl/3`, `mapfoldr/3` déclenchent le
+  véritable appel `lists`, qui lève sa propre erreur ; une queue impropre de
+  `map/2`, `foldl/3`, `all/2`, `any/2`, `flatmap/2` lève `function_clause`
+  dans l'appelant. Un prédicat non booléen lève `{case_clause, V}` (`all/2`,
+  `any/2`) ou `{bad_filter, V}` (`filter/2`), un résultat autre qu'une paire
+  d'une fun `mapfold` lève `{badmatch, V}`.
+- Les **traces de pile** des exceptions dans les funs développées en ligne
+  omettent les trames de la fun et de l'auxiliaire `lists` ou `maps`
+  ([différences](differences.md#errors-stack-traces-and-reports)).
 
 ## Représentation
 

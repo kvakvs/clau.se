@@ -1,12 +1,45 @@
 ---
 source: docs/building.md
-sourceCommit: 336caea7
-sourceSha256: 86d39780700856574257fd2d598102b8e551505085c42a0a8175f9c2c7b2330c
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b5b9cdbb0544c714f847eac4931ed0fa38d8de1144153349efac4c2302159cbc
+translatedAt: 2026-10-26
 ---
-# Compilar o compilador
+# Compilar o Clause
 
-Configure e compile a partir da raiz do repositório:
+Como compilar `clau` e `clause_runtime`, configurar a compilação, executar os
+testes e usar as ferramentas de desenvolvimento. O desenho dos testes e os
+resultados estão em [validação](validation.md).
+
+## Requisitos
+
+- CMake 3.28+ e um compilador C++23; no Windows, a carga de trabalho **Desktop
+  development with C++** do Visual Studio com um Windows SDK, Ninja e uma
+  instalação global de LLVM/Clang (`clang-cl`, e `clang` para ligar programas).
+- SDK C++ do LLVM 23.1.x (23.1.1 ou mais recente) para o compilador. É preferível
+  uma instalação global; caso contrário, o CMake transfere o SDK fixado 23.1.2
+  para `thirdparty/` no Windows x64/ARM64, Linux x64/ARM64 e macOS ARM64
+  ([SDK do LLVM](compile.md#llvm-sdk)). As ferramentas de linha de comandos do
+  LLVM, por si só, não incluem o SDK.
+- Boost 1.90+ (Multiprecision, Asio e Parser para o compilador; apenas
+  cabeçalhos), toml++ 3.4.0, SQLite 3.54.0, PCRE2 10.47 e zlib 1.3.2. O CMake
+  transfere as dependências em falta para `thirdparty/` com verificações SHA-256
+  e reutiliza-as offline, também em novos diretórios de compilação; no Linux e
+  no macOS, Boost e toml++ vêm de uma instalação ou de `thirdparty/`
+  ([dependência de compilação](projects.md#build-dependency)).
+- Python 3 para os testes e as ferramentas de qualidade, benchmarks e listagens.
+- Não é necessário Erlang/OTP para compilar ou testar. Os testes usam
+  [fixtures golden próprias do projeto](../tests/fixtures/patternmatch/generated/README.md);
+  só as parse transforms, as auditorias opcionais com OTP real, a regeneração
+  de fixtures e os benchmarks precisam de uma instalação do OTP 29.
+
+No macOS (Erlang opcional):
+
+```sh
+xcode-select --install
+brew install cmake boost tomlplusplus llvm@23 erlang
+```
+
+## Configurar e compilar
 
 ```sh
 cmake --preset debug                    # build/debug, single configuration
@@ -27,9 +60,10 @@ O preset `debug` coloca o `clau` em `build/debug/bin`; o preset `windows` em
 `build/windows/lib/<Config>/clause_runtime.lib`. O `clau` encontra o arquivo do
 runtime e os módulos de `library/` relativamente à sua própria localização.
 
-Wrappers (substituições por variáveis de ambiente: `BUILD_DIR`,
-`TOOL_BUILD_DIR`, `BUILD_TYPE`, `JOBS`, `CMAKE`, `CTEST`, `CMAKE_ARGS`,
-`CLANG_FORMAT`):
+## Wrappers
+
+Substituições por variáveis de ambiente: `BUILD_DIR`, `TOOL_BUILD_DIR`,
+`BUILD_TYPE`, `JOBS`, `CMAKE`, `CTEST`, `CMAKE_ARGS`, `CLANG_FORMAT`.
 
 | Makefile | Windows | Faz |
 | --- | --- | --- |
@@ -47,7 +81,7 @@ do próprio CMake. `clau.bat` (Windows) e `run-macos.sh` compilam primeiro
 `build/tool` e depois executam o `clau` com todos os argumentos, mantendo o
 diretório de trabalho e o código de saída do chamador.
 
-Opções de configuração:
+## Opções de configuração
 
 | Opção | Finalidade |
 | --- | --- |
@@ -60,6 +94,7 @@ Opções de configuração:
 | `-DCLAUSE_CLANG_EXECUTABLE=C:/path/to/clang.exe` | Seleciona o executável do Clang no Windows |
 | `-DCLAUSE_OTP_AUDITS=ON`, `-DCLAUSE_ESCRIPT=/path/to/escript` | Ativa as auditorias opcionais com OTP real e seleciona o OTP 29 usado |
 | `-DCLAUSE_TEST_DEBUG_INFO=ON` | Compila os programas de teste com informação de depuração (para depurar um crash) |
+| `-DCLAUSE_OPTIMIZED_COMPILER=OFF` | Compila `clau` e as bibliotecas do compilador sem otimização em Debug (para depurar um crash de `clau`) |
 
 Notas para Windows: o CRT por omissão é `/MDd` (Debug) ou `/MD`; um
 `CMAKE_MSVC_RUNTIME_LIBRARY` explícito tem de corresponder ao SDK do LLVM. O
@@ -72,8 +107,6 @@ opções de raiz.
 
 ## Testes
 
-Os testes são opcionais e ativam-se ao configurar:
-
 ```sh
 cmake --preset debug -DBUILD_TESTING=ON
 cmake --build --preset debug
@@ -85,14 +118,12 @@ ctest --preset debug -j 16               # full mode
 corre uma matriz reduzida de otimizações/drivers e salta os testes
 `full_only`; `full` (o valor por omissão quando não definido, `make test-full`,
 `TEST_MODE=full`) corre tudo. Cada teste reserva duas slots do CTest, pelo que
-`-j N` corre N/2 testes em simultâneo. Os testes compilam código-fonte Erlang
-real através da CLI e comparam os executáveis com goldens gerados pelo OTP; ver
-[validação](validation.md) para a linha de base, as fixtures e o desenho dos
-testes.
+`-j N` corre N/2 testes em simultâneo.
 
-Controlo de qualidade (Lizard e clang-tidy, ferramentas fixadas em
-`tools/requirements-quality.txt` e instaladas em `.venv-quality/`; use
-`.venv-quality/bin/python` fora do Windows):
+## Controlo de qualidade
+
+Lizard e clang-tidy, fixados em `tools/requirements-quality.txt` e instalados
+em `.venv-quality/` (use `.venv-quality/bin/python` fora do Windows):
 
 ```sh
 python -m venv .venv-quality
@@ -103,8 +134,31 @@ cmake --build build/debug --target check-quality-all   # whole tree
 
 `check-quality` verifica os ficheiros alterados desde `HEAD` (ou
 `CLAUSE_QUALITY_BASE`) mais uma unidade de tradução por cabeçalho alterado
-(`check-quality-all` cobre todos os dependentes, na verificação completa), e
+(`check-quality-all` cobre todos os dependentes) e
 precisa de uma compilação com o compilador e o runtime ativados;
 `check-complexity-all` e `check-clang-tidy-all` correm uma só ferramenta.
 `cmake/CheckClangTidy.cmake` aceita `QUALITY_SHARD=K/N` para dividir uma
 execução longa.
+
+## Benchmarks e listagens
+
+`make benchmark` / `make-benchmark.bat` compilam um `clau` Release em
+`build/bench` e comparam os programas `benchmarks/bench_*.erl` com o OTP do
+anfitrião e um commit anterior do Clause; `benchmarks/run.py --help` lista as
+opções ([benchmarks](validation.md#benchmarks)). Nunca fazem parte dos testes.
+
+`benchmarks/compile_times.py` mede os tempos do próprio `clau`: executa várias
+vezes uma carga de compilação (`--workload W1`, ou argumentos de `clau` após
+`--`) nos núcleos de desempenho com `--no-cache --print-stage-times`, e indica
+a mediana, o mínimo e a dispersão de cada fase e passagem de inferência, os
+componentes de inferência mais lentos, e se os contadores de passagens e a saída
+padrão coincidem entre execuções. Com `--baseline <clau.exe>`, as duas
+compilações alternam e o resumo mostra a sua razão. Recusa medir enquanto
+estiverem a decorrer compilações, testes ou outra execução de `clau`, salvo com
+`--force-noisy`, e escreve JSON em `build/bench/compile-times/`.
+
+`decompile-debug.bat <module>` e `decompile-release.bat <module>` escrevem o
+assembly Debug ou Release de um ficheiro-fonte C++ do Clause em
+`<module>.debug.asm` / `<module>.release.asm`, com linhas de código-fonte e
+nomes desmanglados (`tools/asm.py`, compilações clang-cl; `--function TEXT`
+filtra).

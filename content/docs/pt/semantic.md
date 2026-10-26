@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: a8c3f8f6
-sourceSha256: f1156b4ef9a29821e7a254cd605e1b92c22cf3304d574ae47f4d558a786f2c18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 5b75d27b8b6d10019ba765c950ca875904e7eb3d8dea6044ac59e240fccc259f
+translatedAt: 2026-10-26
 ---
 # Análise semântica
 
@@ -60,8 +60,8 @@ do OTP, `erl_internal:add_predefined_functions` e o `check_behaviour` do
     L, column C)` quando um behaviour anterior também o exige (um callback
     opcional conta quando exportado);
   - `behaviour M undefined` quando `M` não está no lote ou não tem
-    `behaviour_info/1` (os behaviours do OTP, como `gen_server`, não estão na
-    [biblioteca](library.md) do Clause), mais os erros de nome de módulo do OTP
+    `behaviour_info/1` (um behaviour do OTP que a [biblioteca](library.md) do
+    Clause ainda não fornece, como `application`), mais os erros de nome de módulo do OTP
     para nomes que não podem ser módulos (`the module name must not be empty`,
     `... must be an atom`, ...).
 - Os avisos não fazem falhar a compilação. As opções de `-compile`
@@ -250,9 +250,32 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   (`semantic/types/inference_inputs`), correspondidos pelos padrões da cabeça
   de cada cláusula; as chamadas recursivas também contam. As entradas começam
   em `none()` (uma função que nada chama nunca executa e infere `none()`) e
-  crescem ao longo das passagens pelo lote: 8 passagens juntam, as seguintes
-  alargam como os resultados recursivos; as entradas que não estabilizaram
-  após 16 passagens tornam-se `term()` (relatadas como alargadas).
+  crescem ao longo das passagens pelo lote. Cada entrada sobe uma escala
+  conforme o número de vezes que mudou: as primeiras 4 alterações juntam, as
+  2 seguintes alargam como os resultados recursivos, as 2 seguintes também
+  reduzem os contentores dentro de um contentor a `term()`, e uma alteração
+  adicional dá `term()` (relatada como alargada). As entradas que não
+  estabilizaram após 63 passagens tornam-se `term()` (relatadas como
+  alargadas). Uma componente recursiva é dispendiosa quando uma resolução
+  gasta mais de 2^17 junções da retícula (contando as aninhadas) e mais de
+  1/16 do maior número de junções gasto por uma passagem até então; quando as
+  entradas dos seus membros voltam a mudar, tornam-se imediatamente `term()`
+  (relatadas como alargadas), pelo que as suas resoluções posteriores deixam
+  de acompanhar as oscilações das entradas dos seus chamadores.
+- As passagens após a primeira só percorrem as componentes para as quais
+  mudou algo que leem (`semantic/types/inference_incremental`): uma componente
+  mantém os seus resumos e factos de expressões enquanto as entradas dos seus
+  membros, todos os resumos que leu (chamadas, `fun F/A`, `apply`) e as
+  entradas das funções chamadas que voltou a avaliar se mantiverem
+  inalterados, e os orçamentos da passagem e da reanálise lhe responderem da
+  mesma forma (o orçamento da reanálise está tão gasto como no início do seu
+  último percurso, ou voltaria a conceder ou recusar tudo); o seu trabalho
+  continua a contar para o orçamento da passagem. Os resultados são iguais
+  aos de percorrer todas as componentes. A passagem final com entradas
+  `term()` percorre-as todas. Após uma passagem, só as entradas das funções
+  percorridas nela ou chamadas por uma função percorrida nela voltam a ser
+  juntas a partir das suas chamadas; os factos dos argumentos e as entradas
+  das restantes mantêm-se como na última junção.
 - Os literais têm factos exatos: os inteiros de qualquer tamanho e os
   caracteres são singletons, os átomos átomos singleton, os floats `float()`,
   as strings listas não vazias dos seus caracteres (`[]` para `""`), e `-`/`+`
@@ -485,9 +508,14 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   mantém o resultado dos tipos de função selecionados.
 - Um `receive` é a junção das suas cláusulas e do seu corpo `after`, que um
   tempo limite `infinity` nunca executa.
-- Uma componente recursiva começa o resultado de cada membro em `none()` e
-  volta a inferir todos os membros até que nenhum resultado mude; cada ronda
-  junta o novo resultado com o anterior (alarga-o após as primeiras 8 rondas,
+- Uma componente recursiva começa o resultado de cada membro em `none()` na
+  primeira resolução e, nas passagens seguintes, a partir dos resumos com que
+  terminou a última resolução: aí, o primeiro percurso de cada membro
+  substitui o seu resumo pelo que o percurso encontrou (o resumo anterior só
+  serve de suposição para as chamadas anteriores a isso), pelo que nunca
+  ficam tipos de função desatualizados. Volta a inferir os membros até que
+  nenhum resultado mude; cada ronda junta o novo resultado com o anterior
+  (alarga-o após as primeiras 8 rondas,
   [domínio de inferência](#inference-domain)), e uma chamada recursiva
   pendente não acrescenta nada a uma junção. Uma função que nunca pode
   regressar fica `none()`. Uma componente que não convergiu após 8 rondas mais
@@ -512,7 +540,13 @@ A inferência é separada dos tipos declarados e nunca confia nas specs.
   último percurso: cada percurso regista os resumos que lê (chamadas,
   resultados de chamadas, `fun F/A`), um resumo alterado marca os seus
   leitores, e um membro não marcado mantém os seus factos de expressões. A
-  primeira ronda percorre todos os membros.
+  primeira ronda percorre todos os membros. Um membro mantém o seu último
+  percurso entre resoluções: uma resolução retoma o resultado desse percurso,
+  com os seus factos de expressões e trabalho, enquanto os membros que leu
+  tiverem os mesmos resultados e tipos de função, e tudo o resto que leu se
+  mantiver inalterado e obtiver as mesmas respostas, como numa componente
+  mantida nas passagens incrementais. Os resultados são iguais aos de o
+  percorrer.
 - Um orçamento de trabalho partilhado limita a inferência; o esgotamento perde
   precisão e recorre a código genérico, nunca rejeita um programa.
 - As especificações que contradizem a inferência são diagnosticadas
@@ -635,7 +669,7 @@ categorias pelos seus nomes built-in.
 | Nada | `none()` | Identidade | Uma função que nunca regressa fica `none()` |
 | Qualquer coisa | `term()` | Absorve qualquer facto | `dynamic()` e `any()` são `term()` |
 | Inteiros | `42`, `1 \| 3 \| 7` | União de singletons | Mais de 8 singletons tornam-se o seu intervalo |
-| Intervalo de inteiros | `1..10`, `0..255` | O menor intervalo que contém ambos | Um limite que se moveu entre rondas passa para o limiar seguinte: um inferior para 1, depois 0, depois ilimitado; um superior para -1, depois ilimitado |
+| Intervalo de inteiros | `1..10`, `0..255` | O menor intervalo que contém ambos | Um limite que se moveu entre rondas passa para o limiar seguinte: um inferior para 1, depois 0, depois ilimitado; um superior para -1, depois ilimitado. Os limites dentro de contentores também alargam, quando o facto anterior tem um tuplo (desse tamanho e com essa etiqueta), map (com essas chaves) ou lista na mesma posição |
 | Inteiros ilimitados | `pos_integer()` (1 e acima), `non_neg_integer()` (0 e acima), `neg_integer()` (-1 e abaixo), `integer()` | O menor intervalo que contém ambos, impresso pela sua categoria | — |
 | Floats | `float()` | — | — |
 | Números | `number()` | Um intervalo ou categoria de inteiros junto com `float()` | Inteiros singleton com `float()` ficam `1 \| float()` |
@@ -662,6 +696,13 @@ categorias pelos seus nomes built-in.
 - O estreitamento (`Lattice::meet`) é a interseção (meet) dos factos, os
   valores que ambos contêm (ou mais, mas `none()` apenas quando não partilham
   nenhum). Uma interseção vazia significa que o caminho não pode executar.
+- Os factos são nós de um grafo que nunca mudam, pelo que o grafo guarda a
+  resposta de cada junção de dois factos, interseção e teste de inclusão
+  (`within`) durante o resto do lote: quase todos se repetem. Uma resposta
+  guardada continua a contabilizar as junções que executou para a
+  [desistência em função do custo](#inference), pelo que os resultados não
+  dependem dela; uma resposta calculada enquanto o orçamento de nós alargou
+  um facto não é guardada.
 
 Em `-O2` com especialização de tipos, o rebaixamento usa estes factos para
 remover verificações ([especialização](specialization.md#proofs)); as
@@ -802,9 +843,18 @@ sum() -> 1 + 2.
   `clauses.erl` tipos de função, seleção de chamadas e avaliação por chamada
   dentro e além dos seus orçamentos; `dependent.erl`
   [factos dependentes](#dependent-facts); `trees.erl` e `parsers.erl`
-  recursões sobre árvores e formas de parsers gerados.
+  recursões sobre árvores e formas de parsers gerados; `widening.erl`
+  contadores dentro de contentores que alargam e estabilizam.
 - `tests/fixtures/inference/contracts/` contém as verificações de
   especificações (CTest `inference_contracts`).
+- `tests/fixtures/inference/budgets/walkers.erl` é uma passagem do compilador
+  na forma habitual do Erlang (um grande record de estado passado entre
+  funções de percurso mutuamente recursivas cujos resultados são uniões de
+  muitos records). O CTest `inference_walkers`
+  (`tests/compiler/inference/walkers.py`) mantém as suas passagens, passos de
+  trabalho, junções da retícula e as resoluções, rondas e percursos de membros
+  do grupo de funções de percurso dentro de orçamentos cerca de um quarto
+  acima das contagens atuais, e executa o programa.
 
 ### Impressão de tipos
 

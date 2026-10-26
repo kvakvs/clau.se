@@ -1,8 +1,8 @@
 ---
 source: docs/native-records.md
-sourceCommit: a8c3f8f6
-sourceSha256: b3cd9f802ea845b9145cd2ca30525129bb74dce96fc0d1da55c515a295eabf0e
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 7ac44f2d773e43162cf3d7661c9585bc357f2dbc7da1e3dabbc1db4b2f9dd4f5
+translatedAt: 2026-10-26
 ---
 # Native records
 
@@ -26,10 +26,10 @@ uma única representação:
 | Qualificado e importado | `#m:r{...}`, `X#m:r.f`, `X#m:r{...}`, padrões; `-export_record`, `-import_record` |
 | Inferido (anónimo) | `X#_.f`, `X#_{...}`, padrão `#_{...}` |
 
-Não disponíveis: o módulo de reflexão `records` (as chamadas a `records:*` dão
-diagnósticos `unknown module`), `term_to_binary` de native records
-(`error:notsup`, [formato externo de termos](builtins.md#external-term-format))
-e a atualização de código a quente.
+O módulo de reflexão `records` está disponível ([reflexão](#reflection)).
+Não disponíveis: `term_to_binary` de native records (`error:notsup`,
+[formato externo de termos](builtins.md#external-term-format)) e a atualização
+de código a quente.
 
 ## Representação
 
@@ -37,8 +37,11 @@ e a atualização de código a quente.
   `abi::v1::RecordDescriptor` imutável ao lado do descritor do seu módulo: o
   `ModuleDescriptor` que o define, slots de átomos para os nomes do módulo e do
   record, a flag de exportação (`-export_record` em tempo de compilação) e os
-  slots de átomos dos nomes dos campos pela ordem da definição. Os slots de
-  átomos são resolvidos através dos átomos registados do módulo, como os nomes
+  slots de átomos dos nomes dos campos pela ordem da definição, e a lista de
+  campos que `records:get_definition/2` devolve como bytes de External Term
+  Format (`{Field, Default}` com o valor por omissão reduzido, ou apenas
+  `Field`). Os slots de átomos são resolvidos através dos átomos registados do
+  módulo, como os nomes
   de `FrameDescriptor`. Os programas são estáticos (sem descarregamento), pelo
   que um descritor vive tanto como o programa; outro módulo do lote refere-o
   por símbolo. Os valores por omissão são compilados em cada local de
@@ -94,7 +97,11 @@ As mensagens seguem o `erl_lint`:
 
 - Os valores por omissão têm de ser literais após a redução de constantes
   (números, átomos, strings, `[]`, conses/tuplos/maps destes, binaries só de
-  strings): `illegal default value for field a in native record r`.
+  strings, e os operadores aritméticos, de comparação e
+  `not`/`and`/`or`/`xor` sobre estes, reduzidos como o compilador do OTP os
+  reduz); `++`, `--`, `andalso`, `orelse` e um operador que falha (`1 / 0`)
+  são ilegais:
+  `illegal default value for field a in native record r`.
 - Construção local sem valor para um campo sem valor por omissão:
   `field a is not initialized in native record r`; campo desconhecido:
   `field zz undefined in record r`. Os campos desconhecidos em acessos,
@@ -113,6 +120,30 @@ As mensagens seguem o `erl_lint`:
   literais do módulo que define o record e referencia o seu descritor
   exportado; os campos desconhecidos lançam `badfield` antes de um valor em
   falta lançar `novalue` (`ErrorReason` 21).
+
+## Reflexão
+
+`records` responde a partir da definição que um record capturou:
+
+- `get/2`, `get_module/1`, `get_name/1` (`badarg` para um valor que não seja
+  um record ou um campo em falta), `get_field_names/1`, `is_exported/1`
+  (`{badrecord, X}`).
+- `create(Module, Name, Fields, #{is_exported => Boolean})` constrói uma
+  definição em tempo de execução pela ordem de campos indicada, internada
+  pelo servidor de código, pelo que criações iguais a partilham; um record
+  compilado e um criado com o mesmo módulo, nome, flag de exportação e ordem
+  de campos são `=:=`. Erros pela ordem do OTP: `{badrecord, Name}` para nomes
+  que não sejam átomos, `{badmap, Options}`, `badarg` para outras opções,
+  depois um percurso pelos campos (`badarg` para um elemento que não seja um
+  par, `{badfield, {{Module, Name}, Field}}` para um nome que não seja um
+  átomo), depois `badarg` para um campo repetido.
+- `update(Src, Module, Name, Map)` mantém a definição de Src:
+  `{badrecord, Src}`, `{badrecord, Name}` quando Module e Name não
+  correspondem, `{badmap, Map}`, depois `{badfield, ...}` pela ordem das
+  chaves.
+- `get_definition(Module, Name)` descodifica a lista de campos do descritor:
+  `{#{is_exported => Boolean}, Fields}`, `badarg` para um record que nenhum
+  módulo do programa define.
 
 ## Impressão e ordem
 

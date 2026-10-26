@@ -1,8 +1,8 @@
 ---
 source: docs/README.md
-sourceCommit: a8c3f8f6
-sourceSha256: 2124516a48ed02c82259ea7ac1d86d673aaf9cff2feba5044f3db2a30ad0db18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: be550511f58d81353b8a28ffdeba68d3c2e49d69eb8cb6688c3867b834199234
+translatedAt: 2026-10-26
 ---
 # Clause-Dokumentation
 
@@ -12,10 +12,12 @@ Verhalten und Grenzen, die heute bestehen; Pläne und Schrittverlauf liegen in
 
 | Thema | Dokument |
 | --- | --- |
+| Bauen von Clause: Voraussetzungen, Presets, Konfigurationsoptionen, Tests, Qualitätsprüfung, Benchmarks | [building.md](building.md) |
 | Präprozessor (Verhalten von `epp`, Includes, Makros, Features) | [preprocessor.md](preprocessor.md) |
 | Parsen, AST-Besitz, Syntaxgrenzen | [parser.md](parser.md) |
 | TOML-Projekte, Zielauswahl, Build-Verzeichnis und Caches, ignorierte Quellen | [projects.md](projects.md) |
 | Compiler-CLI, Artefakte, Ausgabe von Quelltext und Abstract Format, Kompilier-Cache, LLVM SDK, PCRE2 und zlib, Beispiel | [compile.md](compile.md) |
+| ASN.1-Spezifikationen: `.asn`-Eingaben und `[[targets.asn1]]`, asn1ct-Optionen, Abdeckung, erzeugte Module | [asn1.md](asn1.md) |
 | Eintrittspunkt ausführbarer Dateien, Argumente, Exit-Status, Ausgabeströme, Linken | [executables.md](executables.md) |
 | Debug-Informationen (`-g`), Debugger und der Erlang-Aufrufstapel | [debugging.md](debugging.md) |
 | Opt-in-Profiling (`--profile FILE`): Eintritte und Eigenzeit pro Funktion und Prozess | [profiling.md](profiling.md) |
@@ -29,8 +31,6 @@ Verhalten und Grenzen, die heute bestehen; Pläne und Schrittverlauf liegen in
 | Native, qualifizierte und anonyme Records (OTP 29) | [native-records.md](native-records.md) |
 | Funktionswerte: `fun F/A`, `fun M:F/A`, Closures, benannte Funs, dynamische Aufrufe | [funs.md](funs.md) |
 | Produktions-Builtins: Katalog, Bridge-Aufrufe, Modul-Builtins, Portionen, Registrierung | [builtins.md](builtins.md) |
-| Bibliotheksmodule unter `library/{erts,kernel,stdlib}`, mit Programmen kompiliert: wie Programme sie erhalten, vorhandene und fehlende Module | [library.md](library.md) |
-| Konsolenausgabe: `io:format`, `io:put_chars`, Geräte, Formatsteuerzeichen, Layout von `~p` | [io.md](io.md) |
 | Lebenszyklus der Runtime, Speicher, Code-Server, persistente Terme, Threads, Standardausgabe, Start | [runtime.md](runtime.md) |
 | Prozesse: Scheduler-Worker, Nachrichten und receive, Links, Monitore, registrierte Namen, Timer, Introspektion, Aliase, Exit-Signale | [processes.md](processes.md) |
 | Ports: Identität, Port-Tabelle, Treiber, Datenmodi, der I/O-Thread, ausgelastete Ports, Unterprozesse, Standard-I/O, Dateien und Sockets | [ports.md](ports.md) |
@@ -44,3 +44,15 @@ Verhalten und Grenzen, die heute bestehen; Pläne und Schrittverlauf liegen in
 Ältere schrittweise Validierungsaufzeichnungen und Nachweis-JSON wurden im
 [Validierungsverlauf](validation.md#history) verdichtet; die vollständigen
 Originale bleiben in der Git-Historie (zuletzt vorhanden in Commit `2777c98`).
+
+## Bibliotheken
+
+Die eigenen OTP-Anwendungen von Clause unter `library/`, in
+[libraries/](libraries).
+
+| Thema | Dokument |
+| --- | --- |
+| Bibliotheksmodule unter `library/{erts,kernel,stdlib}`, mit Programmen kompiliert: wie Programme sie erhalten, vorhandene und fehlende Module | [library.md](library.md) |
+| Konsolenausgabe: `io:format`, `io:put_chars`, Geräte, Formatsteuerzeichen, Layout von `~p` | [io.md](io.md) |
+| Kryptografie: OpenSSL-Versionen und -Quellen, Bauen, Linken, FIPS-Modus und Programme mit festgelegtem FIPS | [crypto.md](crypto.md) |
+| public_key: ASN.1-Spezifikationen und ihre Quellen, erzeugte Module, `public_key.hrl` | [public_key.md](public_key.md) |

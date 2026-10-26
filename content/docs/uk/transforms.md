@@ -1,8 +1,8 @@
 ---
 source: docs/transforms.md
-sourceCommit: a8c3f8f6
-sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: d5e6317f85b2929e53d917111bc1e41c6cf211dd4fad2c3950fd821c7e5d1bcc
+translatedAt: 2026-10-26
 ---
 # Parse transforms
 
@@ -144,7 +144,9 @@ Clause застосовує `{parse_transform, Module}` так само, як `e
 Clause, тож отримують ті самі синтаксичні перевірки, що й вихідний код;
 пріоритет операторів визначає, де додаються дужки. Приймаються
 `{Line, Column}`, просто `Line` (показується як `file:line:`) і списки
-властивостей із `location` і `file`; `generated` ігнорується. Атрибут file
+властивостей із `location` і `file`; `generated` ігнорується. Рядок 0,
+який перетворення `qlc` з OTP надає згенерованому коду, отримує розташування
+вузла, імпортованого перед ним. Атрибут file
 змінює файл наступних форм; якщо цей файл існує, імпортований код зберігає
 свої налагоджувальні рядки й коментарі з вихідним кодом. Некоректні форми є
 помилками в місці їхньої анотації (`unknown expression bogus`,

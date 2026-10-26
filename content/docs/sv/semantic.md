@@ -1,8 +1,8 @@
 ---
 source: docs/semantic.md
-sourceCommit: a8c3f8f6
-sourceSha256: f1156b4ef9a29821e7a254cd605e1b92c22cf3304d574ae47f4d558a786f2c18
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 5b75d27b8b6d10019ba765c950ca875904e7eb3d8dea6044ac59e240fccc259f
+translatedAt: 2026-10-26
 ---
 # Semantisk analys
 
@@ -55,8 +55,9 @@ Enligt OTP:s
     L, column C)` när ett tidigare beteende också kräver den (en valfri callback
     räknas när den exporteras);
   - `behaviour M undefined` när `M` inte finns i batchen eller saknar
-    `behaviour_info/1` (OTP-beteenden som `gen_server` finns inte i Clauses
-    [bibliotek](library.md)), plus OTP:s fel för modulnamn som inte kan vara
+    `behaviour_info/1` (ett OTP-beteende som Clauses [bibliotek](library.md)
+    ännu inte tillhandahåller, till exempel `application`), plus OTP:s fel för
+    modulnamn som inte kan vara
     moduler (`the module name must not be empty`, `... must be an atom`, ...).
 - Varningar får inte kompileringen att misslyckas. `-compile`-alternativen
   `nowarn_behaviours` (hela kontrollen, fel för modulnamn inkluderade),
@@ -232,9 +233,29 @@ Inferensen är skild från deklarerade typer och litar aldrig på specs.
   (`semantic/types/inference_inputs`), matchade av varje klausuls huvudmönster;
   rekursiva anrop räknas också. Indata börjar på `none()` (en funktion som
   ingenting anropar körs aldrig och härleds till `none()`) och växer under
-  passen över batchen: 8 pass förenar, senare breddar (widening) som rekursiva
-  resultat; indata som inte har stabiliserats efter 16 pass blir `term()`
-  (rapporterade som breddade).
+  passen över batchen. Varje indata klättrar i en trappa efter hur ofta den
+  ändrats: de första 4 ändringarna förenar, de nästa 2 breddar som rekursiva
+  resultat, de nästa 2 ersätter dessutom behållare inuti en behållare med
+  `term()`, och ytterligare en ändring ger `term()` (rapporterat som breddat).
+  Indata som inte har stabiliserats efter 63 pass blir `term()` (rapporterade
+  som breddade). En rekursiv komponent är kostsam när en lösning förbrukar mer
+  än 2^17 gitterföreningar (nästlade räknas) och mer än 1/16 av det största
+  antalet föreningar som ett pass hittills förbrukat; när medlemmarnas indata
+  ändras igen blir de genast `term()` (rapporterade som breddade), så att senare
+  lösningar inte längre följer anroparnas skiftande indata.
+- Pass efter det första går endast igenom komponenter för vilka något de läser
+  har ändrats (`semantic/types/inference_incremental`): en komponent behåller
+  sina sammanfattningar och uttrycksfakta så länge medlemmarnas indata, varje
+  sammanfattning den läst (anrop, `fun F/A`, `apply`) och indata till anropade
+  funktioner som den evaluerat igen är oförändrade, och budgetarna för pass och
+  omanalys skulle ge samma svar (omanalysbudgeten är lika förbrukad som vid
+  början av dess senaste genomgång, eller skulle återigen bevilja eller neka
+  allt); dess arbete räknas fortfarande mot passets budget. Resultaten är
+  desamma som om varje komponent gås igenom. Det sista passet med `term()` som
+  indata går igenom alla. Efter ett pass förenas endast indata till funktioner
+  som gåtts igenom i det eller anropats av en funktion som gåtts igenom i det
+  på nytt från sina anrop; övriga funktioners argumentfakta och indata är som
+  vid den senaste föreningen.
 - Literaler har exakta fakta: heltal av alla storlekar och tecken är
   singletoner, atomer singletonatomer, flyttal `float()`, strängar icke-tomma
   listor av sina tecken (`[]` för `""`), och `-`/`+` av ett literalt tal
@@ -455,8 +476,13 @@ Inferensen är skild från deklarerade typer och litar aldrig på specs.
   de valda funktionstypernas resultat.
 - En `receive` är föreningen av dess klausuler och dess `after`-kropp, som en
   tidsgräns `infinity` aldrig kör.
-- En rekursiv komponent börjar varje medlems resultat på `none()` och härleder
-  alla medlemmar på nytt tills inget resultat ändras; varje omgång förenar det
+- En rekursiv komponent börjar varje medlems resultat på `none()` i sin första
+  lösning och i senare pass från sammanfattningarna som dess senaste lösning
+  slutade med: där ersätter den första genomgången av varje medlem dess
+  sammanfattning med vad genomgången hittade (den tidigare sammanfattningen
+  tjänar bara som antagande för anrop före det), så att inaktuella
+  funktionstyper aldrig blir kvar. Den härleder medlemmar på nytt tills inget
+  resultat ändras; varje omgång förenar det
   nya resultatet med det föregående (breddar det efter de första 8 omgångarna,
   [inferensdomän](#inference-domain)), och ett väntande rekursivt anrop bidrar
   inte till en förening. En funktion som aldrig kan returnera förblir `none()`.
@@ -481,7 +507,12 @@ Inferensen är skild från deklarerade typer och litar aldrig på specs.
   sedan deras senaste genomgång: varje genomgång noterar de sammanfattningar den
   läser (anrop, anropsresultat, `fun F/A`), en ändrad sammanfattning markerar
   sina läsare, och en medlem som inte markerats behåller sina uttrycksfakta. Den
-  första omgången går igenom varje medlem.
+  första omgången går igenom varje medlem. En medlem behåller sin senaste
+  genomgång mellan lösningar: en lösning återanvänder den genomgångens resultat,
+  med dess uttrycksfakta och arbete, så länge medlemmarna den läst har samma
+  resultat och funktionstyper, och allt annat den läst är oförändrat och skulle
+  ge samma svar, som för en behållen komponent i inkrementella pass. Resultaten
+  är desamma som om den gås igenom.
 - En delad arbetsbudget begränsar inferensen; uttömning förlorar precision och
   faller tillbaka på generisk kod, avvisar aldrig ett program.
 - Specifikationer som motsäger inferensen diagnostiseras
@@ -596,7 +627,7 @@ ut som Erlang-typer, kategorier med sina inbyggda namn.
 | Ingenting | `none()` | Identitet | En funktion som aldrig returnerar förblir `none()` |
 | Vad som helst | `term()` | Absorberar varje faktum | `dynamic()` och `any()` är `term()` |
 | Heltal | `42`, `1 \| 3 \| 7` | Union av singletoner | Fler än 8 singletoner blir sitt intervall |
-| Heltalsintervall | `1..10`, `0..255` | Minsta intervall som rymmer båda | En gräns som flyttats mellan omgångar går till nästa tröskel: en nedre till 1, sedan 0, sedan obegränsad; en övre till -1, sedan obegränsad |
+| Heltalsintervall | `1..10`, `0..255` | Minsta intervall som rymmer båda | En gräns som flyttats mellan omgångar går till nästa tröskel: en nedre till 1, sedan 0, sedan obegränsad; en övre till -1, sedan obegränsad. Gränser inuti behållare breddas också, där det föregående faktumet har en tupel (av den storleken och med den taggen), map (med de nycklarna) eller lista på samma plats |
 | Obegränsade heltal | `pos_integer()` (1 och uppåt), `non_neg_integer()` (0 och uppåt), `neg_integer()` (-1 och nedåt), `integer()` | Minsta intervall som rymmer båda, utskrivet med sin kategori | — |
 | Flyttal | `float()` | — | — |
 | Tal | `number()` | Ett intervall eller en kategori av heltal förenat med `float()` | Singletonheltal med `float()` förblir `1 \| float()` |
@@ -621,6 +652,12 @@ ut som Erlang-typer, kategorier med sina inbyggda namn.
 - Inskränkning (`Lattice::meet`) är mötet av fakta, de värden som båda rymmer
   (eller fler, men `none()` endast när de inte delar något). Ett tomt möte
   innebär att vägen inte kan köras.
+- Fakta är noder i en graf som aldrig ändras, så grafen behåller svaret från
+  varje förening av två fakta, möte och inklusionstest (`within`) under resten
+  av batchen: nästan alla upprepas. Ett behållet svar räknar fortfarande de
+  föreningar det utförde för [kostnadsstyrd uppgivning](#inference), så att
+  resultaten inte beror på det; ett svar som beräknats medan nodbudgeten
+  breddade ett faktum behålls inte.
 
 Vid `-O2` med typspecialisering använder sänkningen (lowering) dessa fakta för
 att ta bort kontroller ([specialisering](specialization.md#proofs));
@@ -749,9 +786,17 @@ sum() -> 1 + 2.
   måste kunna lösas och vars kropp producerar ett sådant värde; `clauses.erl`
   funktionstyper, val vid anrop och evaluering per anrop inom och utöver sina
   budgetar; `dependent.erl` [beroende fakta](#dependent-facts); `trees.erl` och
-  `parsers.erl` rekursioner över träd och former från genererade parsrar.
+  `parsers.erl` rekursioner över träd och former från genererade parsrar;
+  `widening.erl` räknare inuti behållare som breddas och stabiliseras.
 - `tests/fixtures/inference/contracts/` innehåller specifikationskontrollerna
   (CTest `inference_contracts`).
+- `tests/fixtures/inference/budgets/walkers.erl` är ett kompilatorpass i Erlangs
+  vanliga form (ett stort tillståndsrecord som förs genom ömsesidigt rekursiva
+  genomgångsfunktioner vars resultat är unioner av många records). CTest
+  `inference_walkers` (`tests/compiler/inference/walkers.py`) håller dess pass,
+  arbetssteg, gitterföreningar och genomgångsgruppens lösningar, omgångar och
+  medlemsgenomgångar inom budgetar ungefär en fjärdedel över dagens antal, och
+  kör programmet.
 
 ### Utskrift av typer
 

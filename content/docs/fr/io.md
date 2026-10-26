@@ -1,8 +1,8 @@
 ---
 source: docs/io.md
-sourceCommit: 336caea7
-sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 63cb0a2b2caa118ec3a36a1eea641d00d761085fea56a9c7edd8509ddbde219c
+translatedAt: 2026-10-26
 ---
 # Sortie console (`io`)
 
@@ -23,9 +23,10 @@ d'entrée d'`io` sont en Erlang dans la [bibliothèque](library.md#contents).
   `io:nl/1` : `standard_io` et `user` désignent la sortie standard,
   `standard_error` la sortie d'erreur standard (la sortie standard est vidée
   d'abord, de sorte que les deux gardent leur ordre). Un pid, ou un atome
-  enregistré pour l'un d'eux, est un serveur d'E/S : le texte lui est envoyé en
-  UTF-8 via `file:write/2` (un fichier ouvert du module `file` de Clause), et
-  l'appel renvoie ce que celui-ci renvoie. Un atome non enregistré donne
+  enregistré pour l'un d'eux, est un serveur d'E/S : le texte lui est envoyé
+  sous forme de requête du protocole d'E/S `{put_chars, unicode, Utf8}`
+  (`clause_io:put_chars/2`), le serveur l'écrit dans son encodage, et l'appel
+  renvoie la réponse. Un atome non enregistré donne
   `badarg`, un pid mort `error:terminated`, l'appelant lui-même
   `error:calling_self`, tout autre terme `function_clause`, comme OTP.
 - `io:put_chars(Chardata)` écrit des chardata : caractères Unicode, binaries

@@ -1,8 +1,8 @@
 ---
 source: docs/projects.md
-sourceCommit: a8c3f8f6
-sourceSha256: b1c98a208a0a72f7ad5b20a2915eb2b39a4142cc65314491f83b019398b3b85a
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: dc39c5b08aff56dfd597eb58f062bf4aebc96a1c580bdd77a24f38de9936c351
+translatedAt: 2026-10-26
 ---
 # TOML-Projekte
 
@@ -32,6 +32,7 @@ disable_features = ["compr_assign"]
 ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
+shell = false
 cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
@@ -51,6 +52,9 @@ my_dependency = "vendor/my_dependency"
   für Formen im abstrakten Format
   ([Transformationen](transforms.md#interchange)); Header sind Abhängigkeiten,
   keine Eingaben.
+- `[[targets.asn1]]`-Gruppen kompilieren ASN.1-Spezifikationen (`sources`,
+  `options`, `outdir`) zu Modulen, die dem Ziel hinzugefügt werden
+  ([ASN.1](asn1.md#inputs)).
 - `parse_transforms` (Modulnamen) und `transform_paths` (Verzeichnisse oder
   Muster vorkompilierter `.beam`-Dateien) in `options` wenden
   Parse-Transformationen auf die Module des Ziels an
@@ -62,6 +66,9 @@ my_dependency = "vendor/my_dependency"
   des Ziels aufrufbar, wie es `--keep-exports` für jedes ausgewählte Ziel tut
   ([Export-Lebendigkeit](executables.md#export-liveness)). Es muss ein Boolean
   sein.
+- `shell = true` in `options` bindet die interaktive Shell in die ausführbare
+  Datei des Ziels ein, wie es `--shell` tut
+  ([interaktive Shell](library.md#interactive-shell)). Es muss ein Boolean sein.
 - `cache_inference_in_dirs` (Verzeichnis-Wildcards) in `options` fügt
   Verzeichnisse hinzu, deren Module ihre Inferenzergebnisse im Build-Cache
   behalten ([Inferenz-Cache](#inference-cache)).

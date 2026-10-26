@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: a8c3f8f6
-sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6ba79590b0f18f68a50e1ced9d8509d74af70e49ac27abb7844cbc086624fd89
+translatedAt: 2026-10-26
 ---
 # Ejecutables
 
@@ -94,7 +94,8 @@ se analizan igual; un valor va en el argumento siguiente o después de `=`.
 | `--max-stack BYTES` | Límite de la pila de marcos de cada proceso; sin límite por defecto |
 | `--min-heap-size WORDS` | `min_heap_size` por defecto de cada proceso, como mínimo 1, redondeado hacia arriba a un tamaño de heap, como `+hms` de OTP; como máximo `--max-heap`; por defecto 233 ([dimensionamiento](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Límite de la memoria de todos los procesos juntos (heaps, binaries off-heap, pilas); sin límite por defecto |
-| `--schedulers N` | Hilos de trabajo del planificador que ejecutan procesos, de 1 a 1.024; por defecto uno por procesador lógico, como `+S` de OTP ([hilos de trabajo](processes.md#workers)) |
+| `--schedulers N` | Hilos de trabajo del planificador que ejecutan procesos, de 1 a 1.024; por defecto uno por CPU de `--scheduler-cpus` o, en su defecto, uno por procesador lógico en el que puede ejecutarse el programa (su máscara de afinidad), como los planificadores en línea de OTP ([hilos de trabajo](processes.md#workers)) |
+| `--scheduler-cpus SET` | Vincula el hilo de trabajo N a la N-ésima CPU de `SET`, de forma cíclica, como `+sbt`/`+sct` de OTP: `performance` (la clase de núcleos más rápida: núcleos P de una CPU híbrida, todas las CPU en los demás casos), `all` o una lista como `0-15` o `2,4,6`; todas las CPU enumeradas deben estar en la máscara de afinidad. Sin vinculación por defecto ([vinculación a CPU](processes.md#cpu-binding)) |
 | `--profile FILE` | Escribe en `FILE`, cuando termina el programa, un informe de entradas y tiempo propio por función y por proceso ([perfilado](profiling.md)); desactivado por defecto |
 | `--args-file FILE` | Archivo de opciones como `vm.args` de OTP: reservado, informa `runtime option --args-file is not implemented` |
 | `--` | Termina las opciones del runtime; los argumentos siguientes van todos a `Entry` |
@@ -245,7 +246,13 @@ mediante ella en un dispositivo de proceso). Es conservador:
   builtin que produce átomos (`list_to_atom/1`, `list_to_existing_atom/1`,
   `binary_to_atom/1,2`, `binary_to_existing_atom/1,2`, `binary_to_term/1,2`,
   `fun_info/1,2`, `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`,
-  `pre_loaded/0`), se conservan todas las exportaciones de todos los módulos.
+  `pre_loaded/0`), se conservan todas las exportaciones de todos los módulos;
+- un módulo compilado con `{clause_liveness, strict}` promete que sus átomos
+  nunca designan código llamado: sus etiquetas de record y literales átomo
+  distintos de su propio nombre (pero no `M:F(...)` ni `apply/3` con un módulo
+  literal y una función determinada en runtime), los builtins que producen
+  átomos y `binary_to_term/1,2` no cuentan para ninguna de las dos reglas
+  ([vivacidad estricta](compile.md#strict-liveness)).
 
 Una función a la que nada vivo llega no recibe ningún código. Una exportación
 omitida conserva su nombre en la tabla de exportaciones del módulo sin código,

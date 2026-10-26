@@ -1,8 +1,8 @@
 ---
 source: docs/executables.md
-sourceCommit: a8c3f8f6
-sourceSha256: 70d36ba8e8c6b7bf8d1497635905c412b3fd8db8a36ef4ee8de8c1ee6f06f6ae
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6ba79590b0f18f68a50e1ced9d8509d74af70e49ac27abb7844cbc086624fd89
+translatedAt: 2026-10-26
 ---
 # Ausführbare Dateien
 
@@ -94,7 +94,8 @@ gleich ausgewertet; ein Wert steht im nächsten Argument oder nach `=`.
 | `--max-stack BYTES` | Obergrenze für den Frame-Stack jedes Prozesses; standardmäßig unbegrenzt |
 | `--min-heap-size WORDS` | Standard-`min_heap_size` jedes Prozesses, mindestens 1, aufgerundet auf eine Heap-Größe, wie `+hms` von OTP; höchstens `--max-heap`; Standard 233 ([Größenbemessung](runtime-heap.md#sizing-and-budget)) |
 | `--max-memory BYTES` | Obergrenze für den Speicher aller Prozesse zusammen (Heaps, Off-Heap-Binaries, Stacks); standardmäßig unbegrenzt |
-| `--schedulers N` | Scheduler-Worker, die Prozesse ausführen, 1 bis 1.024; Standard einer pro logischem Prozessor, wie `+S` von OTP ([Worker](processes.md#workers)) |
+| `--schedulers N` | Scheduler-Worker, die Prozesse ausführen, 1 bis 1.024; Standard einer pro CPU von `--scheduler-cpus`, sonst einer pro logischem Prozessor, auf dem das Programm laufen darf (seine Affinitätsmaske), wie die Online-Scheduler von OTP ([Worker](processes.md#workers)) |
+| `--scheduler-cpus SET` | Bindet Worker N reihum an die N-te CPU von `SET`, wie `+sbt`/`+sct` von OTP: `performance` (die schnellste Kernklasse: P-Kerne einer Hybrid-CPU, sonst jede CPU), `all` oder eine Liste wie `0-15` oder `2,4,6`; jede aufgeführte CPU muss in der Affinitätsmaske liegen. Standardmäßig ungebunden ([CPU-Bindung](processes.md#cpu-binding)) |
 | `--profile FILE` | Schreibt beim Programmende einen Bericht über Eintritte und Eigenzeit pro Funktion und pro Prozess nach `FILE` ([Profiling](profiling.md)); standardmäßig aus |
 | `--args-file FILE` | Optionsdatei wie `vm.args` von OTP: reserviert, meldet `runtime option --args-file is not implemented` |
 | `--` | Beendet die Runtime-Optionen; alle folgenden Argumente gehen an `Entry` |
@@ -242,7 +243,13 @@ auf ein Prozessgerät). Sie bleibt konservativ:
   (`list_to_atom/1`, `list_to_existing_atom/1`, `binary_to_atom/1,2`,
   `binary_to_existing_atom/1,2`, `binary_to_term/1,2`, `fun_info/1,2`,
   `fun_info_mfa/1`, `process_info/1,2`, `loaded/0`, `pre_loaded/0`) enthält,
-  bleibt jeder Export jedes Moduls.
+  bleibt jeder Export jedes Moduls;
+- ein mit `{clause_liveness, strict}` kompiliertes Modul verspricht, dass seine
+  Atome nie aufgerufenen Code benennen: Seine record-Tags und Atomliterale außer
+  seinem eigenen Namen (aber nicht `M:F(...)` oder `apply/3` mit literalem
+  Modul und einer Funktion zur Laufzeit), atomerzeugende Builtins und
+  `binary_to_term/1,2` zählen für keine der beiden Regeln
+  ([strikte Lebendigkeitsanalyse](compile.md#strict-liveness)).
 
 Eine Funktion, die nichts Lebendiges erreicht, erhält überhaupt keinen Code. Ein
 weggelassener Export behält seinen Namen in der Exporttabelle des Moduls ohne

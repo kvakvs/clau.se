@@ -1,8 +1,8 @@
 ---
 source: docs/transforms.md
-sourceCommit: a8c3f8f6
-sourceSha256: 567b9700399599cf0acdea30debb2cd52560a7a8675d9d86d9939a7e932bb33b
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: d5e6317f85b2929e53d917111bc1e41c6cf211dd4fad2c3950fd821c7e5d1bcc
+translatedAt: 2026-10-26
 ---
 # Parse-Transforms
 
@@ -151,8 +151,10 @@ werden zu Tokens, die an ihren Annotationen verortet sind, und durchlaufen den
 Parser von Clause, sodass sie dieselben Syntaxprüfungen wie Quelltext erhalten;
 die Operatorrangfolge entscheidet, wo Klammern ergänzt werden. `{Line, Column}`,
 ein bloßes `Line` (angezeigt als `file:line:`) und Property-Listen mit
-`location` und `file` werden akzeptiert; `generated` wird ignoriert. Ein
-file-Attribut wechselt die Datei der folgenden Formen; existiert diese Datei,
+`location` und `file` werden akzeptiert; `generated` wird ignoriert. Zeile 0,
+mit der der `qlc`-Transform von OTP erzeugten Code versieht, übernimmt die
+Position des zuvor importierten Knotens. Ein file-Attribut wechselt die Datei
+der folgenden Formen; existiert diese Datei,
 behält importierter Code seine Debug-Zeilen und Quelltextkommentare.
 Fehlerhafte Formen sind Fehler an ihrer Annotation (`unknown expression bogus`,
 `expected {Name, Arity}`, `invalid annotation`), und das Modul scheitert; die

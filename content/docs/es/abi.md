@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: 336caea7
-sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 9b1845341638452f441c091f8de4122b06281694d83cc28080968c0dbdbc9133
+translatedAt: 2026-10-26
 ---
 # ABI del código generado (revisión 21)
 
@@ -78,9 +78,10 @@ módulo, nombre y campos, indicador de exportación;
 [records nativos](native-records.md#representation)) en una tabla externa
 `<prefix>.records` a la que hacen referencia otros módulos de un lote, los
 descriptores de funs en una tabla privada `<prefix>.funs`
-([funs](funs.md#representation)), el área de literales de solo lectura
-([áreas](runtime-heap.md#areas)), las cachés escribibles de átomos y de funs que
-el código generado lee en línea, y la `code_convention` de sus cuerpos. El
+([funs](funs.md#representation)), los literales codificados del módulo y la
+caché de literales ([áreas](runtime-heap.md#areas)), las cachés escribibles de
+átomos y de funs que el código generado lee en línea, y la `code_convention`
+de sus cuerpos. El
 registro llama a `CLAUSE_register_module_v4(Runtime*)`, que valida la
 versión/ancho y todas las exportaciones, interna los átomos, construye un
 registro congelado y lo publica junto con la imagen de código en una sola
@@ -98,6 +99,18 @@ publica nada (los átomos ya internados permanecen en la tabla acotada).
 - Las expresiones de átomo distintas de los átomos fijos leen `atom_cache`
   cuando el `FrameState::runtime` del contexto es el propietario de la caché y,
   si no, `CLAUSE_atom_v3`; nunca internan ([átomos](terms.md#atoms)).
+- Los literales compuestos son `literal_count` términos de `literals`
+  (`literal_bytes` bytes, `abi/literals.hpp`): la codificación compacta de
+  términos de BEAM (etiquetas base `u`, `i`, `a`: cantidades, enteros de
+  cualquier tamaño en complemento a dos big-endian, átomos como slot de átomo
+  del módulo + 1, con 0 para `[]`) más las etiquetas extendidas de Clause para
+  listas (longitud, elementos, cola), tuplas, flotantes (binary64), bitstrings
+  (número de bits, bytes), maps y cadenas de bytes. El registro los decodifica
+  en el heap de literales del runtime; el runtime que reclama la caché rellena
+  `literal_cache` (una palabra por literal), que el código generado lee tras
+  comprobar la reclamación, y el código de otros runtimes llama a
+  `CLAUSE_literal_v1(context, index, descriptor)`
+  ([áreas](runtime-heap.md#areas)).
 - Un objeto de arranque (`clausev1_start`) enumera todos los descriptores en un
   `StartupDescriptor` y su `main` nativo llama a
   `CLAUSE_main_v1(argc, argv, descriptor)`, que registra todos los módulos y
@@ -266,28 +279,66 @@ runtime. Un `<symbol>` exportado conserva la firma
   contexto (`self`), una palabra del destino cada uno. Un cuerpo lee la cabecera
   de su marco (`stack + frame`) y los registros desde ahí a la entrada y hace un
   switch sobre la palabra de reanudación de la cabecera.
-- Patrones de binary (destinos de 64 bits): la prueba de inicio, la prueba de
-  fin y los segmentos enteros de un ancho constante de bytes completos de hasta
-  56 bits en una posición alineada a byte leen la celda en línea
+- Patrones de binary: la prueba de inicio, la prueba de fin y los segmentos
+  enteros de un ancho constante de hasta el tamaño de palabra menos 8 bits
+  (56 en destinos de 64 bits, 24 en los de 32 bits) leen la celda en línea
   (`abi::v1::heap_binary_*_word`, `refc_*_word`: el `data_` de una vista fuera
-  del heap es el primer byte de su búfer); los demás segmentos y las posiciones
-  no alineadas llaman a `CLAUSE_bits_v1`. Un sujeto `sub_binary` (`sub_*_word`)
-  se lee a través de su original. Un `Rest/binary` o `Rest/bits` final de
-  unidad 1 se asigna en línea por incremento de puntero como una celda
-  `sub_binary` de 4 palabras del original.
-- Bucles sobre binaries: cuando cada cláusula de una función hace coincidir un
-  parámetro como binary (o lo ignora), nunca conserva el binary completo y solo
-  lee los restos que vincula como ese parámetro de llamadas de cola a sí misma,
-  la función recibe una variante privada `<symbol>.loop`. El propio paso de la
-  función crea la celda del resto como arriba y entra en la variante con ella
-  (un resto creado por el servicio, que puede estar compartido, vuelve a entrar
-  en cambio en la función). La variante no crea ninguna celda de resto: cada
-  llamada de cola a sí misma almacena el nuevo desplazamiento y la nueva
-  longitud en bits en la celda del parámetro, a la que solo hace referencia este
-  bucle, y pasa la misma celda, de modo que un bucle sobre un binary asigna una
-  sola vez. La variante lee la vista de la celda una vez por paso, antes de sus
-  cláusulas, y omite la prueba de bitstring del parámetro. En las trazas de pila
-  la variante tiene el nombre y la aridad de la función.
+  del heap es el primer byte de su búfer), en cualquier posición de bit. Un
+  segmento de bytes completos en una posición alineada a byte es una sola carga;
+  cualquier otro lee los bytes que abarca el campo y lo extrae mediante
+  desplazamientos. Los anchos que no son bytes completos solo se leen en línea
+  en big-endian. Los demás segmentos llaman a `CLAUSE_bits_v1`. Un sujeto
+  `sub_binary` (`sub_*_word`) se lee a través de su original. Un `Rest/binary`
+  o `Rest/bits` final de unidad 1 se asigna en línea por incremento de puntero
+  como una celda `sub_binary` de 4 palabras del original.
+- Bucles sobre binaries: cuando ninguna cabecera de cláusula de una función
+  compara un parámetro con una vinculación y alguna cláusula vuelve a pasar un
+  resto de él como ese parámetro de una llamada de cola a sí misma, la función
+  recibe una variante privada `<symbol>.loop`. El propio paso de la función
+  crea la celda del resto como arriba y entra en la variante con ella (un resto
+  creado por el servicio, que puede estar compartido, vuelve a entrar en cambio
+  en la función). La variante no crea ninguna celda de resto: cada llamada de
+  cola a sí misma almacena el nuevo desplazamiento y la nueva longitud en bits
+  en la celda del parámetro, a la que solo hace referencia este bucle, y pasa la
+  misma celda, de modo que un bucle sobre un binary asigna una sola vez. La
+  variante lee la vista de la celda una vez por paso, antes de sus cláusulas, y
+  omite la prueba de bitstring del parámetro. Las cargas y los almacenamientos
+  del estado del proceso, los marcos, las palabras de `sub_binary` y las
+  palabras de binary en línea o fuera del heap llevan etiquetas LLVM TBAA
+  disjuntas; una variante que no llama a ninguna otra función Erlang marca con
+  `!invariant.load` las cargas del original de su celda y de la cabecera, el
+  desplazamiento y la dirección de datos del original, y recibe una pasada GVN
+  adicional tras la cadena (atributo de función `clause-binary-loop`), de modo
+  que la vista sale del bucle y el desplazamiento y la longitud que almacena una
+  iteración son valores en registros de la siguiente. Cualquier otra lectura en
+  el cuerpo de un resto, o del parámetro completo en la variante, y todo fun que
+  capture uno, recibe una nueva celda `sub_binary` con los mismos bits (el
+  servicio la crea sin espacio en el heap), de modo que nada más conserva la
+  celda del bucle; los guards leen el propio valor. En las trazas de pila la
+  variante tiene el nombre y la aridad de la función.
+- Bucles sobre flotantes (destinos de 64 bits): un parámetro entre los seis
+  primeros (los que se pasan en registros) que cada cláusula vincula a una
+  variable (o ignora), al que alguna llamada de cola a sí misma pasa una
+  expresión exclusivamente flotante (un literal flotante, `/`, una llamada a
+  `math` o `+ - *` con un operando de ese tipo), y cuyo valor solo se lee como
+  operando de aritmética, comparaciones o llamadas a `math`, como el mismo
+  parámetro de una llamada de cola a sí misma, o dentro del resultado o de una
+  llamada de cola a otra función (nunca en un fun), es un parámetro flotante.
+  La función recibe una variante privada `<symbol>.float` que toma cada
+  parámetro flotante como los bits de su double en la palabra de argumento
+  (atributos de función `clause-float-parameters`, una máscara de bits, y
+  `clause-float-generic`, la función). Una llamada de cola a sí misma de
+  cualquiera de las dos cuyo nuevo valor de cada parámetro flotante es un
+  double en un registro entra en la variante con esos bits, de modo que un
+  bucle sobre flotantes no crea ninguna celda por paso; la variante crea una
+  celda de un parámetro solo donde lee la propia palabra. Los bits en bruto
+  nunca llegan a un lugar que lea una recolección: las demás llamadas de cola
+  a sí misma de la variante vuelven a entrar en la función, y una transferencia
+  a la variante que toma su ruta de servicio (recolección solicitada, perfilado,
+  reducciones agotadas, crecimiento de pila) encapsula los doubles en celdas con
+  el auxiliar `clause.float.box` del módulo y entra en cambio en el descriptor
+  de la función. En las trazas de pila la variante tiene el nombre y la aridad
+  de la función.
 - Una construcción de binary cuyos bytes se conocen todos en tiempo de
   compilación (constantes enteras pequeñas y literales de cadena con anchos
   constantes de bytes completos, como máximo 64 bytes) es una celda de binary en
@@ -302,6 +353,15 @@ runtime. Un `<symbol>` exportado conserva la firma
 - Un builtin puro con argumentos literales se evalúa en tiempo de compilación,
   como hace `sys_core_fold` de OTP: `atom_to_list(Atom)` de un literal de átomo
   es la cadena literal de ese nombre, sin ninguna llamada.
+- `integer_to_list(N)` de un entero pequeño escribe las celdas de sus dígitos
+  en las palabras libres del bloque de heap, y `list_to_integer(L)` de una lista
+  propia de dígitos, tras un signo menos opcional, lo bastante corta para ser un
+  entero pequeño (17 dígitos en destinos de 64 bits, 8 en los de 32 bits), la
+  lee en el sitio (`codegen/lowering_integer_text`). Cualquier otro argumento,
+  o un bloque sin espacio, entra en el builtin, que lanza todos los errores.
+  Como operando izquierdo de `++`, `integer_to_list(N)` comprueba `N` donde
+  aparece y el anexado escribe los dígitos directamente sobre `Right`, sin
+  ninguna copia.
 - `erlang:make_tuple(N, V)` con un `N` pequeño en 1..64 asigna la tupla por
   incremento de puntero y la rellena con `llvm.experimental.memset.pattern`
   cuando el heap tiene espacio; en otro caso se ejecuta el builtin.
@@ -324,7 +384,14 @@ runtime. Un `<symbol>` exportado conserva la firma
   bifurcación), calculan en registros y asignan por incremento de puntero la
   celda flotante de 2 palabras cuando el resultado es finito, el divisor no es
   cero y el heap tiene espacio; en otro caso `CLAUSE_immediate_v1` lanza
-  `badarith` o promociona.
+  `badarith` o promociona. Un literal flotante y el resultado de `/`, de math
+  en línea o de una operación con un operando de ese tipo (siempre un flotante
+  cuando tiene éxito) también conservan su double en un registro: las
+  operaciones que lo leen toman el registro, y su celda se crea solo donde algo
+  lee la propia palabra (`CLAUSE_float_v1` cuando el heap no tiene espacio);
+  una ruta alternativa de servicio que lo lee recibe su propia celda. Una
+  comparación de dos flotantes de este tipo compara los doubles, y la igualdad
+  exacta compara sus bits (por lo que `0.0 =:= -0.0` sigue siendo falso).
 - Las expresiones de map sin base cuyas claves son literales de átomo o de
   entero pequeño (como máximo 32 distintas) se escriben en línea como celdas de
   map clásico, con las claves ordenadas en tiempo de compilación en el orden
@@ -339,6 +406,18 @@ runtime. Un `<symbol>` exportado conserva la firma
   espacio en el heap. Una clave ausente hace fallar un patrón de inmediato;
   los árboles de map, otras claves, una clave ausente en otros casos y los
   errores usan `CLAUSE_map_v1` (búsquedas en maps pequeños).
+- Cada búsqueda de este tipo de una clave literal (un átomo o entero pequeño
+  escrito en el fuente) tiene una caché en línea por sitio, una variable global
+  interna `[2 x word]` compartida por todos los procesos: el índice de la
+  palabra de clave encontrada por última vez (inicialmente 1) y las reescrituras
+  restantes (8). La búsqueda compara primero la palabra de clave en el índice
+  de la caché, de modo que un map con la forma habitual del sitio cuesta una
+  comparación; en otro caso recorre las claves y, mientras quedan reescrituras,
+  almacena el índice encontrado. Ambas palabras son atómicas con orden relajado;
+  un sitio que ha agotado sus reescrituras solo lee, de modo que los sitios que
+  ven muchas formas en muchos procesos no hacen rebotar la línea de caché. Las
+  claves variables (maps usados como diccionarios) solo recorren las claves
+  (cachés en línea de formas de map).
 - Las tuplas y listas de como máximo 64 palabras se asignan en línea por
   incremento de puntero en `[heap_top, heap_limit)` (cabecera o celdas cons
   escritas en el sitio, `heap_top` avanzado); si no, las construye
@@ -505,3 +584,5 @@ los bytes de módulo/función, el array de argumentos y la aridad, y devuelve un
 | 21 | `ModuleDescriptor::fun_cache` y clausuras en línea |
 | 22 | Builtins directos: `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
 | 23 | Builtins rápidos: `BuiltinName::call` (`BuiltinCall`), 0 de `CLAUSE_builtin_call_v1` rechaza la operación |
+| 24 | `RecordDescriptor::definition` (la lista de campos como bytes de External Term Format, para `records:get_definition/2`) y `ModuleDescriptor::features` (slots de átomos de las funcionalidades habilitadas, para `erl_features:used/1`) |
+| 25 | Literales codificados del módulo y el heap de literales: `ModuleDescriptor::literals` contiene bytes codificados (`literal_bytes`), `literal_cache`, `literal_count`; `CLAUSE_literal_v1` |

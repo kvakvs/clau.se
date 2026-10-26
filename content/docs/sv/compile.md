@@ -1,8 +1,8 @@
 ---
 source: docs/compile.md
-sourceCommit: a8c3f8f6
-sourceSha256: 070de594787444f6afefbf3760848986bda8c85ff204932e596a67502385ae50
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 8750451f2d6635ee9906c50ddec592267fcd6a3f5fb5fd2d3d66a16943a91117
+translatedAt: 2026-10-26
 ---
 # Kompilering
 
@@ -46,7 +46,9 @@ med alternativ som inte ändrar något som Clause genererar:
 `{nowarn_unused_function, [...]}`) samt tips om optimering, felsökning och
 rapportering (`inline`, `{inline, [F/A]}`, `{inline_size, N}`,
 `{inline_effort, N}`, `inline_list_funcs`, `debug_info`, `deterministic`,
-`report*`, `verbose`, ...). `{parse_transform, Module}` kör transformen på
+`report*`, `verbose`, ...) samt Clauses eget
+`{clause_liveness, strict}` ([strikt livaktighet](#strict-liveness)).
+`{parse_transform, Module}` kör transformen på
 värdens Erlang/OTP före analysen ([parse transforms](transforms.md)).
 `on_load`, `nifs`, `export_all`, andra `compile`-alternativ och
 parametriserade moduler avvisas; diagnostiken namnger dem, till exempel
@@ -56,6 +58,35 @@ Varje modul får `module_info/0,1`. Källfiler som börjar med `#!` följer
 `main/1`, `-mode` godtas). Typ-/spec-former analyseras men ändrar aldrig
 genererad kod. Rena syntaxlägen (`--parse-check`, `--print-ast`,
 `--print-source`, ...) godtar hela grammatiken.
+
+## Strikt livaktighet
+
+`-compile({clause_liveness, strict}).` talar om för analysen av
+[levande exporter](executables.md#export-liveness) att modulen aldrig namnger
+koden den anropar genom sina egna atomer. Dess atomliteraler behåller inga
+andra modulers exporter (dess eget namn behåller fortfarande dess egna,
+eftersom feltupler namnger den för `format_error/1`), dess record-taggar inga,
+och dess atomproducerande inbyggda funktioner och `binary_to_term/1,2` räknas
+varken som en källa till modulnamn eller som ett dynamiskt anrop. Den får inte
+heller skicka andra modulers namn till inbyggda funktioner som anropar dem via
+namn, som `spawn/4` med en nod eller `erlang:get_module_info/1,2`. Dess egna
+anrop via namn räknas fortfarande: `M:F(...)` eller `apply/3` med en literal
+modul och en funktion som bestäms vid körning behåller den modulens exporter,
+och anrop med en modul som bestäms vid körning är dynamiska anrop, som når de
+moduler som andra modulers atomer namnger.
+
+Alternativet ändrar ingen genererad kod, endast vilka exporter en körbar fil
+behåller. Ett felaktigt löfte utelämnar en export som modulen anropar via
+namn, vilket då kastar `undef`. Biblioteksmoduler sätter det där deras atomer
+endast är data: `epp` (token- och makronamn, maskinen, applikationsnamn),
+`erl_error` (en atomplatshållare i utskrivna argumentlistor; `error_info`
+namnger modulerna i koden som kastar), `erl_features` (funktionslistan i en
+beam-fil) och `file` (felorsaker, begärandetaggar; modulerna som en
+io-begäran namnger är avsändarens atomer). Utan det behöll `apply/3` i
+`file:io_request/3` och `list_to_atom/1` i `epp` varje export i ett program
+som förbehandlar en fil, inklusive hela `erl_eval`; med det (och
+`-if`-villkor evaluerade i C++) minskar dess extra kompileringstid jämfört med
+ett hello-world med cirka 40 %.
 
 ## Kör exemplet med kompilerade moduler
 
@@ -143,14 +174,19 @@ typannoteringar. Utskrivaren (`print_source`, `expression_source`,
 | `--target-triple TRIPLE` | Målmaskin; `--target` väljer projektmål |
 | `-O0` / `-O2` / `-Os` | Generisk standardkod + LLVM O0 / begränsad specialisering + LLVM O2 / LLVM Os, ingen specialisering, en sektion per symbol och länkarens borttagning av orefererad kod och data |
 | `--no-type-specialization` | Stäng av varianter oavsett alternativens ordning |
+| `--jobs <n>` | Optimera och emittera objektmoduler på `n` trådar (standard: varje hårdvarutråd), varje modul i en egen LLVM-kontext; objekten är desamma för alla antal; `--jobs 1`, IR- och assemblerinspektioner behåller alla moduler i en kontext |
 | `--lto` | Länka modulerna som bitkod med LLD:s optimering vid länkning (Windows MSVC- och ELF-mål; kräver `-o` eller ett projektbygge som länkar) ([länkning](executables.md#linking)) |
 | `--keep-exports` | Behåll varje export i en körbar fil anropbar i stället för att utelämna dem som den inte kan nå; kräver `-o`, ett projektbygge som länkar eller en IR-/assemblerinspektion ([levande exporter](executables.md#export-liveness)) |
+| `--shell` | Länka det interaktiva Erlang-skalet och varje biblioteksmodul, med varje export anropbar; utan `--entry` startar den körbara filen skalet, så `clau --shell -o erl` utan indata bygger ett skal med endast biblioteket; kräver `-o` eller ett projektbygge som länkar ([interaktivt skal](library.md#interactive-shell)) |
+| `--fips=PATH` | Lås programmet till FIPS-läge med användarens OpenSSL FIPS-provider i `PATH` (modul och `fipsmodule.cnf`, kopierade bredvid den körbara filen); medför `--with-crypto`; en saknad eller felformad provider gör att bygget misslyckas ([FIPS](crypto.md#fips)) |
+| `--with-crypto[=PATH]` | Länka runtime-arkivet för crypto och lägg till biblioteksmodulen `crypto` i batchen, för program som når `crypto` endast genom dynamiska anrop (program som anropar den länkas ändå med den); `PATH` är en OpenSSL-installation eller ett källträd ≥ 3.1.2 att länka i stället för den som Clause byggdes med; kräver `-o` eller ett projektbygge som länkar ([crypto](crypto.md#linking-programs)) |
 | `-g` | Erlangs radtabeller i objekt och länkade körbara filer (CodeView/PDB på MSVC-mål, DWARF på andra) ([felsökning](debugging.md)) |
 | `--print-ir` / `--print-optimized-ir` | Verifierad IR före/efter LLVM-pass, med Erlang-källrader som kommentarer |
 | `--print-asm` | Varje moduls målassembler efter den valda kedjan, där varje följd av maskinkod kommenteras med den IR-instruktion och Erlang-rad den kommer från ([assemblerlistningar](#assembly-listings)) |
 | `--print-types` | Varje modul som Erlang-källkod annoterad med härledda typer ([semantik](semantic.md#--print-types)); stannar före LLVM |
 | `--verbose` | Fashändelserna `[pp]`, `[parse]` och `[comp]` på stderr, sedan sammanfattningen `[index] ...` av [katalogindexet](projects.md#directory-index) |
-| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` på stderr: `plan` per projektmanifest (inläsning av det och expansion av varje valt måls mönster), `preprocess`, `parse` och `transform` (moduler med parse transforms) per källfil, `compile` per batch (antal moduler, projektmål), `link` per körbar fil; ` (cached)` följer ett steg som återanvände ett [cachat](projects.md#build-caches) resultat. Före en batchs totala `compile` kommer dess faser med samma subjekt: `index`, `calls`, `liveness` (körbara filer och inspektioner med en ingångspunkt), `declared-types`, `inference-cache` (med `N of M covered modules reused`, [inferenscache](projects.md#inference-cache)), `inference`, `inference-store`, `contracts`, `lower`, `optimize`, `emit` (de som kördes). Efter `inference`: rader `inference pass N` med passets arbetssteg av inferensens arbetsbudget (`N of BUDGET work steps`) och hur det slutade (`inputs changed`, `fun results changed`, `settled`, eller det sista passet efter ostabiliserade pass), med namnet på den funktion som kördes när budgeten tog slut; sedan `inference slowest <module>:<function>/<arity>` för de 10 funktioner (rekursiva grupper namnger en medlem `and N more`) som tog längst tid över alla pass, med deras arbetssteg och det arbetets andel av budgeten för de pass som körde dem (`877450 work steps, 43.9% of 10 passes of 200000 budget`), och `widened to term()` när en budget breddade ett av deras fakta; sedan `inference rounds <module>:<function>/<arity> and N more` för de 10 långsammaste rekursiva grupperna: lösningar över alla pass, rundor som körts mot taket per lösning (8 + 4 per medlem), lösningar som nådde taket eller förbrukade sin åttondel av passets budget (varje medlem breddad till `term()`), lösningar som gav upp direkt eftersom ett tidigare pass gjorde det (`remembered`) eller slutade med passets budget förbrukad, genomgångar av medlemmar (och de som hoppades över eftersom inget de läser ändrades) och andelen som ändrade en sammanfattning (växte, indata av funktionstyp ändrades, eller växlade tillbaka till en av medlemmens 4 senaste sammanfattningar), och de medlemmar som ändrades per runda i den sista lösningen i tio grupper av rundor. En cachad kompilering skriver inga faser |
+| `--print-stage-times` | `[time] <stage> <subject>: <ms> ms` på stderr: `plan` per projektmanifest (inläsning av det och expansion av varje valt måls mönster), `preprocess`, `parse` och `transform` (moduler med parse transforms) per källfil, `compile` per batch (antal moduler, projektmål), `link` per körbar fil; ` (cached)` följer ett steg som återanvände ett [cachat](projects.md#build-caches) resultat. Före en batchs totala `compile` kommer dess faser med samma subjekt: `index`, `calls`, `liveness` (körbara filer och inspektioner med en ingångspunkt), `declared-types`, `inference-cache` (med `N of M covered modules reused`, [inferenscache](projects.md#inference-cache)), `inference`, `inference-store`, `contracts`, `lower`, `optimize`, `emit` (de som kördes; med objektutdata på flera `--jobs`-trådar flyttar `optimize` också varje modul till en egen LLVM-kontext och verifierar den, och `emit` verifierar och emitterar modulerna parallellt). Efter `inference`: rader `inference pass N` med passets arbetssteg av inferensens arbetsbudget (`N of BUDGET work steps`) och hur det slutade (`inputs changed`, `fun results changed`, `settled`, eller det sista passet efter ostabiliserade pass), med namnet på den funktion som kördes när budgeten tog slut, sedan (varje pass efter det första) `; skipped: N components, W work steps`: komponenter som behållits från sin senaste genomgång eftersom inget de läser ändrades och det arbete som dessa genomgångar kostade (räknat i passets arbetssteg), sedan `; N lattice joins` som passet körde (nästlade räknas) med `, costly: C components given term() inputs` när kostsamma rekursiva komponenter förlorade sina lokala indata ([inferens](semantic.md#inference)), och sedan (varje pass som samlade lokala indata) `; inputs: F functions, S slots changed (kinds)` med varje ändrad indataplats typ av ändring (`first` från ingen, `integer bound`, `union member` på toppnivån, `shape`, `deeper` behållarnästling, `function types`, `term()`) och `N fun reads not final` (fun F/A-värden som läste en sammanfattning som senare ändrades), sedan `; graph: N nodes (+M), W widenings` sedan föregående pass och `; clean: C of K components (A inputs differ, B callees differ), X changed, T ms (P% of pass), S work steps`: komponenter vars medlemmars indata och direkt anropade funktioners sammanfattningar är lika med föregående pass, de av dem vars sammanfattningar ändå ändrades, och tiden och arbetet som lades på dem; sedan `inference lattice` (ingen tid) med hur ofta varje gitteroperation kördes över alla pass (`join` av två medlemmar, nästlade räknas, `widen`, `meet`, `within`, `subtract`, `truncate`) och hur många anrop som upprepade ett med samma operander tidigare i sitt pass och i något pass (svaren som grafen behåller används för dem, och de operationer som ett svar körde nästlat körs eller räknas inte igen), sedan sammanfogningarna av annat än två medlemmar och uppslagen av behållarnästling med dem som grafen behöll svaret på (spårning av upprepningar saktar ned profilerad inferens med cirka 7 %); sedan `inference churn` med tiden som lades på att samla indata och hur många lokala indataplatser som ändrades en gång, två gånger, ... över alla pass, och `inference churned <module>:<function>/<arity> #<argument>` (ingen tid) för de 10 mest ändrade platserna med sin senaste ändrings typ och fakta före och efter den (vardera avkortat till 200 tecken); sedan (ingen tid) upp till 10 `inference clean-changed <module>:<function>/<arity>`-komponenter som var rena men ändrades, med passet som först såg det och hur ofta (ett beroende utöver indata och direkta anrop, som fun F/A); sedan (ingen tid) `inference facts N` efter varje pass som samlade indata: fakta för varje sammanfattning och lokal indata, deras största och genomsnittliga trädstorlek (noder räknade en gång per sökväg), den bredaste unionen, hur många som når budgetarna för behållardjup, unionsmedlemmar och tupel-/map-element, sammanfattningarna med flest (32) funktionstyper och beroende fakta; sedan `inference largest` med det största faktumet i var och en av de 3 komponenter som tog längst tid (avkortat till 200 tecken); sedan `inference slowest <module>:<function>/<arity>` för de 10 funktioner (rekursiva grupper namnger en medlem `and N more`) som tog längst tid över alla pass, med deras arbetssteg och det arbetets andel av budgeten för de pass som körde dem (`877450 work steps, 43.9% of 10 passes of 200000 budget`), `widened to term()` när en budget breddade ett av deras fakta, och de gittersammanfogningar som deras genomgångar körde och de grafnoder de skapade; sedan `inference costliest <module>:<function>/<arity>` för de 10 funktioner på minst 10 ms som tog längst tid per arbetssteg, med den tiden i mikrosekunder, deras arbetssteg, gittersammanfogningar (och sammanfogningar per arbetssteg) och skapade noder; sedan `inference rounds <module>:<function>/<arity> and N more` för de 10 långsammaste rekursiva grupperna: lösningar över alla pass, rundor som körts mot taket per lösning (8 + 4 per medlem), lösningar som nådde taket eller förbrukade sin åttondel av passets budget (varje medlem breddad till `term()`), lösningar som gav upp direkt eftersom ett tidigare pass gjorde det (`remembered`) eller slutade med passets budget förbrukad, genomgångar av medlemmar (och de som hoppades över eftersom inget de läser ändrades, och de som återspelades: en senare lösning tog medlemmens senaste genomgång igen eftersom inget den läste ändrades) och andelen genomgångar och återspelningar som ändrade en sammanfattning (växte, indata av funktionstyp ändrades, eller växlade tillbaka till en av medlemmens 4 senaste sammanfattningar), och de medlemmar som ändrades per runda i den sista lösningen i tio grupper av rundor, sedan `; N solves repeated the previous fixed point, M reached it after R rounds in total`: lösningar som slutade på de sammanfattningar som föregående pass slutade med, och lösningar som nådde dem före konvergens, med antalet rundor det tog (det som skulle hoppas över om de användes som startvärden). En cachad kompilering skriver inga faser |
+| `--asn1-option OPTION`, `--asn1-outdir DIR`, `--generate-asn1` | Kompilera `.asn`/`.asn1`/`.set.asn`-indata till `Module.erl` och `Module.hrl` med ett asn1ct-alternativ (kan upprepas), till `DIR` (läggs till i include-sökvägen), eller generera dem endast ([ASN.1](asn1.md#inputs)) |
 | `--print-env` | Skriv ut den lösta kompileringsmiljön som TOML på stdout och avsluta utan att bearbeta källfiler ([miljörapport](#environment-report)) |
 | `--print-inputs` | Förbehandla och tolka indata, lägg till modulerna som de namnger så som kompileringen gör, lista sedan varje källfil i batchen på stdout och stanna före kompileringen ([projekt](projects.md#cli-and-target-selection)) |
 
@@ -247,6 +283,7 @@ type_specialization = true  # O2 without --no-type-specialization
 debug_info = false
 lto = false
 keep_exports = false        # --keep-exports or the project option
+shell = false               # --shell or the project option
 emit = "none"               # or obj, llvm-ir, llvm-bc
 artifact_dir = "/work/build/aot"
 ```
@@ -383,6 +420,29 @@ verifieras (SHA-256
 `bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16`) på varje
 värd. zlibs licens är zlib-licensen. Kompilatorns LLVM behåller sin egen zlib;
 de två möts aldrig i en binär.
+
+## zstd
+
+Runtimens zstd-modul använder zstd **1.5.7**, den version som OTP 29 medföljer
+(`erts/emulator/zstd/vendor.info`), så att ramarna är lika med OTP:s. CMake
+kompilerar dess bibliotekskällor (common, compress, decompress; enkeltrådat,
+utan assembleravkodaren; `cmake/ZstdDependencies.cmake`,
+`clause_add_runtime_zstd`) till objektbiblioteket `clause_runtime_zstd`, vars
+objekt läggs till i `clause_runtime` som zlibs;
+`-DCLAUSE_RUNTIME_ZSTD_ROOT=<source directory>` har företräde, annars laddas
+versionen ned till `thirdparty/zstd-1.5.7` och verifieras (SHA-256
+`eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3`), samma
+arkiv som Windows LLVM-bygget använder. zstds licens är BSD-3-Clause (eller
+GPL-2.0).
+
+## OpenSSL
+
+Runtimens inbyggda `crypto`-funktioner använder OpenSSL:s libcrypto, fastlåst
+till 4.1.0, med alla versioner från 3.1.2 (den senaste med en FIPS-validerad
+provider) godtagna, i ett separat `clause_runtime_crypto`-arkiv som endast
+program som anropar `crypto` länkar. Var det kommer från, hur Clause och
+`clau` bygger det från källkod, länkning (`--with-crypto[=PATH]`) och FIPS-läge
+(`--fips=PATH`) beskrivs i [crypto](crypto.md).
 
 Övriga förutsättningar: CMake ≥ 3.28, en C++23-kompilator, Boost ≥ 1.90,
 toml++ 3.4.0 och kvalitetsverktygen. OTP behövs endast för valfria

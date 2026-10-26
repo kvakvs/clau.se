@@ -1,8 +1,8 @@
 ---
 source: docs/runtime.md
-sourceCommit: 336caea7
-sourceSha256: 9c7fc7cdb9594636008282ecfb3e10405ea5b5df219484609c5b5cb58a468a30
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 2cf400ead0e2884a583331bb170855aa26c0961dcb974a1e54e32894bebbdbcf
+translatedAt: 2026-10-26
 ---
 # Runtime
 
@@ -169,10 +169,12 @@ die Terme von `persistent_term` ([Builtins](builtins.md#persistent-terms)).
   verwenden den Term-Hash von `phash2`) und exakte Gleichheit gefunden und an
   Ort und Stelle verglichen werden.
 - Ein Lesen gibt das gespeicherte Wort an Ort und Stelle zurück, wie die
-  literalen persistenten Terme von OTP: Jeder Prozess darf es halten und senden
-  (eine Kopie in einen anderen Prozess behält das Wort); Speicherbereinigungen
-  lassen es unverändert und die Zulassung akzeptiert es wie ein Literal.
-  Nachrichtenpuffer und neue persistente Terme kopieren persistente Wörter.
+  literalen persistenten Terme von OTP: Jeder Prozess darf es halten;
+  Speicherbereinigungen lassen es unverändert und die Zulassung akzeptiert es
+  wie ein Literal. Senden an andere Prozesse, Nachrichtenpuffer und neue
+  persistente Terme kopieren persistente Wörter (ein Sendevorgang durchläuft
+  seine Nachricht einmal vor der Executor-Sperre, sodass er keinen Bereich
+  teilen kann, der inzwischen zurückgezogen werden könnte).
 - **Freigabe.** Der Bereich eines ersetzten oder gelöschten Werts wird unter
   einer neuen Epoche zurückgezogen. Von da an kopiert jede Kopie seine Wörter,
   und jeder beim Zurückziehen registrierte Prozess kopiert die gehaltenen
@@ -191,6 +193,127 @@ die Terme von `persistent_term` ([Builtins](builtins.md#persistent-terms)).
   und gelöschte Werte, die Leser halten, nebenläufige Leser und Schreiber sowie
   die Freigabe (zurückgezogene Kopien, Evakuierung, freigegebene Bereiche und
   Belastungen).
+
+## ETS-Tabellen
+
+Ein Verzeichnis pro Runtime (`ets/tables`), im Besitz von `Runtime::Impl` und
+über `ProcessContext::ets_tables()` erreichbar, hält die Tabellen von `ets`
+([Builtins](builtins.md#ets)).
+
+- **Objekte.** Jedes gespeicherte Objekt (und die Daten eines Erben) ist ein
+  `DetachedTerm` (`memory/detached_term`): eine flache Kopie in einem eigenen
+  Block, durch die Graphkopie erstellt, außerhalb jedes Heaps. Modulliterale
+  bleiben geteilt; persistente Terme werden kopiert, da ihre Bereiche
+  zurückgezogen werden können; Binary-Zellen teilen ihre Puffer. Blöcke werden
+  nie verschoben und gehören keinem Prozess, sodass Leser sie an Ort und
+  Stelle vergleichen und hashen und in ihren eigenen Heap kopieren. Ihre
+  Wörter werden dem Speicherkonto der Runtime belastet.
+- **Indizes** (`ets/index`). Tabellen vom Typ `set`, `bag` und `duplicate_bag`
+  verwenden einen Hash-Index: ein Array von Buckets mit einer Zweierpotenz als
+  Größe, jedes mit einem kleinen Vektor von Einträgen (einer pro Schlüssel,
+  seine Objekte in Einfügereihenfolge); es verdoppelt sich bei mehr als zwei
+  Schlüsseln pro Bucket und halbiert sich bei weniger als einem pro acht.
+  Schlüssel werden über die 64-Bit-Verteilung ihres `phash2`-Hashes und exakte
+  Gleichheit gefunden. Tabellen vom Typ `ordered_set` verwenden ein `std::set`
+  mit einem Knoten pro Schlüssel in Term-Reihenfolge, wobei gleich
+  vergleichende Schlüssel (`1`, `1.0`) ein Schlüssel sind; das Ersetzen eines
+  Objekts behält seinen Knoten.
+- **Teile und Sperren** (`ets/table`). Eine Hash-Tabelle mit
+  `write_concurrency` (`true` oder `auto`) teilt ihre Schlüssel anhand der
+  höchsten Hash-Bits in 64 Teile auf, jeder ein Index mit eigenem
+  `shared_mutex`; jede andere Tabelle hat einen Teil. Die Tabellensperre wird
+  bei Operationen auf einzelnen Schlüsseln geteilt und bei Operationen auf der
+  ganzen Tabelle exklusiv genommen (Objektlisten, `delete_all_objects/1`,
+  Fixierung, Löschung), sodass das Einfügen einer Liste wie in OTP atomar und
+  isoliert ist. Lesevorgänge kopieren Objekte heraus, während ihr Teil geteilt
+  gesperrt ist.
+- **Durchläufe und Fixierung.** Eine Hash-Tabelle wird Teil für Teil und Bucket
+  für Bucket durchlaufen, rückwärts wie vorwärts; `next/2` von einem nicht
+  enthaltenen Schlüssel ergibt `badarg`. Während die Tabelle fixiert ist
+  (`safe_fixtable/2`, `foldl/3`), ändern ihre Indizes nie die Größe, ein
+  entfernter Schlüssel bleibt als Löschmarkierung mit einem Objekt für seinen
+  Schlüssel erhalten, und neue Schlüssel kommen ans Ende ihres Buckets, sodass
+  ein Durchlauf jeden durchgehend vorhandenen Schlüssel einmal sieht. Das
+  Aufheben der letzten Fixierung entfernt die Löschmarkierungen und passt die
+  Größe an. Ein ordered_set geht von jedem Schlüssel zum nächstgelegenen.
+- **Verzeichnis.** Tabellen nach Identifikationsnummer (eine gewöhnliche
+  Referenz aus der Programmsequenz) und nach Namen sowie die Tabellen, die
+  jeder Prozess besitzt oder fixiert. Das Ende eines Prozesses
+  (`Executor::release_tables`, unter der Executor-Sperre, bevor Links und
+  Monitore signalisiert werden) löst seine Fixierungen und übergibt jede seiner
+  Tabellen an einen lebenden Erben außer ihm selbst, der
+  `{'ETS-TRANSFER', Table, From, HeirData}` erhält (keine Nachricht für einen
+  ohne Daten gesetzten Erben), oder löscht sie. Sperrreihenfolge: Executor,
+  Verzeichnis, Tabelle; Builtins nehmen nie die Executor-Sperre, während sie
+  eine ETS-Sperre halten, und `give_away/3` sendet seine Nachricht nach deren
+  Freigabe.
+- **Portionen**. `tab2list/1` und die Auswahl aller Objekte (`select/2`,
+  `select_reverse/2`, `match/2`, `match_object/2`, `select_count/2`) durchlaufen
+  pro Portion so viele Objekte der Tabelle, wie das Prozessbudget erlaubt, und
+  unterbrechen dann mit einem Trap (`builtins/ets/table_walks.cpp`); eine
+  Hash-Tabelle wird vom durchlaufenden Prozess vom ersten Trap bis zum Ende
+  fixiert, wie in OTP, sodass ihre Slots an Ort und Stelle bleiben.
+  `delete_all_objects/1` und `delete/1` leeren oder löschen die Tabelle sofort
+  durch Herausnehmen ihrer Indizes (`Table::empty`, `Table::destroy`) und geben
+  dann die alten Objekte in Portionen frei (`builtins/ets/disposal.cpp`,
+  `Index::shed`); eine fixierte Hash-Tabelle wird stattdessen an Ort und Stelle
+  geleert und behält ihre Löschmarkierungen. Die Tabellen eines beendeten
+  Besitzers gibt der Worker nach Freigabe der Executor-Sperre frei.
+  `select_delete/2` und `select_replace/2` laufen weiterhin in einem Stück.
+- **Zähler an Ort und Stelle.** `update_counter/3,4` auf einem Schlüssel, dessen
+  Objekt die eigene Kopie der Tabelle ist und dessen Zähler kleine Ganzzahlen
+  bleiben, ändert die gespeicherten Felder unter der Sperre des Teils an Ort
+  und Stelle, wie in OTP; ein Bignum, ein Modulliteralobjekt oder ein
+  Standardobjekt nimmt den allgemeinen Pfad, der eine neue Kopie speichert.
+- CTest `executables_ets_concurrency` deckt Zähler, Einfügungen und Durchläufe
+  aus vielen Prozessen auf einem und vier Workern sowie das Ende von Besitzern
+  vieler Tabellen ab; `executables_ets_portions` zeigt, dass andere Prozesse
+  während langer Operationen auf einem Worker laufen.
+- **Auswahl** ([Match-Spezifikationen](#match-specifications)). Eine Auswahl
+  über die ganze Tabelle liest jeden Teil unter seinen Sperren; eine, deren
+  Köpfe alle den Schlüssel binden, schlägt die Schlüssel nach. Eine Auswahl in
+  Abschnitten durchläuft eine Hash-Tabelle Slot für Slot (jeden Slot unter der
+  Sperre seines Teils) und ein ordered_set nach Schlüsseln ab dem letzten,
+  sodass eine Fortsetzung einen Slot oder Schlüssel benennt. `select_delete/2`
+  und `select_replace/2` bearbeiten jeden Teil unter dessen eigener Sperre
+  (`Index::edit`); eine fixierte Hash-Tabelle behält dabei die Löschmarkierungen
+  entfernter Schlüssel.
+
+## Match-Spezifikationen
+
+`runtime/src/match_spec/` kompiliert und führt Match-Spezifikationen wie
+`erl_db_util.c` von OTP aus, für `ets` und `erlang:match_spec_test/3`
+([Builtins](builtins.md#ets)).
+
+- **Programme.** `compile` verwandelt eine Spezifikation in ein `Program`: pro
+  Klausel ein Kopfmuster, Guard- und Rumpfausdrücke über nummerierten
+  Variablenslots und die vom Kopf gebundenen Variablen (`'$$'`). Konstanten
+  werden wie in OTP gefaltet (`{{...}}` und `{const, X}` zu Werten; eine
+  konstante map behält ihre Schlüssel wie geschrieben) und als
+  `DetachedTerm`-Kopien gehalten, sodass ein Programm keinem Prozess gehört.
+  Zwei Dialekte: `table` (ets) und `trace` (Köpfe sind Argumentlisten, eine mit
+  `'_'` endende Liste matcht ein Präfix, `'$N'` oder `'_'` die ganze Liste;
+  Rümpfe dürfen Trace-Aktionen ausführen).
+- **Prüfungen.** Der Compiler wendet die Prüfungen von OTP in dessen Reihenfolge
+  an und liefert beim Linting (`erlang:match_spec_test/3`) die Meldungen von OTP
+  für die erste Klausel mit Meldungen; Operanden von Aufrufen und Tupeln werden
+  wie in OTP vom letzten zum ersten kompiliert; eine Meldung wird wie durch
+  den Puffer von OTP bei 99 Bytes abgeschnitten. Guard-Funktionen entsprechen
+  der Tabelle von OTP (`match_spec/functions.cpp`), mit den jeweils erlaubten
+  Aufrufkontexten; Verschachtelung über 1000 Ebenen ergibt `system_limit`.
+- **Ausführung** (`match_spec/run.cpp`). Klauseln werden der Reihe nach
+  versucht. Ein Kopf bindet Teile des Objekts an Ort und Stelle (exakte
+  Gleichheit für Konstanten und wiederholte Variablen, maps mit mindestens den
+  Schlüsseln des Musters); Guards lesen sie an Ort und Stelle und müssen genau
+  `true` ergeben; ein Rumpf kopiert jeden ausgegebenen Wert in den Heap des
+  Aufrufers. Eine Guard-Funktion, die eine Ausnahme auslöst, lässt die Klausel
+  scheitern; im Rumpf liefert sie stattdessen `'EXIT'`, und der Rumpf läuft weiter, ebenso
+  bei `and`, `or`, `andalso` und `orelse` mit einem Term, der kein Boolean ist.
+  Die meisten Guard-Funktionen sind die Term-Operationen des
+  Immediate-Dienstes (`terms/immediate_terms.hpp`).
+- **Kompilierte Spezifikationen** sind Handle-Referenzen, die das Programm
+  halten (`match_spec/handles.cpp`), sodass sie `term_to_binary/1` innerhalb des
+  Programms wie die magic references von OTP 20+ überstehen.
 
 ## Scheduler-Buchführung
 

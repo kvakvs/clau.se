@@ -1,8 +1,8 @@
 ---
 source: docs/io.md
-sourceCommit: 336caea7
-sourceSha256: f513079db5cb8e2a7c9e02f15d3c952b9271d64d60cc3c3787cc2eee5efb3a15
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 63cb0a2b2caa118ec3a36a1eea641d00d761085fea56a9c7edd8509ddbde219c
+translatedAt: 2026-10-26
 ---
 
 # Вивід на консоль (`io`)
@@ -24,8 +24,9 @@ translatedAt: 2026-10-18
   `standard_io` і `user` — це стандартний вивід, `standard_error` —
   стандартний потік помилок (спершу скидається стандартний вивід, тож обидва
   зберігають порядок). Pid або атом, зареєстрований за ним, є сервером I/O:
-  текст надсилається йому як UTF-8 через `file:write/2` (відкритий файл модуля
-  `file` з Clause), і виклик повертає те, що повертає він. Незареєстрований
+  текст надсилається йому як запит протоколу I/O
+  `{put_chars, unicode, Utf8}` (`clause_io:put_chars/2`), сервер записує його
+  у своєму кодуванні, а виклик повертає відповідь. Незареєстрований
   атом дає `badarg`, мертвий pid — `error:terminated`, сам викликач —
   `error:calling_self`, будь-який інший терм — `function_clause`, як в OTP.
 - `io:put_chars(Chardata)` пише chardata: символи Unicode, binary в UTF-8 і

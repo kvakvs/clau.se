@@ -1,8 +1,8 @@
 ---
 source: docs/terms.md
-sourceCommit: 336caea7
-sourceSha256: 96b812193b9f942c57eed9d94df4955f308354e89e00cc00f4d46f19b54c2882
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 4e14e8fda395d76503e8c295505005d07d3fa8c33b4ba32f99c48caae55921ab
+translatedAt: 2026-10-26
 ---
 # Termrepresentationer
 
@@ -69,17 +69,26 @@ finns i [abi.md](abi.md#terms).
   poster, hittas utan låset och räknas varken av `size()` eller mot
   `max_atoms`; genererad kod använder dem som konstanter. Varje annat atomord
   är privat för sin runtime.
-- Sammansatta literaler av konstanter (strängar, listor och tupler av
-  omedelbara värden och andra literaler, flyttal, bignums) är celler i modulens
-  literalområde, byggda vid kompilering och delade
-  ([literalområden](runtime-heap.md#areas)); heltalsliteraler i det lilla
-  intervallet är omedelbara värden.
+- Sammansatta literaler (strängar, listor, tupler och maps av literaler,
+  flyttal, bignums, konstanta binaries) är modulliteraler: kodade vid
+  kompilering, avkodade en gång per runtime vid registrering till dess
+  literalheap och delade ([literalområden](runtime-heap.md#areas));
+  heltalsliteraler i det lilla intervallet är omedelbara värden.
 - Andra atomliteraler laddas från modulens atomcache
   (`ModuleDescriptor::atom_cache`: den anspråkstagande runtimens identitet,
   sedan ett ord per plats), som den första runtime som registrerar modulen
   fyller; en kontext vars `FrameState::runtime` matchar anspråket läser den
   utan anrop, alla andra anropar `CLAUSE_atom_v3`. Anspråket lämnas tillbaka
   när runtimens kodserver släpper modulen.
+- Runtime-kod i C++ skriver literala atomer som `"name"_atom`
+  (`atom_names.hpp`): en statisk `CachedAtom` per stavning behåller det ord
+  som senast internerades för den, och `AtomStorage::intern` returnerar det
+  efter en låsfri indexläsning när denna runtime utfärdade det och hoppar över
+  validering, det delade låset och stavnings-mapen. Ett ord från en annan
+  eller en nedriven runtime klarar inte kontrollen och ersätts, så att flera
+  runtimes i en process fungerar korrekt (de uppdaterar bara cachen).
+  Hjälpfunktioner för inbyggda funktioner tar `AtomName`, en stavning med eller
+  utan en sådan cache.
 - Internering och uppslag är säkra från samtidiga schemaläggararbetare
   ([trådar](runtime.md#threads)); en stavning behåller ett ord.
 
@@ -99,6 +108,9 @@ finns i [abi.md](abi.md#terms).
   `*` beräknar med dubbel bredd och explicita gränser. Detsamma gör `band`,
   `bor`, `bxor`, `bsr`, `div`, `rem` och jämförelser av två små heltal
   ([inline-former](abi.md#runtime-services)).
+- Tjänsten multiplicerar ett bignum (eller en liten produkt som svämmat över)
+  med ett litet heltal limb för limb, från operandens cell direkt till den nya;
+  andra bignum-operationer går via ett värde med godtycklig precision.
 - `div` trunkerar mot noll; `rem` får dividendens tecken; bitvisa operationer
   använder oändligt tvåkomplement; negativa skiftantal vänder riktning; enorma
   högerskift mättas till 0 eller -1.
@@ -168,16 +180,18 @@ finns i [abi.md](abi.md#terms).
   godtycklig precision. Genererad kod bygger små konstruktioner med konstant
   bredd inline ([ramar och överföringar](abi.md#frames-and-transfers)).
 - Tillägg, som OTP:s skrivbara binaries: en konstruktion som börjar med en hel
-  binary (`<<Acc/binary, ...>>`) bygger sitt resultat i en buffert med extra
-  utrymme (dubbla storleken, minst 256 byte) vars cell utanför heapen i den
-  skapande processen registrerar dess använda bitar och kapacitet (noll i
-  varje annan cell, även kopior). Ett senare tillägg vars ackumulatorvy slutar
-  exakt där skriver de nya byten i det extra utrymmet, som ingen vy täcker, och
-  returnerar en längre vy av samma buffert: en sub-binary av buffertens egen
-  cell utanför heapen, som kan nå bortom den cellens bitar. Varje annan
-  ackumulator (en äldre vy, en annan process, en ojusterad, en full buffert)
-  kopieras till en ny fördubblad buffert. Andra vyer av bufferten ändras
-  aldrig.
+  binary (`<<Acc/binary, ...>>`) på mer än 64 byte bygger sitt resultat i en
+  buffert med extra utrymme (storleken avrundad uppåt till en tvåpotens, minst
+  256 byte) vars cell utanför heapen i den skapande processen registrerar dess
+  använda bitar och kapacitet (noll i varje annan cell, även kopior). Ett
+  senare tillägg vars ackumulatorvy slutar exakt där skriver de nya byten i
+  det extra utrymmet, som ingen vy täcker, och returnerar en längre vy av samma
+  buffert: en sub-binary av buffertens egen cell utanför heapen, som kan nå
+  bortom den cellens bitar. Varje annan ackumulator (en äldre vy, en annan
+  process, en ojusterad, en full buffert) kopieras en gång till en ny buffert,
+  som minst fördubblar en full buffert. Andra vyer av bufferten ändras aldrig.
+  Frigjorda buffertar återanvänds
+  ([buffertåteranvändning](runtime-heap.md#buffer-reuse)).
 - Flyttalssegment: bredderna 16/32/64; konstruktion kan koda oändlighet, men
   matchning avvisar oändliga fält och NaN-fält. Flyttalsmatchningar med bredd
   noll extraherar `0.0`.
@@ -256,10 +270,19 @@ nil < listor < bitstrings ([funs](funs.md#comparison-and-printing) ordnas
 sinsemellan).
 Atomer jämförs efter UTF-8-stavning (kodpunktsordning); tupler efter aritet och
 sedan fält; maps efter storlek, sedan nycklar, sedan värden; bitstrings efter
-logiska bitar. Två små heltal, två flyttal eller två binaries med hela byte
-ordnas direkt från sina ord eller celler (`detail::word_order`), och två
-atomer från sina stavningar i atomtabellen (`AtomStorage::spelling`, via det
-låsfria nummerindexet), utan admission av termer.
+logiska bitar. Tal (små heltal, flyttal, bignums efter tecken och limbar),
+atomer (efter sina stavningar i atomtabellen, via det låsfria nummerindexet),
+lokala referenser (efter nummer), binaries med hela byte samt tupler och
+listor av dessa nästlade upp till 8 nivåer ordnas direkt från sina ord och
+celler (`detail::word_order`), utan admission av termer; alla andra par, ett
+flyttal mot ett bignum med samma bitlängd, eller ett litet heltal bortom 2^53
+mot ett flyttal tar den strukturella ordningen. `=:=` tar samma väg
+(`detail::word_exact`): par som den ordnar olika är olika, och ett ord eller
+två referenser som den finner lika är lika, så att en receive som matchar ett
+svars referens inte gör någon admission av termer. `lists:sort/1` och
+`lists:usort/1` sorterar elementord på plats: listor med enbart små heltal eller
+atomer efter ord eller stavning, andra med en stabil sortering efter
+ordjämförelse.
 
 ## Utskrift
 

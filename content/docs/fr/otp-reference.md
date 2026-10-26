@@ -1,8 +1,8 @@
 ---
 source: docs/otp-reference.md
-sourceCommit: a8c3f8f6
-sourceSha256: 323425ae1e4ea28b00315a75abac332bfb88a8f6e16c30b4347ed7dff710d663
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: b492ebd048a1022e18083704f4e12f60003d3e503aac261ba808b985a981ea5c
+translatedAt: 2026-10-26
 ---
 # Référence des sources Erlang/OTP
 
@@ -10,8 +10,8 @@ Clause suit la branche officielle `maint-29`. La révision épinglée (pin),
 vérifiée, se trouve dans
 [`references/otp-pin.cmake`](../references/otp-pin.cmake) :
 
-- Révision `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` (OTP 29.1.2, commit
-  amont daté du 2026-10-14), actualisée le 2026-10-14.
+- Révision `9710673e5916164dff9616327df7de39f1aa75a9` (OTP 29.1.2, commit
+  amont daté du 2026-10-22), actualisée le 2026-10-24.
 - Oracle installé utilisé pour les résultats de référence (goldens) et les
   audits : OTP 29.1.1 / ERTS 17.1.
 
@@ -72,3 +72,4 @@ Les enregistrements historiques conservent la révision sur laquelle ils ont
 | 2026-10-01 – 10-03 | Récupéré à nouveau avant chaque étape motifs/guards ; inchangé | identique |
 | 2026-10-03 | Plan 11 step 1 : 14 tests d'audit réussis, 19 corpus reproduits | identique |
 | 2026-10-14 | Actualisé vers OTP 29.1.2 : empreintes de la grammaire, du scanner, du préprocesseur et de `phase6/otp.tsv` inchangées (`genop.tab` : commentaire seulement) ; 17 tests d'audit réussis et 19 corpus reproduits avec l'oracle 29.1.1 ; révision enregistrée par les goldens d'exécutables, de lint, de programmes et d'affichage mise à jour (sorties inchangées, `external_terms` garde sa sortie de map dépendant de l'ordre des atomes) | `d199a49a01a2079afb6f2c5c9ae047cd4555e68d` |
+| 2026-10-24 | Actualisé ; seuls les workflows `.github/` ont changé en amont (32 fichiers), donc les entrées de la grammaire, du scanner, du préprocesseur, du corpus et de `phase6/otp.tsv` sont identiques octet pour octet et les audits n’ont pas été relancés ; révision enregistrée par les goldens mise à jour | `9710673e5916164dff9616327df7de39f1aa75a9` |

@@ -1,8 +1,8 @@
 ---
 source: docs/processes.md
-sourceCommit: a8c3f8f6
-sourceSha256: c52f95bbde29faed486345896a09dfa1514cba322d235541606d955fe442ac48
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 6a02551c3b999daa890fc74afa3f83587d1683b3d3b621abd5c8ecab3e316df7
+translatedAt: 2026-10-26
 ---
 # Prozesse
 
@@ -32,9 +32,10 @@ der Executor läuft, bis dieser endet:
   werden in seinen Heap kopiert
   ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)).
 - Ein Prozess endet, wenn sein erster Aufruf zurückkehrt oder eine Ausnahme
-  auslöst. Kontext, Heap und Stack eines beendeten Prozesses werden sofort
-  freigegeben; seine Pid bleibt ein gültiger Term, und `is_process_alive/1`
-  gibt für sie false zurück.
+  auslöst. Ein beendeter Prozess verlässt sofort die Prozesstabelle; seine Pid
+  bleibt ein gültiger Term, und `is_process_alive/1` gibt für sie false zurück.
+  Kontext, Heap und Stack werden freigegeben, sobald der Worker, der ihn
+  beendet hat, den Executor-Mutex verlässt.
 - Ein Prozess, der in einem `receive` wartet, ist in keiner Warteschlange; eine
   Sendung an ihn reiht ihn wieder ein ([Receive](#receive)).
 - Endet der Hauptprozess, endet das Programm mit seinem Ergebnis
@@ -59,7 +60,9 @@ Der Executor führt Prozesse auf `RuntimeOptions::schedulers` Worker-Threads
 aus: dem Thread, der das Programm gestartet hat, und je einem weiteren Thread
 pro zusätzlichem Worker. Programme übernehmen die Anzahl aus `--schedulers N`
 (1 bis 1.024, [Runtime-Optionen](executables.md#runtime-options)); Standard ist
-ein Worker pro logischem Prozessor, wie bei `+S` von OTP.
+ein Worker pro logischem Prozessor, auf dem das Programm laufen darf (seiner
+Affinitätsmaske, wie die Online-Scheduler von OTP), oder pro CPU aus
+`--scheduler-cpus`.
 
 - Jeder Worker hat seine eigene Run-Queue, wie jeder ERTS-Scheduler: Ein
   Prozess bleibt bei dem Worker, auf dem er zuletzt lief, sodass sein Heap in
@@ -82,17 +85,33 @@ ein Worker pro logischem Prozessor, wie bei `+S` von OTP.
   hält. Die Timer- und I/O-Threads, Port-Aufgaben und Worker zwischen
   Zeitscheiben reihen einen Prozess für seinen eigenen Worker ein, oder für
   einen untätigen Worker, wenn sein eigener beschäftigt ist.
-- Ein Executor-Mutex schützt die Run-Queues, die wartenden Prozesse, die
-  Timer, die registrierten Namen, die Links und Monitore jedes Prozesses und
-  jeden Prozess, der nicht läuft. Heap, Stack, Mailbox und Fehlerkanal eines
-  laufenden Prozesses gehören allein seinem Worker; Erlang-Code läuft ohne die
-  Sperre.
+- Ein Executor-Mutex schützt die wartenden Prozesse, die Timer, die
+  registrierten Namen, die Links und Monitore jedes Prozesses und jeden
+  Prozess, der nicht läuft. Heap, Stack, Mailbox und Fehlerkanal eines
+  laufenden Prozesses gehören allein seinem Worker; Erlang-Code läuft ohne
+  die Sperre. Die Run-Queues und der Ruhezustand der Worker haben eine eigene
+  Sperre, die nach dem Executor-Mutex genommen wird; untätige Worker schlafen
+  darauf (Prozesserzeugung und -abbau).
+- Ein Spawn baut den Kontext des neuen Prozesses auf und kopiert seinen Aufruf
+  ohne jede Sperre hinein. Einer, der weder verlinkt noch überwacht, trägt ihn
+  dann nur unter den jeweiligen eigenen Sperren in die Prozesstabelle und die
+  Warteschlange ein, ohne je den Executor-Mutex zu nehmen; `spawn_link`,
+  `spawn_monitor` und die überwachenden Formen von `spawn_opt`/`spawn_request`
+  tragen ihn unter dem Executor-Mutex ein, verlinken oder überwachen ihn und
+  reihen ihn ein. Ein Worker gibt die Kontexte beendeter Prozesse direkt nach
+  dem Verlassen des Mutex für seine nächste Zeitscheibe frei.
+- Ein Prozess kostet über seine Lebensdauer sechs Allokationen (Kosten der
+  Prozesserzeugung): seinen Kontext, die Runtime-Bindungen des Kontexts mit
+  seinem Scheduling-Zustand, seinen Heap-Speicher und ersten Heap-Block,
+  seinen Nachrichteneingang und sein Lebensdauer-Token. Die ersten 64
+  Stack-Wörter und vier Mailbox-Listenknoten liegen im Kontext, die
+  Monitor-maps werden beim ersten Monitor angelegt, und die Registrys der
+  Runtime (Kontexte, Freigabe persistenter Terme) halten keinen Knoten pro
+  Prozess.
 - Links, Monitore und Namen ändern sich sofort unter der Sperre, auch für einen
-  Prozess, der anderswo läuft. Eine Nachricht an einen Prozess, der auf einem
-  anderen Worker läuft, kann noch nicht in dessen Heap gelangen: Sie wird in
-  einen eigenen Puffer kopiert und nach früher gepufferten zugestellt, wenn die
-  Zeitscheibe des Empfängers endet
-  ([Nachrichtenpuffer](runtime-heap.md#message-buffers)). Ein Exit-Signal von
+  Prozess, der anderswo läuft. Eine Nachricht wartet in einem Puffer unter
+  den Eingängen des Empfängers, bis dieser sie übernimmt
+  ([Eingangspuffer](#arrival-buffers)). Ein Exit-Signal von
   `exit/2` oder `exit_signal/2` an einen solchen Prozess tut nichts, und sein
   Prozess beendet seine Zeitscheibe (`builtins::Blocked`); er wartet, bis die
   Zeitscheibe des Ziels endet, läuft dann als Erster und wiederholt das Builtin
@@ -128,10 +147,15 @@ geschieht:
   wie oben beschrieben. Ein Prozess, der sich noch in der Zeitscheibe befindet,
   in der er zu warten begann, kann dann keine Nachricht erhalten (seine Sender
   warten auf das Ende der Zeitscheibe), daher findet die Zustellung ihn immer
-  geparkt vor.
+  geparkt vor. Auch eine eingestellte Nachricht
+  ([Eingangspuffer](#arrival-buffers)) geht nicht verloren: Das Parken prüft die
+  Eingänge unter ihrer Sperre, und ein Einstellen, das den Empfänger geparkt
+  vorfindet, weckt ihn unter dem Executor-Mutex.
 - Ein Worker, der keinen lauffähigen Prozess findet, schläft, bis ein anderer
-  Worker, eine Sendung oder der Timer-Thread einen einreiht oder das Programm
-  endet. Worker lesen die Uhr nie für Timer; das Parken eines Prozesses mit
+  Worker, eine Sendung, ein Spawn oder der Timer-Thread einen einreiht oder
+  das Programm endet; er prüft die Warteschlangen und schläft unter der Sperre
+  der Run-Queues, die jedes Einreihen nimmt. Worker lesen die Uhr nie für Timer;
+  das Parken eines Prozesses mit
   einem Timeout, der früher als jeder andere ist, weckt nur den Timer-Thread.
 - Eine Nachricht und ein ablaufender Timeout desselben receive können
   konkurrieren: Was zuerst kommt, reiht den Prozess ein und hebt das andere
@@ -151,6 +175,30 @@ geschieht:
   überwachte Prozesse, die enden, während ihr Beobachter aufwacht, ein
   Programm, das endet, während Prozesse rotieren, warten und einander fluten,
   und ein Halt in einem anderen Prozess.
+
+### CPU-Bindung
+
+Worker sind standardmäßig ungebunden: Das Betriebssystem platziert sie auf
+beliebigen CPUs der Affinitätsmaske des Programms, wie beim Standard `+sbt u`
+von OTP. `--scheduler-cpus SET`
+([Runtime-Optionen](executables.md#runtime-options)) bindet Worker N an die
+N-te CPU der Menge, bei mehr Workern reihum, wie `+sbt`/`+sct` von OTP; die
+Timer- und I/O-Threads bleiben ungebunden.
+
+- `performance` ist die schnellste Kernklasse: unter Windows die Kerne mit der
+  höchsten `EfficiencyClass`, unter Linux `/sys/devices/cpu_core/cpus` (Intel
+  Hybrid) oder die CPUs mit der größten `cpu_capacity`; bei einer CPU mit
+  gleichartigen Kernen jede CPU. `all` umfasst jede CPU der Affinitätsmaske.
+  Eine Liste (`0-15`, `2,4,6`, CPUs bis 1023) darf nur CPUs der
+  Affinitätsmaske nennen:
+  `--scheduler-cpus: CPU N is not available to the program`, Exit 70.
+- Windows nummeriert die CPUs der Prozessorgruppe des Prozesses (höchstens
+  64); `performance` liest Gruppe 0.
+- macOS hat keine Thread-Affinität: Die Option wird akzeptiert,
+  `performance` zählt für die Standardanzahl der Worker die erste
+  Leistungsstufe (`hw.perflevel0.logicalcpu`), und die Bindung hebt jeden
+  Worker lediglich in die QoS-Klasse `USER_INTERACTIVE`, die macOS bevorzugt
+  auf den P-Kernen bedient.
 
 ### Empfangs-Timeouts
 
@@ -221,7 +269,7 @@ Programms ([ausführbare Dateien](executables.md)).
 
 | `Dest` | Wirkung |
 | --- | --- |
-| Eine Pid eines lebenden Prozesses | `Msg` wird flach in den Heap des Empfängers kopiert ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)), wie OTP Nachrichten kopiert, eine große in einen Block, den der Empfänger übernimmt ([Nachrichtenübergabe](runtime-heap.md#message-buffers)), und an seinen Signal-Eingang angehängt |
+| Eine Pid eines lebenden Prozesses | `Msg` wird flach in den Heap des Empfängers kopiert ([Kopieren zwischen Heaps](runtime-heap.md#copying-between-heaps)), wie OTP Nachrichten kopiert, eine große in einen Block, den der Empfänger übernimmt ([Nachrichtenübergabe](runtime-heap.md#message-buffers)), und an seinen Signal-Eingang angehängt; bei einem Empfänger, der auf einem anderen Worker läuft, in einen Puffer unter seinen Eingängen, den er beim nächsten Nachsehen übernimmt ([Eingangspuffer](#arrival-buffers)) |
 | Eine Pid eines beendeten Prozesses | Nichts; die Sendung gelingt |
 | Ein [registrierter Name](#registered-names) | Wie für seine Pid; `badarg`, wenn kein lebender Prozess den Namen hat |
 | `{Name, nonode@nohost}` aus zwei Atomen | Wie für die als `Name` registrierte Pid; nichts, wenn es keine gibt |
@@ -237,11 +285,65 @@ Programms ([ausführbare Dateien](executables.md)).
 - Die Mailbox des Empfängers (`Mailbox`) führt einen Signal-Eingang, an den
   Sendungen anhängen, und eine Nachrichtenwarteschlange, die receive ab einer
   gespeicherten Position durchsucht: Angekommene Nachrichten wandern hinter die
-  Warteschlange, wenn ein receive sie untersucht.
+  Warteschlange, wenn ein receive sie untersucht. Beide Listen verwenden bis
+  zu 64 freie Knoten der Mailbox wieder, sodass Senden und Empfangen einer
+  Nachricht keinen Knoten vom C++-Heap allozieren.
 - Verweigert der Heap des Empfängers die Kopie (eine optionale Obergrenze wie
   `--max-heap` oder kein Speicher mehr im Host), wird nichts zugestellt, und
   der sendende Prozess scheitert als Runtime-Fehler (Exit 70), wie jeder
-  Prozess, der eine Obergrenze überschreitet.
+  Prozess, der eine Obergrenze überschreitet; ein Empfänger, der eine
+  Nachricht aus seinen Eingängen verweigert, scheitert selbst.
+
+### Eingangspuffer
+
+Eine Sendung an einen Prozess, der auf einem anderen Worker läuft, nimmt
+überhaupt keine Sperre (Prozesserzeugung und -abbau):
+
+- Die Prozesstabelle der Runtime (`ProcessTable`) ist ein Array atomarer
+  Plätze mit offener Adressierung, das ein Senden auf einem Worker ohne jede
+  Sperre liest: Pid-Nummern werden nie wiederverwendet, daher bleibt ein
+  gelöschter Platz ein Löschmarker, bis ein Einfügen das Array neu aufbaut.
+  Einfügen und Löschen nehmen eine Schreibsperre und halten außerdem die
+  Executor-Sperre, unter der Suchzugriffe nichts Weiteres benötigen.
+- Jeder Prozess hat seine Eingänge (`Arrivals`): eine sperrfreie Liste, auf
+  die Sender Nachrichten legen, mit einer Kopie des Laufzustands des Prozesses
+  im Executor. Der Sender schlägt die Eingänge des Empfängers nach und liest
+  diesen Zustand; ein Sender, dessen letzte Sendung an denselben Empfänger
+  ihn nicht laufend vorfand, überspringt den Suchzugriff.
+- Der Sender durchläuft die Nachricht einmal, vor jeder Sperre
+  ([ein Nachrichtendurchlauf](runtime-heap.md#message-buffers)). Für einen
+  laufenden Empfänger kopiert er die Nachricht direkt hinter einen
+  Listenknoten, in einer Allokation (eine große Nachricht oder eine mit
+  Off-Heap-binaries in einen `MessageBuffer`), und stellt sie ein; der
+  Empfänger kopiert diese Wörter später in seinen Heap und verschiebt ihre
+  Zeiger. Jeder andere Empfänger erhält die Nachricht wie bisher unter der
+  Executor-Sperre: in seinen Heap kopiert oder hinter seine Eingänge gestellt,
+  wenn er inzwischen eine Zeitscheibe begonnen hat oder noch Eingänge hat,
+  sodass Nachrichten eines Senders einander nie überholen und der Sender nie
+  einen Rückstau unter der Sperre kopiert. Beide Ergebnisse eines Wettlaufs
+  sind korrekt.
+- Der Empfänger übernimmt seine Eingänge in seinen Heap und Signal-Eingang,
+  die ältesten zuerst: jeweils 64, wenn sein receive jede Nachricht untersucht
+  hat und warten würde, sodass eine Flut den Heap so schnell erreicht, wie das
+  receive sie verbraucht (OTP hält solche Nachrichten in Heap-Fragmenten, bis
+  sie gebraucht werden); alle, wenn er in den Ruhezustand geht, und bevor ihm
+  unter der Executor-Sperre irgendetwas anderes zugestellt wird (eine
+  Nachricht, `'EXIT'`, `'DOWN'`, Port- oder Alias-Nachricht), sodass die
+  Nachrichten jedes Senders ihre Reihenfolge relativ zu seinen anderen
+  Signalen behalten. `process_info` übernimmt sie vor dem Zählen oder
+  Auflisten von Nachrichten. Timer-Nachrichten und andere Nachrichten für
+  einen laufenden Prozess warten ebenfalls unter den Eingängen.
+- Ein Prozess parkt unter der Executor-Sperre erst nach einer sequenziell
+  konsistenten Prüfung, dass kein Eingang wartet; ein Einstellen, das ihn
+  geparkt vorfindet, nimmt die Executor-Sperre und weckt ihn.
+- Die Eingänge eines beendeten Prozesses und ersetzte Tabellen-Arrays werden
+  erst freigegeben, sobald jeder Worker nach ihrer Ausmusterung eine
+  Zeitscheibengrenze passiert hat oder auf Arbeit wartet (Freigabe nach
+  Ruhepunkten): Ein Worker vermerkt die Freigabeepoche an jeder
+  Zeitscheibengrenze, und eine Sendung hält das Gefundene nur innerhalb ihrer
+  Zeitscheibe.
+- Eine Sendung an sich selbst geht direkt in den eigenen Signal-Eingang des
+  Senders.
 
 ## Receive
 
@@ -523,6 +625,23 @@ verlinkt, nimmt wie ein Prozess an Links, Monitoren, Exit-Signalen und
 registrierten Namen teil und spricht mit seinem verbundenen Prozess über
 Nachrichten.
 
+## Prozesse anhalten
+
+`erlang:suspend_process/1,2` und `erlang:resume_process/1`
+(`scheduler/suspension.cpp`): Jedes Anhalten hält das Ziel einmal im Executor
+fest, sodass ein angehaltener Prozess erst wieder läuft, wenn jedes Anhalten
+jedes anhaltenden Prozesses aufgehoben wurde; Nachrichten und Signale
+erreichen ihn weiterhin (ein Exit-Signal beendet ihn weiterhin), und
+`process_info(Pid, status)` meldet `suspended`. Das Ende eines anhaltenden
+Prozesses hebt dessen Anhalten auf. Ein synchrones Anhalten eines Prozesses,
+der auf einem anderen Worker läuft, wartet auf das Ende seiner Zeitscheibe;
+`asynchronous` kehrt sofort zurück, `{asynchronous, Tag}` sendet dem Aufrufer
+zusätzlich `{Tag, suspended}`, und `unless_suspending` antwortet `false`, wenn
+der Aufrufer den Prozess bereits anhält. Das Anhalten oder Fortsetzen des
+Aufrufers selbst, eines beendeten Prozesses, einer Nicht-Pid oder ungültige
+Optionen sind `badarg`, ebenso das Fortsetzen eines Prozesses, den der
+Aufrufer nicht anhält.
+
 ## Builtins
 
 | Builtin | Verhalten |
@@ -537,8 +656,17 @@ Nachrichten.
 | `register(Name, Pid)`, `unregister(Name)`, `whereis(Name)`, `registered()` | Siehe [registrierte Namen](#registered-names); `Name` muss ein Atom sein |
 | `demonitor(Ref)`, `demonitor(Ref, Options)` | `badarg`, außer `Ref` ist eine Referenz und `Options` eine echte Liste aus `flush` und `info` |
 | `exit(Dest, Reason)`, `exit_signal(Dest, Reason)` | `badarg`, außer `Dest` ist eine Pid oder Referenz; `true` nach dem [Exit-Signal](#exit-signals) |
-| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)` | Die vorherige Einstellung; `badarg` für ein anderes Flag, einen Nicht-Boolean oder eine negative oder nicht ganzzahlige Größe |
+| `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)`, `process_flag(save_calls, N)` | Die vorherige Einstellung; `badarg` für ein anderes Flag, einen Nicht-Boolean oder eine negative oder nicht ganzzahlige Größe |
 | `erlang:send(Dest, Msg)`, `Dest ! Msg` | `Msg`, nach dem Senden ([Nachrichten](#messages)); `send/2` wird nicht automatisch importiert |
+| `spawn(Node, ...)`, `spawn_link(Node, ...)`, `spawn_monitor(Node, ...)` (`/2`, `/4`) | Dieser Knoten (`nonode@nohost`): wie ohne `Node`. Anderer Knoten: die nutzlose Pid eines nicht lebenden Knotens von OTP, ein Prozess, der sofort mit Grund `noconnection` endet, sodass ein Link oder Monitor `noconnection` meldet; `badarg`, wenn der Knoten kein Atom ist |
+| `erlang:send(Dest, Msg, Options)` | `ok` oder `noconnect` für eine Nachricht an einen anderen Knoten mit der Option `noconnect`; Optionen `nosuspend`, `noconnect`, `priority` (eine gewöhnliche Nachricht) |
+| `send_nosuspend(Dest, Msg)`, `send_nosuspend(Dest, Msg, [noconnect])` | `true`; `false` für einen anderen Knoten mit `noconnect` |
+| `link(Pid, Options)`, `exit(Dest, Reason, Options)`, `exit_signal(Dest, Reason, Options)` | Wie ohne Optionen; `Options` ist `[]` oder `[priority]` (ein gewöhnliches Signal) |
+| `process_flag(Pid, save_calls, N)` | Die vorherige Einstellung eines anderen Prozesses (0..10000); wird gespeichert, aber Clause zeichnet keine Aufrufe auf; andere Flags `badarg` |
+| `processes_iterator()`, `processes_next(Iter)` | Durchlaufen der lebenden Prozesse: `{Pid, Iter1}` oder `none`; ein während des Durchlaufs gestarteter Prozess kann erscheinen |
+| `bump_reductions(N)` | `true` für eine nicht negative Ganzzahl; Clause zählt keine Reduktionen |
+| `erlang:suspend_process(Pid)`, `erlang:suspend_process(Pid, Options)`, `erlang:resume_process(Pid)` | Siehe [Prozesse anhalten](#suspending-processes) |
+| `erlang:process_display(Pid, backtrace)` | `true` nach dem Schreiben des Aufrufstacks des lebenden Prozesses `Pid` auf die Standardfehlerausgabe, ein `Module:Function/Arity` pro Zeile, die aktuelle Funktion zuerst; `badarg` für einen anderen Typ oder einen beendeten Prozess |
 
 Der neue Prozess wird am Ende der Warteschlange des Workers seines
 Elternprozesses eingereiht ([Worker](#workers)); `spawn` gibt seine Pid sofort

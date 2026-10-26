@@ -1,8 +1,8 @@
 ---
 source: docs/execution-model.md
-sourceCommit: a8c3f8f6
-sourceSha256: 20c13ce39d1763e6ec342e1ed9aaa741312fc2be68cb0e08dd005c77a126fc43
-translatedAt: 2026-10-17
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: ef2ddb1d1fa5ece215035e006df8bf25bc2dd907c9e5b39d7eb0c991b4179977
+translatedAt: 2026-10-26
 ---
 # Ausführungsmodell: Frames und Fortsetzungen
 
@@ -109,7 +109,12 @@ das Ergebnis im ersten Register und beendet den nativen Aufruf.
   Aufgerufenen nicht größer ist. Wie bei einem Endaufruf seiner selbst kann ein
   behaltener Slot einen Term eines früheren Mitglieds halten, bis der
   Aufgerufene ihn schreibt, sodass Speicherbereinigungen einen solchen Term
-  etwas länger am Leben halten können.
+  etwas länger am Leben halten können. Die Mitglieder eines Zyklus teilen sich
+  eine native Funktion: Der Deskriptor jedes Mitglieds nennt sie als Rumpf, ihre
+  Fortsetzungsindizes zählen über die Mitglieder hinweg, und ein Start
+  (resume 0) wählt das Mitglied anhand des Frame-Deskriptors, sodass ein
+  Endaufruf zwischen Mitgliedern eine Verzweigung statt einer Übergabe ist.
+  Debugger sehen die Mitglieder als in diese Funktion eingebettet.
 - **Abgabe (yield).** Ist keine Reduktion mehr übrig, pusht ein Eintritt nicht:
   Er vermerkt sich in `ProcessStack::resume_`, behält seine Argumente als
   Register-Wurzeln (`ProcessStack::keep_registers`) und gibt Code zurück, der
@@ -206,7 +211,10 @@ braucht es.
 - **Parameter.** Ein Rumpf liest seine führenden Argumente zu Beginn aus den
   Parametern und das Aufrufergebnis beim Fortsetzen aus `x0`; `lower_frames`
   lagert beides nur dann in einen Slot aus, wenn es über einen Aufruf oder
-  Safepoint hinweg lebendig ist.
+  Safepoint hinweg lebendig ist. Eine Float-Schleifenvariante ([abi](abi.md))
+  nimmt einige Parameter als Bits von Doubles entgegen: Nur ihre
+  Inline-Übergaben übergeben sie so, und ihre Dienstpfade betreten die Funktion
+  stattdessen mit Zellen, sodass Register, die ein Dienst liest, Terme halten.
 - **Endpositionen** sind der letzte Ausdruck eines Klauselrumpfs, verfolgt
   durch Blöcke, Klammern sowie Klauselrümpfe von `case`, `if` und `receive`.
   Aufrufe in Operanden von `catch`, `try`, `maybe` und `andalso`/`orelse` sind
@@ -227,7 +235,7 @@ braucht es.
 
 ## Verglichene Alternativen
 
-[tests/prototypes/execution_model](../tests/prototypes/execution_model/) senkt
+[tests/prototypes/execution_model](../tests/prototypes/execution_model) senkt
 dieselben Erlang-Funktionen (`sum/1` Rumpfrekursion, `loop/2` Endrekursion,
 `fail/1` löst in Tiefe N aus, `catcher/1` fängt es ab) auf drei Arten von Hand
 ab und kompiliert sie für jede obige Zielplattform bei O0 und O2

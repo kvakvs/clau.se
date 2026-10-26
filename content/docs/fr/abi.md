@@ -1,8 +1,8 @@
 ---
 source: docs/abi.md
-sourceCommit: 336caea7
-sourceSha256: 7daec4e4d726183bdf39b5622c3fbc120849e6e7638b381b4e7ae2c2d87e83b7
-translatedAt: 2026-10-18
+sourceCommit: 1e3a39c8-dirty
+sourceSha256: 9b1845341638452f441c091f8de4122b06281694d83cc28080968c0dbdbc9133
+translatedAt: 2026-10-26
 ---
 # ABI du code généré (révision 21)
 
@@ -79,8 +79,8 @@ du nom et des champs, indicateur d'export ;
 [native records](native-records.md#representation)) dans une table externe
 `<prefix>.records` à laquelle se réfèrent les autres modules d'un lot, les
 descripteurs de funs dans une table privée `<prefix>.funs`
-([funs](funs.md#representation)), la zone de littéraux en lecture seule
-([zones](runtime-heap.md#areas)), les caches d'atomes et de funs inscriptibles
+([funs](funs.md#representation)), les littéraux encodés du module et le cache
+de littéraux ([zones](runtime-heap.md#areas)), les caches d'atomes et de funs inscriptibles
 que le code généré lit en ligne, et la `code_convention` de ses corps.
 L'enregistrement appelle `CLAUSE_register_module_v4(Runtime*)`, qui valide la
 version, la largeur et tous les exports, interne les atomes, construit un
@@ -99,6 +99,18 @@ modules en double ne remplacent jamais le code ; tout échec ne publie rien
 - Les expressions d'atome autres que les atomes fixes lisent `atom_cache`
   lorsque le `FrameState::runtime` du contexte possède le cache, sinon
   `CLAUSE_atom_v3` ; elles n'internent jamais ([atomes](terms.md#atoms)).
+- Les littéraux composés sont `literal_count` termes de `literals`
+  (`literal_bytes` octets, `abi/literals.hpp`) : encodage compact des termes de
+  BEAM (étiquettes de base `u`, `i`, `a` : comptes, entiers de toute taille en
+  complément à deux big-endian, atomes sous forme d'emplacement d'atome du module
+  + 1 avec 0 pour `[]`), plus les étiquettes étendues de Clause pour les listes
+  (longueur, éléments, queue), tuples, flottants (binary64), bitstrings (nombre
+  de bits, octets), maps et chaînes d'octets. L'enregistrement les décode dans
+  le tas de littéraux du runtime ; le runtime qui s'attribue le cache remplit
+  `literal_cache` (un mot par littéral), que le code généré lit après avoir
+  vérifié cette attribution, et le code des autres runtimes appelle
+  `CLAUSE_literal_v1(context, index, descriptor)`
+  ([zones](runtime-heap.md#areas)).
 - Un objet de démarrage (`clausev1_start`) répertorie chaque descripteur dans
   un `StartupDescriptor` et son `main` natif appelle
   `CLAUSE_main_v1(argc, argv, descriptor)`, qui enregistre tous les modules et
@@ -274,28 +286,67 @@ entrée hôte appelant `CLAUSE_invoke_v1(context, frame, arguments)`.
   du contexte (`self`), un mot de la cible chacun. Un corps lit l'en-tête de
   son cadre (`stack + frame`) et les registres à partir de lui à l'entrée et
   effectue un aiguillage sur le mot de reprise de l'en-tête.
-- Motifs binaires (cibles 64 bits) : le test de début, le test de fin et les
-  segments entiers d'une largeur constante en octets entiers jusqu'à 56 bits à
-  une position alignée sur l'octet lisent la cellule en ligne
+- Motifs binaires : le test de début, le test de fin et les segments entiers
+  d'une largeur constante jusqu'à la taille du mot moins 8 bits (56 sur les
+  cibles 64 bits, 24 sur les cibles 32 bits) lisent la cellule en ligne
   (`abi::v1::heap_binary_*_word`, `refc_*_word` : le `data_` d'une vue hors
-  tas est le premier octet de son tampon) ; les autres segments et les
-  positions non alignées appellent `CLAUSE_bits_v1`. Un sujet `sub_binary`
+  tas est le premier octet de son tampon), à toute position de bit. Un segment
+  d'octets entiers aligné sur l'octet nécessite un seul chargement ; les autres
+  lisent les octets que touche le champ et l'extraient par décalage. Les largeurs
+  qui ne sont pas des octets entiers ne sont traitées en ligne qu'en big-endian.
+  Les autres segments appellent `CLAUSE_bits_v1`. Un sujet `sub_binary`
   (`sub_*_word`) est lu à travers son original. Un `Rest/binary` ou
   `Rest/bits` final d'unité 1 est alloué en ligne par incrément de pointeur
   comme une cellule `sub_binary` de 4 mots de l'original.
-- Boucles binaires : lorsque chaque clause d'une fonction fait correspondre un
-  paramètre comme binary (ou l'ignore), ne garde jamais le binary entier, et
-  ne lit les restes qu'elle lie que comme ce paramètre d'appels terminaux sur
-  elle-même, la fonction reçoit une variante privée `<symbol>.loop`. L'étape
-  propre de la fonction crée la cellule du reste comme ci-dessus et entre dans
-  la variante avec elle (un reste créé par le service, qui peut être partagé,
-  rentre plutôt dans la fonction). La variante ne crée aucune cellule de
-  reste : chaque appel terminal sur elle-même stocke le nouveau décalage et la
-  nouvelle longueur en bits dans la cellule du paramètre, que seule cette
-  boucle référence, et transmet la même cellule, de sorte qu'une boucle sur un
-  binary n'alloue qu'une fois. La variante lit la vue de la cellule une fois
-  par étape, avant ses clauses, et saute le test de bitstring du paramètre.
-  La variante porte le nom et l'arité de la fonction dans les traces de pile.
+- Boucles binaires : lorsqu'aucune tête de clause d'une fonction ne compare un
+  paramètre à une liaison, et qu'une clause transmet un reste de ce paramètre
+  comme même paramètre d'un appel terminal sur elle-même, la fonction reçoit
+  une variante privée `<symbol>.loop`. L'étape propre de la fonction crée la
+  cellule du reste comme ci-dessus et entre dans la variante avec elle (un
+  reste créé par le service, qui peut être partagé, rentre plutôt dans la
+  fonction). La variante ne crée aucune cellule de reste : chaque appel
+  terminal sur elle-même stocke le nouveau décalage et la nouvelle longueur en
+  bits dans la cellule du paramètre, que seule cette boucle référence, et
+  transmet la même cellule, de sorte qu'une boucle sur un binary n'alloue
+  qu'une fois. La variante lit la vue de la cellule une fois par étape, avant
+  ses clauses, et saute le test de bitstring du paramètre. Les chargements et
+  stockages de l'état du processus, des cadres, des mots de `sub_binary` et des
+  mots de binary en ligne/hors tas portent des étiquettes LLVM TBAA disjointes ;
+  une variante qui n'appelle aucune autre fonction Erlang marque les chargements
+  de l'original de sa cellule et de l'en-tête, du décalage et de l'adresse des
+  données de l'original `!invariant.load`, et reçoit un GVN supplémentaire après
+  le pipeline (attribut de fonction `clause-binary-loop`), de sorte que la vue
+  sort de la boucle et que le décalage et la longueur stockés par une itération
+  sont des valeurs en registres de l'itération suivante. Toute autre lecture
+  dans le corps d'un reste, ou du paramètre entier dans la variante, et toute
+  fun qui en capture un, obtient une nouvelle cellule `sub_binary` contenant les
+  mêmes bits (le service la crée sans place dans le tas), afin que rien d'autre
+  ne détienne jamais la cellule de la boucle ; les guards lisent la valeur
+  elle-même. La variante porte le nom et l'arité de la fonction dans les traces
+  de pile.
+- Boucles de flottants (cibles 64 bits) : un paramètre parmi les six premiers
+  (ceux passés en registres), que chaque clause lie à une variable (ou ignore),
+  auquel un appel terminal sur la fonction transmet une expression uniquement
+  flottante (un littéral flottant, `/`, un appel `math`, ou `+ - *` avec un tel
+  opérande), et dont la valeur n'est lue que comme opérande d'opérations
+  arithmétiques, de comparaisons ou d'appels `math`, comme même paramètre d'un
+  appel terminal sur la fonction, ou dans le résultat ou un appel terminal
+  d'une autre fonction (jamais dans une fun), est un paramètre flottant. La
+  fonction reçoit une variante privée `<symbol>.float` qui prend chaque
+  paramètre flottant sous forme des bits de son double dans le mot d'argument
+  (attributs de fonction `clause-float-parameters`, un masque de bits, et
+  `clause-float-generic`, la fonction). Un appel terminal sur l'une ou l'autre,
+  dont la nouvelle valeur de chaque paramètre flottant est un double dans un
+  registre, entre dans la variante avec ces bits, si bien qu'une boucle de
+  flottants ne crée aucune cellule par étape ; la variante ne crée une cellule
+  d'un paramètre que là où elle lit le mot lui-même. Les bits bruts n'atteignent
+  jamais un emplacement lu par une collecte : les autres appels terminaux de la
+  variante sur elle-même rentrent dans la fonction, et un transfert vers la
+  variante qui emprunte son chemin de service (collecte demandée, profilage,
+  réductions épuisées, croissance de pile) met les doubles en cellules avec
+  l'auxiliaire `clause.float.box` du module et entre plutôt dans le descripteur
+  de la fonction. La variante porte le nom et l'arité de la fonction dans les
+  traces de pile.
 - Une construction de binary dont chaque octet est connu à la compilation
   (petites constantes entières et littéraux de chaîne à des largeurs
   constantes en octets entiers, au plus 64 octets) est une cellule binary en
@@ -312,6 +363,14 @@ entrée hôte appelant `CLAUSE_invoke_v1(context, frame, arguments)`.
 - Un builtin pur à arguments littéraux est évalué à la compilation, comme le
   fait `sys_core_fold` d'OTP : `atom_to_list(Atom)` d'un littéral atome est la
   chaîne littérale de ce nom, sans appel.
+- `integer_to_list(N)` d'un petit entier écrit les cellules de ses chiffres
+  dans les mots libres du bloc de tas, et `list_to_integer(L)` d'une liste
+  propre de chiffres, après un éventuel signe moins, assez courte pour être un
+  petit entier (17 chiffres sur les cibles 64 bits, 8 sur les cibles 32 bits),
+  la lit sur place (`codegen/lowering_integer_text`). Tout autre argument, ou
+  un bloc sans place, entre dans le builtin, qui lève chaque erreur. Comme
+  opérande gauche de `++`, `integer_to_list(N)` vérifie `N` à son emplacement et
+  l'ajout écrit les chiffres directement sur `Right`, sans copie.
 - `erlang:make_tuple(N, V)` avec un petit `N` dans 1..64 alloue le tuple par
   incrément de pointeur et le remplit avec `llvm.experimental.memset.pattern`
   quand le tas a de la place ; sinon le builtin s'exécute.
@@ -334,7 +393,14 @@ entrée hôte appelant `CLAUSE_invoke_v1(context, frame, arguments)`.
   chargement ne dépend d'un branchement), calculent dans les registres et
   allouent par incrément de pointeur la cellule flottante de 2 mots quand le
   résultat est fini, le diviseur non nul et que le tas a de la place ; sinon
-  `CLAUSE_immediate_v1` lève `badarith` ou promeut.
+  `CLAUSE_immediate_v1` lève `badarith` ou promeut. Un littéral flottant, et le
+  résultat de `/`, de math en ligne ou d'une opération avec un tel opérande
+  (toujours un flottant en cas de succès), garde aussi son double dans un
+  registre : les opérations qui le lisent prennent le registre, et sa cellule
+  n'est créée que là où quelque chose lit le mot lui-même (`CLAUSE_float_v1`
+  quand le tas n'a pas de place) ; un repli vers le service qui le lit obtient
+  sa propre cellule. Une comparaison de deux tels flottants compare les
+  doubles, l'égalité exacte leurs bits (ainsi `0.0 =:= -0.0` reste faux).
 - Les expressions de map sans base dont les clés sont des littéraux atomes ou
   petits entiers (au plus 32 distincts) sont écrites en ligne comme cellules
   de map classique, clés triées à la compilation dans l'ordre exact des
@@ -349,6 +415,18 @@ entrée hôte appelant `CLAUSE_invoke_v1(context, frame, arguments)`.
   et que le tas a de la place. Une clé absente fait échouer un motif aussitôt ;
   les arbres de map, les autres clés, une clé absente ailleurs et les erreurs
   passent par `CLAUSE_map_v1` (recherches dans les petites maps).
+- Chaque recherche de ce type pour une clé littérale (un atome ou petit entier
+  écrit dans le source) possède un cache en ligne par site, une globale interne
+  `[2 x word]` partagée par tous les processus : l'indice du dernier mot de clé
+  trouvé (initialement 1) et les réécritures restantes (8). La recherche compare
+  d'abord le mot de clé à l'indice en cache, si bien qu'une map de la forme
+  habituelle du site coûte une comparaison ; sinon elle parcourt les mots et,
+  tant qu'il reste des réécritures, stocke l'indice trouvé. Les deux mots sont
+  atomiques à ordre relâché ; un site qui a épuisé ses réécritures ne fait que
+  lire, si bien que les sites voyant de nombreuses formes dans de nombreux
+  processus ne font pas circuler la ligne de cache. Les clés variables (maps
+  utilisées comme dictionnaires) ne font qu'un parcours (caches en ligne de
+  forme de map).
 - Les tuples et les listes d'au plus 64 mots sont alloués en ligne par
   incrément de pointeur dans `[heap_top, heap_limit)` (en-tête ou cellules
   cons écrits sur place, `heap_top` avancé), sinon construits par
@@ -524,3 +602,5 @@ succès.
 | 21 | `ModuleDescriptor::fun_cache` et fermetures en ligne |
 | 22 | Builtins directs : `BuiltinName::direct`, `CLAUSE_builtin_call_v1` |
 | 23 | Builtins rapides : `BuiltinName::call` (`BuiltinCall`), 0 de `CLAUSE_builtin_call_v1` signifie un refus |
+| 24 | `RecordDescriptor::definition` (la liste des champs sous forme d'octets External Term Format, pour `records:get_definition/2`) et `ModuleDescriptor::features` (emplacements d'atomes des fonctionnalités activées, pour `erl_features:used/1`) |
+| 25 | Littéraux encodés du module et tas de littéraux : `ModuleDescriptor::literals` contient les octets encodés (`literal_bytes`), `literal_cache`, `literal_count` ; `CLAUSE_literal_v1` |
