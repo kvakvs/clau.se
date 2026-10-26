@@ -222,6 +222,7 @@ export const en = {
       dataproc: "Data processing",
       file: "File I/O",
       gc: "Garbage collection",
+      libraries: "Libraries",
       msg: "Message passing",
       socket: "Loopback sockets",
     },
@@ -266,6 +267,8 @@ export const en = {
         "Keeps a sliding window of 10,000 live elements among garbage, 370 times",
       "gc.explicit_collect":
         "Forces garbage collection with 10,000 live tuples, 5,100 times",
+      "libraries.qlc":
+        "Runs the qlc transform over 27 queries and 3 modules, 11 times",
       "msg.ping_pong":
         "Bounces one message between two processes 2 million times",
       "msg.fan_in": "100 processes each send 1,000 messages to one, 25 times",
@@ -286,6 +289,7 @@ export const en = {
       bench_file: "Small and large file writes and reads, line reads",
       bench_gc:
         "Short-lived processes, heap growth and shrinking, live data churn",
+      bench_library: "The qlc parse transform at run time, as qlc:q/1 uses it",
       bench_msg: "Ping-pong, fan-in, a process ring and large message copies",
       bench_socket: "TCP echo, TCP connects and UDP round trips over loopback",
     },

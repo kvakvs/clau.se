@@ -225,6 +225,7 @@ export const de = {
       dataproc: "Datenverarbeitung",
       file: "Datei-I/O",
       gc: "Garbage Collection",
+      libraries: "Bibliotheken",
       msg: "Nachrichtenaustausch",
       socket: "Loopback-Sockets",
     },
@@ -274,6 +275,8 @@ export const de = {
         "Hält ein gleitendes Fenster aus 10.000 lebenden Elementen inmitten von Müll, 370-mal",
       "gc.explicit_collect":
         "Erzwingt Garbage Collection mit 10.000 lebenden Tupeln, 5100-mal",
+      "libraries.qlc":
+        "Führt die qlc-Transformation über 27 Abfragen und 3 Module aus, 11-mal",
       "msg.ping_pong":
         "Schickt eine Nachricht 2 Millionen Mal zwischen zwei Prozessen hin und her",
       "msg.fan_in": "100 Prozesse senden je 1000 Nachrichten an einen, 25-mal",
@@ -297,6 +300,8 @@ export const de = {
         "Schreiben und Lesen kleiner und großer Dateien, zeilenweises Lesen",
       bench_gc:
         "Kurzlebige Prozesse, wachsender und schrumpfender Heap, lebende Daten",
+      bench_library:
+        "Die qlc-Parse-Transform zur Laufzeit, wie qlc:q/1 sie nutzt",
       bench_msg:
         "Ping-Pong, Fan-in, Prozessring und Kopieren großer Nachrichten",
       bench_socket:

@@ -225,6 +225,7 @@ export const pt = {
       dataproc: "Processamento de dados",
       file: "E/S de ficheiros",
       gc: "Recolha de lixo",
+      libraries: "Bibliotecas",
       msg: "Troca de mensagens",
       socket: "Sockets em loopback",
     },
@@ -275,6 +276,8 @@ export const pt = {
         "Mantém uma janela deslizante de 10 000 elementos vivos no meio de lixo, 370 vezes",
       "gc.explicit_collect":
         "Força a recolha de lixo com 10 000 tuplos vivos, 5100 vezes",
+      "libraries.qlc":
+        "Executa a transformação qlc sobre 27 consultas e 3 módulos, 11 vezes",
       "msg.ping_pong":
         "Troca uma mensagem entre dois processos 2 milhões de vezes",
       "msg.fan_in":
@@ -297,6 +300,7 @@ export const pt = {
       bench_file:
         "Escrita e leitura de ficheiros pequenos e grandes, leitura por linhas",
       bench_gc: "Processos efémeros, heap que cresce e encolhe, dados vivos",
+      bench_library: "A parse transform do qlc em runtime, como qlc:q/1 a usa",
       bench_msg:
         "Pingue-pongue, fan-in, anel de processos e cópia de mensagens grandes",
       bench_socket: "Eco TCP, ligações TCP e idas e voltas UDP em loopback",

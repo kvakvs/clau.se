@@ -18,7 +18,7 @@ name over every host) plus the per-day history in
 exist only on the host that ran the benchmarks; if they are missing, keep the
 committed JSON, say so and stop.
 
-IMPORTANT: update only from results recorded within the last 3 hours. If the
+IMPORTANT: update only from results newer than the currently published. If the
 newest report is older, skip the update, report its timestamp and stop
 without touching `content/benchmarks.json`.
 SUBAGENTS: When using subagents, switch to a faster model such as Sonnet.
@@ -72,9 +72,9 @@ Keep these when editing the page or its strings:
      | sort | tail -1 | cut -d' ' -f2- | xargs -I{} grep -m1 '^Clause benchmarks,' "{}"
    ```
 
-   Compare the timestamp with the current time. Stop if there is no report,
-   if it is older than 3 hours, or if it equals `runAt` in the committed
-   `content/benchmarks.json` (nothing new).
+   Compare the timestamp with `runAt` in the committed
+   `content/benchmarks.json`. Stop if there is no report, or if it is not
+   newer than `runAt` (nothing new).
 
 2. **Sync.** Run `pnpm sync-benchmarks`, then `git diff --stat
 content/benchmarks.json`. Note the Clause commit, run count, new or removed

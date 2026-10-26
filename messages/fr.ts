@@ -225,6 +225,7 @@ export const fr = {
       dataproc: "Traitement de données",
       file: "E/S fichiers",
       gc: "Ramasse-miettes",
+      libraries: "Bibliothèques",
       msg: "Passage de messages",
       socket: "Sockets en boucle locale",
     },
@@ -273,6 +274,8 @@ export const fr = {
         "Garde une fenêtre glissante de 10 000 éléments vivants parmi les déchets, 370 fois",
       "gc.explicit_collect":
         "Force le ramasse-miettes avec 10 000 tuples vivants, 5100 fois",
+      "libraries.qlc":
+        "Exécute la transformation qlc sur 27 requêtes et 3 modules, 11 fois",
       "msg.ping_pong":
         "Renvoie un message entre deux processus 2 millions de fois",
       "msg.fan_in":
@@ -297,6 +300,8 @@ export const fr = {
         "Écriture et lecture de petits et grands fichiers, lecture par ligne",
       bench_gc:
         "Processus éphémères, tas qui grossit puis rétrécit, données vivantes",
+      bench_library:
+        "La parse transform de qlc à l'exécution, telle que qlc:q/1 l'utilise",
       bench_msg:
         "Ping-pong, fan-in, anneau de processus et copie de gros messages",
       bench_socket:

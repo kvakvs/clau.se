@@ -226,6 +226,7 @@ export const sv = {
       dataproc: "Databearbetning",
       file: "Fil-I/O",
       gc: "Skräpsamling",
+      libraries: "Bibliotek",
       msg: "Meddelandeöverföring",
       socket: "Loopback-sockets",
     },
@@ -274,6 +275,8 @@ export const sv = {
         "Behåller ett glidande fönster med 10 000 levande element bland skräp, 370 gånger",
       "gc.explicit_collect":
         "Tvingar fram skräpsamling med 10 000 levande tupler, 5100 gånger",
+      "libraries.qlc":
+        "Kör qlc-transformen över 27 frågor och 3 moduler, 11 gånger",
       "msg.ping_pong":
         "Studsar ett meddelande mellan två processer 2 miljoner gånger",
       "msg.fan_in":
@@ -296,6 +299,8 @@ export const sv = {
       bench_file: "Skriver och läser små och stora filer, läser rader",
       bench_gc:
         "Kortlivade processer, heap som växer och krymper, levande data",
+      bench_library:
+        "qlc:s parse transform vid körning, som qlc:q/1 använder den",
       bench_msg:
         "Ping-pong, fan-in, processring och kopiering av stora meddelanden",
       bench_socket: "TCP-eko, TCP-anslutningar och UDP-rundturer via loopback",
