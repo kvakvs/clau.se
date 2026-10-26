@@ -31,7 +31,7 @@ export const sv = {
     intro:
       "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, portar och skräpsamling per process.",
     status:
-      "Under utveckling: en växande delmängd av Erlang och OTP:s stdlib kompileras till körbara program som redan idag körs på Windows och Linux. Återstår: macOS med Apple Silicon och riktig ARM-hårdvara, OTP:s egna testsviter och mer optimering. Sidan med prestandatester visar var Clause står jämfört med OTP; dokumentationen beskriver vad som fungerar och var Clause skiljer sig.",
+      "Under utveckling: Erlang/OTP 29-program kompileras till körbara program som redan idag körs på Windows och Linux, med Clauses egna stdlib, kernel och crypto. Återstår: macOS med Apple Silicon och riktig ARM-hårdvara, OTP:s egna testsviter, certifikatvalidering i public_key och mer optimering; distribution och kodladdning under körning stöds inte. Sidan med prestandatester visar var Clause står jämfört med OTP; dokumentationen beskriver vad som fungerar och var Clause skiljer sig.",
     ctaDocs: "Läs dokumentationen",
     ctaSource: "Källkod på GitHub",
     cardsTitle: "Funktioner",
@@ -62,9 +62,9 @@ export const sv = {
       },
       {
         id: "library",
-        property: "ets · dets · json",
+        property: "gen_server · crypto",
         title: "OTP-bibliotek",
-        text: "Clauses egna stdlib och kernel med samma exporter, resultat och fel som OTP 29.",
+        text: "Clauses egna stdlib, kernel och crypto med samma exporter, resultat och fel som OTP 29.",
       },
       {
         id: "ports",
@@ -79,10 +79,10 @@ export const sv = {
         text: "Med O2 tar härledda typer bort kontroller vid körning och väljer specialiserad kod.",
       },
       {
-        id: "transforms",
-        property: "parse_transform",
-        title: "Parse transforms",
-        text: "Kör parse transforms under kompileringen; de körbara programmen behöver aldrig OTP.",
+        id: "shell",
+        property: "clau --shell",
+        title: "Interaktivt skal",
+        text: "Länkar Erlang-skalet till ett körbart program: erl_eval, historik och records, utan BEAM.",
       },
       {
         id: "targets",
@@ -100,6 +100,7 @@ export const sv = {
           "Erlang/OTP 29-syntax: records, maps, bitsträngar, comprehensions, typer och specifikationer",
           "Makron, includes och villkorlig kompilering",
           "Parse transforms på en Erlang/OTP 29 på värddatorn, inklusive ms_transform och qlc",
+          "ASN.1-specifikationer kompilerade till moduler som asn1ct gör: BER, DER, PER och UPER",
         ],
       },
       {
@@ -119,6 +120,7 @@ export const sv = {
           "LLVM O0, O2 och Os, med länktidsoptimering över moduler",
           "O2 tar bort typkontroller som härledningen bevisar",
           "Riktiga svansanrop och djup rekursion",
+          "Parallell kodgenerering på varje hårdvarutråd",
         ],
       },
       {
@@ -136,9 +138,12 @@ export const sv = {
         title: "OTP-bibliotek",
         items: [
           "Clauses egna OTP 29-moduler med OTP:s exporter, resultat och felorsaker",
-          "stdlib: lists, maps, string, binary, json, rand och samlingsmodulerna",
-          "ets, dets med filer som OTP skriver dem, re och zlib",
-          "kernel: file, gen_tcp, gen_udp, inet och os",
+          "gen_server, gen_statem, gen_event, supervisor, application och logger",
+          "stdlib: lists, maps, string, binary, json, re, rand och samlingsmodulerna",
+          "ets, dets, disk_log, zip och erl_tar med filer som OTP skriver dem",
+          "erl_scan, erl_parse, erl_lint, erl_eval och qlc vid körning",
+          "kernel: file, gen_tcp, gen_udp, inet, inet_res och os",
+          "crypto via OpenSSL med FIPS-läge; public_key-kodek, nycklar och signaturer",
         ],
       },
       {
@@ -147,6 +152,7 @@ export const sv = {
         items: [
           "Ett clau-kommando från Erlang-källkod till ett körbart program",
           "TOML-projekt med SQLite-byggcache",
+          "Interaktivt Erlang-skal med clau --shell",
           "Felsökningsinformation med -g (CodeView eller DWARF 5) och profilering med --profile",
           "Testad mot referensimplementationen Erlang/OTP och jämförd med OTP i benchmarks",
         ],
@@ -172,15 +178,15 @@ export const sv = {
     featured: {
       gettingStarted: {
         title: "Kom igång",
-        text: "Förutsättningar: CMake, en C++23-kompilator, Clang, LLVM 23 SDK, Boost och toml++; CMake laddar ner övriga bibliotek. Erlang/OTP är valfritt.",
+        text: "Förutsättningar, ett första bygge och ett första program: CMake 3.28+, en C++23-kompilator och Python 3; CMake hittar eller laddar ner LLVM 23 och övriga bibliotek.",
       },
       building: {
         title: "Bygga kompilatorn",
-        text: "Konfigurera, bygg och testa med CMake-presets på Linux, macOS och Windows.",
+        text: "Förutsättningar, CMake-presets och alternativ, tester och prestandatester på Linux, macOS och Windows.",
       },
       using: {
         title: "Använda kompilatorn",
-        text: "Kommandoradsflaggor, inspektionslägen, körbara program, TOML-projekt och parse transforms.",
+        text: "Kommandoraden för clau: alternativ, artefakter, listningar och kompileringscache.",
       },
       interpreting: {
         title: "Hur man tolkar resultaten",

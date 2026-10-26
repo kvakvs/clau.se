@@ -31,7 +31,7 @@ export const de = {
     intro:
       "Clause ist ein AOT-Compiler für Erlang. Er verarbeitet, parst und analysiert Erlang-Quellcode, kompiliert ihn über LLVM und linkt native Programme mit einer eigenen Laufzeitumgebung: leichtgewichtige Prozesse auf mehreren Scheduler-Threads, Nachrichtenaustausch, Ports und Garbage Collection pro Prozess.",
     status:
-      "In Entwicklung: Eine wachsende Teilmenge von Erlang und stdlib von OTP lässt sich bereits heute zu nativen Programmen kompilieren, die unter Windows und Linux laufen. Noch ausstehend: macOS mit Apple Silicon und native ARM-Hardware, die Testsuites von OTP und weitere Optimierungen. Die Benchmark-Seite zeigt, wo Clause im Vergleich zu OTP steht; die Dokumentation beschreibt, was funktioniert und wo Clause abweicht.",
+      "In Entwicklung: Erlang/OTP 29-Programme lassen sich bereits heute zu nativen Programmen kompilieren, die unter Windows und Linux laufen, mit Clause-eigenen stdlib, kernel und crypto. Noch ausstehend: macOS mit Apple Silicon und native ARM-Hardware, die Testsuites von OTP, Zertifikatsvalidierung in public_key und weitere Optimierungen; verteilte Ausführung und das Nachladen von Code im laufenden Betrieb werden nicht unterstützt. Die Benchmark-Seite zeigt, wo Clause im Vergleich zu OTP steht; die Dokumentation beschreibt, was funktioniert und wo Clause abweicht.",
     ctaDocs: "Dokumentation lesen",
     ctaSource: "Quellcode auf GitHub",
     cardsTitle: "Funktionen",
@@ -62,9 +62,9 @@ export const de = {
       },
       {
         id: "library",
-        property: "ets · dets · json",
+        property: "gen_server · crypto",
         title: "OTP-Bibliothek",
-        text: "Clause-eigene stdlib und kernel mit den Exporten, Ergebnissen und Fehlern von OTP 29.",
+        text: "Clause-eigene stdlib, kernel und crypto mit den Exporten, Ergebnissen und Fehlern von OTP 29.",
       },
       {
         id: "ports",
@@ -79,10 +79,10 @@ export const de = {
         text: "Mit O2 entfernen inferierte Typen Laufzeitprüfungen und wählen spezialisierten Code.",
       },
       {
-        id: "transforms",
-        property: "parse_transform",
-        title: "Parse-Transforms",
-        text: "Führt Parse-Transforms beim Kompilieren aus; die Programme selbst benötigen OTP nie.",
+        id: "shell",
+        property: "clau --shell",
+        title: "Interaktive Shell",
+        text: "Linkt die Erlang-Shell in ein ausführbares Programm: erl_eval, Verlauf und Records, ohne BEAM.",
       },
       {
         id: "targets",
@@ -100,6 +100,7 @@ export const de = {
           "Erlang/OTP 29-Syntax: Records, Maps, Bitstrings, Comprehensions, Typen und Spezifikationen",
           "Makros, Includes und bedingte Kompilierung",
           "Parse-Transforms auf einem Erlang/OTP 29 des Hosts, einschließlich ms_transform und qlc",
+          "ASN.1-Spezifikationen werden wie mit asn1ct zu Modulen kompiliert: BER, DER, PER und UPER",
         ],
       },
       {
@@ -119,6 +120,7 @@ export const de = {
           "LLVM O0, O2 und Os, mit modulübergreifender Link-Time-Optimierung",
           "O2 entfernt Typprüfungen, die die Inferenz beweist",
           "Echte Endaufrufe und tiefe Rekursion",
+          "Parallele Codegenerierung auf jedem Hardware-Thread",
         ],
       },
       {
@@ -136,9 +138,12 @@ export const de = {
         title: "OTP-Bibliothek",
         items: [
           "Clause-eigene OTP 29-Module mit den Exporten, Ergebnissen und Fehlergründen von OTP",
-          "stdlib: lists, maps, string, binary, json, rand und die Collection-Module",
-          "ets, dets mit Dateien, wie OTP sie schreibt, re und zlib",
-          "kernel: file, gen_tcp, gen_udp, inet und os",
+          "gen_server, gen_statem, gen_event, supervisor, application und logger",
+          "stdlib: lists, maps, string, binary, json, re, rand und die Collection-Module",
+          "ets, dets, disk_log, zip und erl_tar mit Dateien, wie OTP sie schreibt",
+          "erl_scan, erl_parse, erl_lint, erl_eval und qlc zur Laufzeit",
+          "kernel: file, gen_tcp, gen_udp, inet, inet_res und os",
+          "crypto über OpenSSL mit FIPS-Modus; public_key-Codec, Schlüssel und Signaturen",
         ],
       },
       {
@@ -147,6 +152,7 @@ export const de = {
         items: [
           "Ein clau-Befehl vom Erlang-Quellcode zum nativen Programm",
           "TOML-Projekte mit SQLite-Build-Caches",
+          "Interaktive Erlang-Shell mit clau --shell",
           "Debug-Informationen mit -g (CodeView oder DWARF 5) und Profiling mit --profile",
           "Getestet gegen das Referenz-Erlang/OTP und per Benchmarks mit OTP verglichen",
         ],
@@ -172,15 +178,15 @@ export const de = {
     featured: {
       gettingStarted: {
         title: "Erste Schritte",
-        text: "Voraussetzungen: CMake, ein C++23-Compiler, Clang, das LLVM 23 SDK, Boost und toml++; die übrigen Bibliotheken lädt CMake herunter. Erlang/OTP ist optional.",
+        text: "Voraussetzungen, ein erster Build und ein erstes Programm: CMake 3.28+, ein C++23-Compiler und Python 3; CMake findet LLVM 23 und die übrigen Bibliotheken oder lädt sie herunter.",
       },
       building: {
         title: "Den Compiler bauen",
-        text: "Konfigurieren, bauen und testen mit CMake-Presets unter Linux, macOS und Windows.",
+        text: "Voraussetzungen, CMake-Presets und Optionen, Tests und Benchmarks unter Linux, macOS und Windows.",
       },
       using: {
         title: "Den Compiler verwenden",
-        text: "Kommandozeilenoptionen, Inspektionsmodi, ausführbare Programme, TOML-Projekte und Parse-Transforms.",
+        text: "Die clau-Kommandozeile: Optionen, Artefakte, Listings und der Kompilierungscache.",
       },
       interpreting: {
         title: "Ergebnisse richtig deuten",

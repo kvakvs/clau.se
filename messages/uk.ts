@@ -31,7 +31,7 @@ export const uk = {
     intro:
       "Clause — це AOT-компілятор для Erlang. Він виконує препроцесинг, синтаксичний і семантичний аналіз коду Erlang, компілює його через LLVM і збирає нативні програми з власним runtime: легкі процеси на кількох потоках планувальника, обмін повідомленнями, порти та збирання сміття для кожного процесу окремо.",
     status:
-      "Проєкт у розробці: дедалі більша підмножина Erlang і stdlib з OTP уже компілюється в нативні програми, що виконуються на Windows і Linux. Ще попереду: macOS з Apple Silicon і нативне обладнання ARM, власні набори тестів OTP і подальша оптимізація. Сторінка бенчмарків показує, як Clause виглядає порівняно з OTP; документація описує, що працює і чим Clause відрізняється.",
+      "Проєкт у розробці: програми Erlang/OTP 29 уже компілюються в нативні програми, що виконуються на Windows і Linux, із власними stdlib, kernel і crypto у Clause. Ще попереду: macOS з Apple Silicon і нативне обладнання ARM, власні набори тестів OTP, перевірка сертифікатів у public_key і подальша оптимізація; розподілене виконання й гаряче завантаження коду не підтримуються. Сторінка бенчмарків показує, як Clause виглядає порівняно з OTP; документація описує, що працює і чим Clause відрізняється.",
     ctaDocs: "Читати документацію",
     ctaSource: "Код на GitHub",
     cardsTitle: "Можливості",
@@ -62,9 +62,9 @@ export const uk = {
       },
       {
         id: "library",
-        property: "ets · dets · json",
+        property: "gen_server · crypto",
         title: "Бібліотека OTP",
-        text: "Власні stdlib і kernel у Clause з експортами, результатами й помилками як в OTP 29.",
+        text: "Власні stdlib, kernel і crypto у Clause з експортами, результатами й помилками як в OTP 29.",
       },
       {
         id: "ports",
@@ -79,10 +79,10 @@ export const uk = {
         text: "На O2 виведені типи прибирають перевірки під час виконання й обирають спеціалізований код.",
       },
       {
-        id: "transforms",
-        property: "parse_transform",
-        title: "Parse transforms",
-        text: "Виконує parse transforms під час компіляції; самі програми OTP не потребують.",
+        id: "shell",
+        property: "clau --shell",
+        title: "Інтерактивна оболонка",
+        text: "Компонує оболонку Erlang у виконуваний файл: erl_eval, історія команд і records, без BEAM.",
       },
       {
         id: "targets",
@@ -100,6 +100,7 @@ export const uk = {
           "Синтаксис Erlang/OTP 29: records, maps, bitstrings, comprehensions, типи та специфікації",
           "Макроси, include та умовна компіляція",
           "Parse transforms на Erlang/OTP 29 хост-системи, зокрема ms_transform і qlc",
+          "Специфікації ASN.1 компілюються в модулі, як це робить asn1ct: BER, DER, PER і UPER",
         ],
       },
       {
@@ -119,6 +120,7 @@ export const uk = {
           "LLVM O0, O2 та Os, з оптимізацією між модулями під час компонування",
           "O2 прибирає перевірки типів, доведені виведенням",
           "Справжні хвостові виклики та глибока рекурсія",
+          "Паралельна генерація коду на кожному апаратному потоці",
         ],
       },
       {
@@ -136,9 +138,12 @@ export const uk = {
         title: "Бібліотека OTP",
         items: [
           "Власні модулі OTP 29 у Clause з експортами, результатами й причинами помилок як в OTP",
-          "stdlib: lists, maps, string, binary, json, rand і модулі колекцій",
-          "ets, dets із файлами у форматі OTP, re та zlib",
-          "kernel: file, gen_tcp, gen_udp, inet і os",
+          "gen_server, gen_statem, gen_event, supervisor, application і logger",
+          "stdlib: lists, maps, string, binary, json, re, rand і модулі колекцій",
+          "ets, dets, disk_log, zip і erl_tar із файлами у форматі OTP",
+          "erl_scan, erl_parse, erl_lint, erl_eval і qlc під час виконання",
+          "kernel: file, gen_tcp, gen_udp, inet, inet_res і os",
+          "crypto на основі OpenSSL з режимом FIPS; кодек, ключі й підписи public_key",
         ],
       },
       {
@@ -147,6 +152,7 @@ export const uk = {
         items: [
           "Одна команда clau від коду Erlang до нативної програми",
           "Проєкти TOML з кешами збірки в SQLite",
+          "Інтерактивна оболонка Erlang з clau --shell",
           "Налагоджувальна інформація з -g (CodeView або DWARF 5) і профілювання з --profile",
           "Протестовано проти еталонного Erlang/OTP і порівняно з OTP у бенчмарках",
         ],
@@ -172,15 +178,15 @@ export const uk = {
     featured: {
       gettingStarted: {
         title: "Початок роботи",
-        text: "Передумови: CMake, компілятор C++23, Clang, LLVM 23 SDK, Boost і toml++; решту бібліотек CMake завантажує сам. Erlang/OTP необов'язковий.",
+        text: "Вимоги, перше збирання й перша програма: CMake 3.28+, компілятор C++23 і Python 3; CMake знаходить або завантажує LLVM 23 та інші бібліотеки.",
       },
       building: {
         title: "Збирання компілятора",
-        text: "Налаштування, збирання й тестування з пресетами CMake на Linux, macOS і Windows.",
+        text: "Вимоги, пресети й параметри CMake, тести та бенчмарки на Linux, macOS і Windows.",
       },
       using: {
         title: "Використання компілятора",
-        text: "Параметри командного рядка, режими перегляду, виконувані файли, проєкти TOML і parse transforms.",
+        text: "Командний рядок clau: параметри, артефакти, лістинги й кеш компіляції.",
       },
       interpreting: {
         title: "Як тлумачити результати",
