@@ -15,7 +15,7 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `maps:iterator/1,2`, `maps:next/1`, `erts_internal:map_next/3`, the order `maps` funs run in (`intersect_with/3`, `merge_with/3`, ...), `proplists:get_keys/1`, `sets` of version 2 (`to_list/1`, `fold/3`) | Internal order (atom-table order for atom keys, hash order above 32 keys); an iterator is a position or a `{K, V, Next}` chain | Canonical key order; an iterator continues over a key list | [builtins](builtins.md#erts-internal) |
 | Map printing (`erlang:display/1`, `~w`, `~p`) | Internal layout order (atom-table order for atom keys, hash order above 32 keys) | Map-key order, as OTP's `~kw` | [terms](terms.md#printing) |
 | Order of `digraph:vertices/1`, `edges/1`, `source_vertices/1`, `sink_vertices/1` and of `digraph_utils`' orderings and components where they start from those lists | The vertex and edge tables' hash order | Clause's hash order ([ETS](#ets)); paths and neighbour lists follow edge insertion in both | [builtins](builtins.md#digraph) |
-| Order of `maps:keys/1`, `values/1`, `to_list/1`, `fold/3`, of the members `json:encode/1` writes, of the fields `erl_parse:abstract/1,2` gives a map, and of `graph`'s vertex lists and traversals | The map's internal order (atom-table order for atom keys, hash order above 32 keys) | Key order | [library](library.md) |
+| Order of `maps:keys/1`, `values/1`, `to_list/1`, `fold/3`, of the members `json:encode/1` writes, of the fields `erl_parse:abstract/1,2` and `erl_syntax:abstract/1` give a map, and of `graph`'s vertex lists and traversals | The map's internal order (atom-table order for atom keys, hash order above 32 keys) | Key order | [library](library.md) |
 | Native record printing (`erlang:display/1`) | Fields in atom-table index order | Definition order, as `~w` | [native records](native-records.md#printing-and-order) |
 | `==` between native records whose fields differ only as integer/float | The compiler may fold it to `=:=` (false) | Numeric comparison (true) | [native records](native-records.md#printing-and-order) |
 | External native record construction of a module that is not loaded | Fails until the defining module is loaded | Every batch module is loaded at startup; a module outside the batch always fails | [native records](native-records.md#differences-kept) |
@@ -152,7 +152,9 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `erlang:function_exported/3` of a BIF | True for every BIF of the emulator | True only for the builtins this runtime provides | [builtins](builtins.md#how-calls-reach-them) |
 | Error reports of crashed processes | Sent to the logger, written later by its default handler (on standard output under `erl`, often lost when an escript halts first) | Written on stderr when the process ends, before any later output; not a `logger` event, so handlers and filters do not see it | [processes](processes.md#exits) |
 | Calls to functions that never return | Compiled as tail calls (caller missing from the trace) | Ordinary calls (caller present) | [ABI](abi.md#stack-traces) |
-| Exceptions inside a known anonymous fun at `-O2` (`F = fun ... end, F(X)`, `lists:map(fun ... end, L)` and the other list loops, `maps:fold(fun ... end, A, M)`) | Frames of the fun (`-f/1-fun-0-`) and of the `lists` and `maps` helpers (`lists:map_1/2`) | The fun's body runs inlined in the caller: those frames are missing, and an improper list tail of `map/2`, `foldl/3`, `all/2`, `any/2`, `flatmap/2` raises `function_clause` with the caller on top | [funs](funs.md#inlined-funs) |
+| Exceptions inside a known anonymous fun at `-O2` (`F = fun ... end, F(X)`, `lists:map(fun ... end, L)` and the other list loops, `maps:fold(fun ... end, A, M)`) | Frames of the fun (`-f/1-fun-0-`) and of the `lists` and `maps` helpers (`lists:map_1/2`) | The fun's body runs inlined in the caller: those frames are missing, and an improper list tail of `map/2`, `foldl/3`, `all/2`, `any/2`, `flatmap/2`, `filtermap/2`, `partition/2`, `search/2`, `takewhile/2`, `dropwhile/2`, `splitwith/2`, `zipwith/3`, `zipwith3/4` (and lists of different lengths) raises `function_clause` with the caller on top | [funs](funs.md#inlined-funs) |
+| Exceptions inside a small local function (leaf) at `-O2`, called locally or as `?MODULE:f()` (`badarith`, `badmatch`, a failing builtin) | The function's frame is in the stack trace | The leaf's body, and those of the leaves it calls, run inlined in the caller: their frames are missing and the caller is on top; `function_clause` (no clause matching) still has the function on top | [specialization](specialization.md#leaf-inlining) |
+| Profiles and the Erlang stack of inlined code at `-O2` (known funs, small local functions) | Every call counts for the called function (`eprof`, `tprof`), and its frame is on the stack | Inlined code runs in its caller's frame: its entries and time are the caller's, and debuggers see it only as an inlined native frame | [profiling](profiling.md#attribution) |
 | Host memory exhausted | The emulator reports that it cannot allocate memory, writes a crash dump and stops | `clau: runtime failure: entry call failed: out_of_memory`, exit 70, no dump | [runtime heap](runtime-heap.md#failure-behavior) |
 | Storage of maps above 32 keys | An on-heap HAMT of 16-way hashed nodes | An on-heap B+ tree of up to 16 entries per node in key order; heap sizes of large maps differ from OTP's | [runtime heap](runtime-heap.md#map-trees) |
 | Process memory cap | `max_heap_size` (in words, heap and stack) kills the process with reason `killed` and logs an error report | `--max-heap` / `--max-stack` (bytes) and the runtime-wide `--max-memory` fail the requesting process as `resource_limit`: `clau: runtime failure: entry call failed: resource_limit`, exit 70 | [runtime heap](runtime-heap.md#runtime-memory-limit) |
@@ -173,7 +175,7 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `application:ensure_all_started/3` with `concurrent` | Starts independent applications at once; the list follows completion order | Starts them one after another, dependencies first | [library](library.md#applications) |
 | `application:takeover/2` | Waits for the distributed application controller | Exits `noproc` (no `dist_ac`), as `load/2` with nodes does on both | [library](library.md#applications) |
 | I/O requests to an application master | Relayed to the group leader the application started under | Answered on standard I/O | [library](library.md#applications) |
-| `erlang:process_flag(error_handler, Module)` | The runtime calls `Module:undefined_function/3` and `undefined_lambda/3` for undefined calls | `badarg`; `process_info/2` always reports `error_handler`, and undefined calls raise `undef` directly ([`error_handler`](library.md) is only callable) | [library](library.md) |
+| `erlang:process_flag(error_handler, Module)` | The runtime calls `Module:undefined_function/3` and `undefined_lambda/3` for undefined calls | `badarg`; `process_info/2` always reports `error_handler`, and undefined calls raise `undef` directly, except calls into [interpreted modules](library.md#module-interpreter), which enter `error_handler:undefined_function/3` | [library](library.md) |
 | Crash report details (`proc_lib`) | `erl_error`'s exception text with extended error information; neighbours with `current_function`, `initial_call` and `current_stacktrace`; real `reductions` | The exception's class line and stack frames without extended error information; neighbours without those items; `reductions` 0 | [library](library.md) |
 | `client_info` of `gen_server`, `gen_statem` and `gen_fsm` error reports | The calling process's `current_stacktrace` | `[]`: Clause keeps no current stack of another process | [library](library.md) |
 | `-behaviour` with a value that is not an atom | Warning prints the term with `~w` (`behaviour [115,116,114] undefined`) | Prints the attribute's source text (`behaviour "str" undefined`); the error is the same | [semantic](semantic.md#behaviours) |
@@ -181,9 +183,10 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | `module_info(compile)` | `version` of OTP's compiler application, `options` given to it | Clause's version; `options` always `[]` | [semantic](semantic.md#predefined-functions) |
 | `module_info(functions)` | Also lists the functions OTP generates for funs (`'-f/0-fun-0-'/0`) | Source functions and the predefined ones only | [semantic](semantic.md#predefined-functions) |
 | `-nominal` in `module_info(attributes)` | Kept as `{nominal,[{Name,AbstractType,Params}]}` with abstract format | Left out | [semantic](semantic.md#predefined-functions) |
-| A function of a Clause library module that Clause has not implemented (an `erlang` BIF, `lists:rmerge/2`, ...) | Runs | Compiles; raises `error({not_implemented, F, A})` when called, with `M:F/A` on top of the stack ([statuses](../library/modules.terms)) | [library](library.md#provided-or-missing), [builtins](builtins.md#erlang-module) |
+| A function of a Clause library module that Clause has not implemented (an `erlang` BIF, `lists:rmerge/2`, ...) | Runs | Compiles; raises `error({not_implemented, F, A})` when called, with `M:F/A` on top of the stack ([statuses](../compiler/src/driver/library_modules.inc)) | [library](library.md#provided-or-missing), [builtins](builtins.md#erlang-module) |
 | Import of a module outside the batch | Compiles; the call raises `undef` at run time if the module is missing | `unknown module M` compile error when the import is called (unused imports need no module) | [semantic](semantic.md#imports) |
 | `import directive overrides auto-imported BIF` warning | For every auto-imported BIF of `erl_internal:bif/2` | Only for the auto-imported BIFs Clause implements | [semantic](semantic.md#imports) |
+| Attributes after the first function definition other than records, types, `-spec`, `-doc`, `-moduledoc` and `-dialyzer` (`-export`, `-import`, `-compile`, `-behaviour`, user attributes) | Error `attribute A after function definitions` | Accepted (only `-export_record` is rejected) | [semantic](semantic.md#module-and-call-checks) |
 
 ## Language edge cases
 
@@ -255,6 +258,60 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | Difference | OTP | Clause | Owner |
 | --- | --- | --- | --- |
 | Stack trace of an error the evaluator raises (`{badmatch, V}`, `undef` of a local call, ...) | The evaluating process's current stack (`process_info/2` `current_stacktrace`) | The stack at the evaluator's `throw` that collects it, in Clause's frames | [erl_eval](builtins.md#erl-eval) |
+
+## Module interpreter
+
+Compared with the same module compiled by `compile:forms/2` and loaded by `code:load_binary/3`.
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Stack trace an interpreted `try` or `catch` sees for an exception raised in its own body or by compiled code it calls | The module's frames | `erl_eval`'s and the interpreter's frames; an exception that left an interpreted function call has the interpreted frames | [library](library.md#module-interpreter) |
+| Frames of interpreted funs (`-f/1-fun-N-`) and of compiled code between interpreted calls (`lists:map/2` calling an interpreted fun, compiled code calling back into an interpreted module) | Present | Absent: the interpreted functions' frames, then the compiled frames below the outermost interpreted call; a fun's lines count for the interpreted function it runs under | [library](library.md#module-interpreter) |
+| `fun F/A` of an interpreted function, and interpreted funs | Funs of the module | `erl_eval` funs; at most 20 arguments (`{argument_limit, _}`) | [library](library.md#module-interpreter) |
+| `module_info(compile)`, `module_info(md5)` | The compiler's version, options and source; the object code's MD5 | `[{options, []}, {source, File}]` after `clause_interp:load/1`, the image's compile information after `code:load_binary/3`; the MD5 of the forms | [library](library.md#module-interpreter) |
+| `erlang:get_module_info/1,2` and `erlang:hibernate/3` of an interpreted module from compiled code | Work | `badarg`, `undef` (`M:module_info/0,1` works) | [builtins](builtins.md#module-interpreter) |
+| `-on_load` of an interpreted module | Runs when the module loads | Not run | [library](library.md#module-interpreter) |
+| Process dictionary of a process running interpreted code | Only the program's keys | Also `'$clause_interp_stack'` (the interpreted frames) and `'$clause_interp_raised'` | [library](library.md#module-interpreter) |
+
+## compile
+
+`compile:file/1,2` and `compile:forms/1,2` compared with OTP's `compile`.
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| The binary of `forms/1,2` and of `file/1,2` with `binary`, and the `.beam` file written | BEAM code | An interpreter image: an `AtU8` chunk with only the module, `Attr`, `CInf`, `Dbgi`, extra chunks and the forms (`ClFm`); no `Code`, `ImpT`, `ExpT`, `LocT`, `Line`, `Type` or `Docs` chunk. Only Clause programs with `clause_interp` load it | [library](library.md#module-interpreter) |
+| The `vsn` attribute of a compiled module and `beam_lib:md5/1` | MD5 of the BEAM code | MD5 of the forms (as `module_info(md5)`) | [library](library.md#module-interpreter) |
+| Warnings of the passes after `erl_lint` (`v3_core`, `sys_core_fold`, ...: no clause will ever match, the result of an expression is ignored, ...) | Reported | Not reported: only `erl_lint`'s, `epp`'s and parse transforms' | [library](library.md) |
+| Options of the Core Erlang, SSA and assembly passes (`to_core`, `dssa`, `'S'`, `to_asm`, `core_transform`, ...), `from_core`, `from_asm`, `makedep`, `dcover`, encrypted `debug_info` | Listings, Core or assembly input, dependencies, encrypted debug information | Error `{none, compile, {clause_unsupported, Option}}`: "the Option option needs OTP's code generator, which Clause does not have" | [library](library.md) |
+| `-moduledoc`/`-doc` attributes | Saved in the `Docs` chunk unless `no_docs` | Removed; no `Docs` chunk | [library](library.md) |
+| `code:load_binary/3` of a binary of another module | `{error, badfile}` and an error report on the logger | `{error, badfile}`, no report | [library](library.md#module-interpreter) |
+| `code:load_binary/3` in a program without `compile` or `clause_interp` | Loads BEAM code | `{error, badfile}`, as for any binary (D01) | [library](library.md#module-interpreter) |
+
+## erl_syntax
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| An error raised while `revert_forms/1` reverts a form (a malformed node) | Caught and raised again as `exit({Reason, Stacktrace})` | Raised as the error it is | [syntax_tools](syntax_tools.md#erl_syntax) |
+| `concrete/1` of a binary tree whose field is not a literal | `{badarg, Node}` with the field's tree | `{badarg, Form}` with the field reverted to its erl_parse form | [syntax_tools](syntax_tools.md#erl_syntax) |
+
+## erl_prettypr
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| The text of an error or warning marker `{Line, Module, Descriptor}` whose module the program does not link | `Module:format_error/1` loads the module and formats the descriptor | The marker's term, as when `format_error/1` fails | [syntax_tools](syntax_tools.md#erl_prettypr) |
+
+## erl_syntax_lib
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| `limit/2,3` with a depth that is not an integer | Compares the depth with integers in term order (an atom depth keeps a leaf) | `badarg` | [syntax_tools](syntax_tools.md#erl_syntax_lib) |
+
+## prettypr
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| A paper or ribbon width that is not an integer (`prettypr:format(D, wide)`) | Used only when compared or subtracted: a short document lays out, a longer one raises `badarith` or compares by term order | `function_clause` | [builtins](builtins.md#prettypr) |
+| `prettypr:sep([])` or `par([])` laid out | `case_clause` | `function_clause` | [builtins](builtins.md#prettypr) |
 
 ## erl_lint
 
@@ -339,7 +396,60 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | Value macros and functions that name another value inside an open type (PKCS-1's `mgf1SHA1`, `rSASSA-PSS-Default-Identifier`) | asn1ct leaves `{'Externalvaluereference', Line, Module, Name}` in place of the value | The referenced value | [asn1](asn1.md#generated-modules) |
 | A runtime error (not an ASN.1 one) while `public_key` decodes or encodes an extension value | Raised as it happens, mostly `error` class, from the generated `dec_ext-*`/`enc_ext-*` function | `exit({error, {asn1, Reason}})`: the value goes through the generated module's `decode/2` or `encode/2`, which wraps every failure | [public_key](public_key.md#functions) |
 | The default Diffie-Hellman groups of `public_key:dh_gex_group/4` | The groups OTP generated (`lib/public_key/priv/moduli`), 60–81 per size | Eight per size from OpenSSH's moduli file; same sizes (2047 to 8191) | [public_key](public_key.md#keys-and-signatures) |
-| Frames of a `public_key` exception | `public_key`, `pubkey_pem`, `pubkey_pbe`, `pubkey_cert_records`, `pubkey_cert`, `pubkey_ssh` | `public_key`, `clause_public_key_codec` and `clause_public_key_keys` | [public_key](public_key.md#functions) |
+| Frames of a `public_key` exception | `public_key`, `pubkey_pem`, `pubkey_pbe`, `pubkey_cert_records`, `pubkey_cert`, `pubkey_crl`, `pubkey_policy_tree`, `pubkey_ocsp`, `pubkey_os_cacerts`, `pubkey_ssh` | `public_key`, `clause_public_key_codec`, `clause_public_key_keys`, `clause_public_key_cert`, `clause_public_key_path`, `clause_public_key_crl`, `clause_public_key_ocsp`, `clause_public_key_test_data` and `clause_public_key_cacerts` | [public_key](public_key.md#functions) |
+
+## Unsupported features
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| `erl_ddll:loaded_drivers/0` | The linked-in drivers (`tcp_inet`, `udp_inet`, `ram_file_drv`, ...) | `{ok, []}`: Clause's ports are not drivers | [library](library.md) |
+| `erl_ddll:load/2`, `load_driver/2`, `try_load/3` | Load a driver, or `{error, {open_error, Code}}` for a missing file | `{error, no_ddll_available}`, OTP's answer without DDLL functionality | [library](library.md) |
+| `erl_ddll:format_error({open_error, Code})` for an operating system code (`Code =< -10`) | The system's message (`"The specified module could not be found."`) | `"Unspecified error"` | [library](library.md) |
+| `erl_epmd:names/1`, `port_please/2,3` | Ask a running epmd daemon | Answer as without one (`{error, address}`, `noport` or the configured listen port); `start_link/0` is declined | [library](library.md) |
+| `erl_boot_server` | A working boot server for diskless nodes | Every function is declined | [library](library.md) |
+| `peer:start/1`, `start_link/1` with an alternative `connection` | Start a peer node over standard I/O or TCP | `error:notsup` after OTP's option checks: Clause cannot run another node | [library](library.md) |
+| `pool`'s expected loads | A statistic collector per node updates them every few seconds | Only `get_node/0` and `pspawn/3` raise them | [library](library.md) |
+
+## ssl
+
+| Difference | OTP | Clause | Owner |
+| --- | --- | --- | --- |
+| Atoms `ssl:str_to_suite/1` takes as existing | Any atom of the VM's atom table | The program's atoms and the parts of the suite table | [ssl](ssl.md#utility-functions) |
+| `ssl:str_to_suite/1` of chardata that is not a flat string (`["TLS_AES_128_GCM_SHA256"]`) | `string` functions may parse it | `{error, {not_recognized, Name}}` | [ssl](ssl.md#utility-functions) |
+| The `ssl` application's start module and supervision tree | `ssl_app`; `ssl_sup` with `ssl_admin_sup`, `ssl_pem_cache`, `ssl_manager`, `tls_sup` and `dtls_sup` | `clause_ssl_app`; `ssl_sup` with `ssl_pem_cache`, `ssl_manager` (the client session cache only), `tls_connection_sup`, whose children are the connection processes, and `ssl_unknown_listener` once an upgraded server socket needs it; listening sockets' session caches are not supervised | [ssl](ssl.md#application) |
+| Frames of an `ssl` exception | `ssl`, `ssl_cipher`, `ssl_cipher_format`, `tls_v1`, `tls_record`, `dtls_record` | `ssl` and `clause_ssl_algorithms` | [ssl](ssl.md#utility-functions) |
+| Text of a `{tls_alert, {Description, Text}}` error and alert log entries | `"TLS client: In state certify at ssl_handshake.erl:2304 generated CLIENT ALERT: Fatal - Unknown CA
+"`: the state of OTP's state machine and a source location | `"TLS client: In state certify generated CLIENT ALERT: Fatal - Unknown CA
+"`: `hello` or `certify` during the handshake, `connection` after it, no location | [ssl](ssl.md#connections) |
+| `ssl` connection processes | A `tls_dyn_connection_sup` per connection with a receiver (`gen_statem`) and a sender process; the `sslsocket` record names both and an ETS table | One `clause_ssl_connection` (`gen_server`) per connection; the record names it twice and no table | [ssl](ssl.md#connections) |
+| `ssl:connection_information/1` | The negotiated items and every ssl option of the connection | The negotiated items (`protocol`, `session_id`, `session_data`, `session_resumption`, `selected_cipher_suite`, `selected_group`, `sni_hostname`) and the main options (`verify`, `versions`, `ciphers`, `cacerts`, `depth`, ...) | [ssl](ssl.md#connections) |
+| `session_data` of `ssl:connection_information/1,2` | `term_to_binary/1` of OTP's internal `#session{}` record | libssl's DER encoding of the session; each implementation reads only its own | [ssl](ssl.md#session-reuse) |
+| Ticket maps of `{session_tickets, manual}` (`{ssl, session_ticket, Ticket}`) | `cipher_suite`, `sni`, `psk`, `timestamp` and `ticket` (OTP's internal `#new_session_ticket{}` record) | `cipher_suite`, `sni`, `timestamp` and `ticket` (libssl's DER session); each implementation reads only its own | [ssl](ssl.md#session-tickets) |
+| `{use_ticket, Tickets}` with several tickets | Offers all of them | Offers the first whose suite the client offers (libssl resumes one session) | [ssl](ssl.md#session-tickets) |
+| A stateless server's `anti_replay` | Bloom filters (with false positives); a replayed ClientHello gets a full handshake | Exact sets of PSK binders per window, no false positives; a replayed ClientHello resumes without its early data | [ssl](ssl.md#early-data) |
+| Client `early_data` larger than the ticket's limit | OTP 29.1.1 sends it and the server fails with `unexpected_message` | Not sent; the owner gets `{early_data, rejected}` | [ssl](ssl.md#early-data) |
+| A stateful server given a used ticket with early data | OTP 29.1.1 fails the handshake with `unexpected_message` | A full handshake; the early data is rejected | [ssl](ssl.md#early-data) |
+| ECDHE_PSK suites with AES-GCM or AES-CCM (RFC 8442) | Negotiated | Never negotiated: libssl lacks them | [ssl](ssl.md#pre-shared-keys) |
+| SRP suites and `srp_identity` | Negotiated over `crypto`'s SRP | Never negotiated: libssl's SRP interface is deprecated | [ssl](ssl.md#pre-shared-keys) |
+| A PSK client whose key differs from the server's | The server's `bad_record_mac` alert is not read; the client sees `{error, closed}` | The client reads the alert: `{error, {tls_alert, {bad_record_mac, _}}}` | [ssl](ssl.md#pre-shared-keys) |
+| `ssl_crl_cache` with `{http, Timeout}` | Fetches missing CRLs from their http distribution points with `httpc` | Never fetches: Clause has no `inets`; the hidden helpers `is_internal_ip/1`, `validate_host/4` and `is_allowed/3` raise `not_implemented` | [ssl](ssl.md#crl-checks) |
+| `log_level` `debug` and `info` of ssl connections | Protocol traces of records and handshake messages | None; alerts are logged as OTP's | [ssl](ssl.md#connections) |
+| `key_update_at` after a KeyUpdate the peer asked for | The answering KeyUpdate starts a new count of bytes | The count goes on until the connection's own KeyUpdate | [ssl](ssl.md#automatic-rekeys) |
+| How often `sni_fun` is called for a name it answers with `undefined` | Twice in a handshake | Once | [ssl](ssl.md#server-name-indication) |
+| Groups, signature algorithms and early data of `sni_hosts` and `sni_fun` options | Applied | The listening socket's stay (libssl keeps them per connection) | [ssl](ssl.md#server-name-indication) |
+| Sessions given to `ssl_session_cache_api` modules | OTP's internal `#session{}` records | Maps (`session_id`, `data`, `cipher_suite`, `own_certificate`, `peer_certificate`, `sni`, `time_stamp`, ...); both are opaque to the module | [ssl](ssl.md#session-reuse) |
+| Emulated options (`active`, `mode`, `packet`, `header`) set on a listening `ssl` socket | Kept by its option tracker for the next accepted connections | Ignored: accepted connections take the options `listen/2` was given | [ssl](ssl.md#connections) |
+| A server linked with libssl older than 4.1 that verifies client certificates | Rejects a chain during the handshake with the chosen alert | Verifies after libssl's handshake; a rejection closes the connection without the alert | [ssl](ssl.md#engine) |
+| `ssl:handshake/3` with options on an accepted socket whose handshake pauses at the hello | `{ok, Extensions}`, the extensions still OTP's internal records and no socket | `{ok, SslSocket, Extensions}`, as documented and as `handshake/1,2` return it | [ssl](ssl.md#connections) |
+| The hello messages an `ssl` connection sends | OTP's: its extensions, groups and key shares | libssl's: for example a ClientHello has `renegotiation_info` and no `signature_algs_cert`, so a peer paused at the hello sees other extensions | [ssl](ssl.md#engine) |
+| Calls other than `handshake_continue` and `handshake_cancel` on a connection paused at the hello | Wait until the handshake goes on | `{error, closed}` | [ssl](ssl.md#connections) |
+| `ssl:close/1` and `close/2` with a timeout | After close_notify, shut the transport down for writing and wait up to 5 s (not the given timeout) for the peer to close | Close the transport right after close_notify | [ssl](ssl.md#connections) |
+| A TLS 1.2 renegotiation the peer refuses (`no_renegotiation`) | `ssl:renegotiate/1` gives `{error, renegotiation_rejected}` and the connection goes on | The same result, but libssl then ends the connection with a `handshake_failure` alert | [ssl](ssl.md#renegotiation-key-updates-and-exporters) |
+| `ssl:update_keys/2` on a TLS 1.2 connection | The connection's sender process crashes (`function_clause`) and the caller exits | `{error, not_supported}`, the connection goes on | [ssl](ssl.md#renegotiation-key-updates-and-exporters) |
+| `ssl:export_key_materials/4,5` with a length of 0 or less | The connection hangs | A negative length is `{error, bad_input}` (TLS 1.3) or `{error, badarg}` (TLS 1.2); 0 gives libssl's exporter result | [ssl](ssl.md#renegotiation-key-updates-and-exporters) |
+| `master_secret` of `ssl:connection_information/2` on TLS 1.3 | The key schedule's master secret | Left out: libssl does not expose it | [ssl](ssl.md#secrets) |
+| Items of a `{keylog_hs, Fun}` when a TLS 1.3 client fails before the server's Finished (a rejected server certificate) | Both handshake traffic secrets | Only `SERVER_HANDSHAKE_TRAFFIC_SECRET`: libssl derives the client's own handshake secret after the server's Finished | [ssl](ssl.md#secrets) |
+| Key log lines of `keylog` and the keep_secrets funs | Deep character lists (`io_lib:format/2` results) | Flat strings with the same characters | [ssl](ssl.md#secrets) |
 
 ## Parse transforms
 
@@ -348,6 +458,6 @@ not implemented yet (reported as `notimpl`) are not listed here; see
 | Name in the `file` attribute of an included file (`--print-abstr`, transform input) | The include directory joined to the name, as found (`inc.hrl`, `/abs/dir/inc.hrl`, `../inc/x.hrl`) | The path relative to the working directory when the file is under it, else the absolute path | [transforms](transforms.md#interchange) |
 | Line 0 annotations of imported forms (generated code, as from the `qlc` transform) | A valid line: the code has no source line | The code takes the place of the node imported before it | [transforms](transforms.md#importing-forms) |
 | `generated` annotations of imported forms (`.abstr` inputs, transform output) | `erl_lint` and the compiler skip some warnings for generated code | Ignored: the code is checked like source | [transforms](transforms.md#importing-forms) |
-| `{error, {Location, Module, Descriptor}}` forms in imported code | Formatted with `Module:format_error/1` | The descriptor's term text; formatting needs OTP | [transforms](transforms.md#importing-forms) |
-| A module with preprocessor or parse errors that names a parse transform | The transform runs and gets the errors as `{error, E}` forms; `erl_lint` reports them afterwards | Errors are reported and the transform does not run | [transforms](transforms.md#clause-pipeline) |
+| `{error, {Location, Module, Descriptor}}` forms in `.abstr` inputs | Formatted with `Module:format_error/1` | The descriptor's term text; transform output is formatted by the loader | [transforms](transforms.md#importing-forms) |
+| Preprocessor and parse problems a parse transform gets as forms | `epp`'s and `erl_parse`'s descriptors, each in place of the form that failed | `{error, {Location, clause_source, Text}}` with Clause's message, all before `eof` | [transforms](transforms.md#clause-pipeline) |
 | Compile options a transform receives | erlc's full option list | `{features, _}`, `report_warnings`, `report_errors`, `{cwd, _}`, `{outdir, _}` (the working directory), `{i, _}`, `{d, ...}` and `{parse_transform, _}` | [transforms](transforms.md#otp-behavior) |

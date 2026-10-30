@@ -191,7 +191,8 @@ stacks.
 deferred.
 
 - `module_loaded/1`, `loaded/0`, `pre_loaded/0` cover compiled and builtin
-  modules.
+  modules; `module_loaded/1` and `loaded/0` also
+  [interpreted modules](#module-interpreter).
 - `delete_module/1` of a loaded module is `notsup`; `prepare_loading/2` is
   `{error, badfile}`.
 
@@ -341,8 +342,12 @@ byte for byte, same file orders.
   maps with packet or link addresses); `net` filters them by family, flags or
   fun. `if_names/0` is the index and name list both `net:if_index2name/1`
   and `if_name2index/1` search.
-- `inet:getservbyname/2`, `getservbyport/2` and `gethostbyaddr/1` (a
-  `getnameinfo` with `NI_NAMEREQD`) use the same builtins; network namespaces
+- `inet:getservbyname/2`, `getservbyport/2` and `gethostbyaddr/1` use the
+  same builtins: as OTP's `inet_gethost`, an IPv4 `gethostbyaddr/1` takes its
+  name and aliases from `clause_net:gethostbyaddr/1` (`gethostbyaddr(3)`;
+  Windows and IPv6 use a `getnameinfo` with `NI_NAMEREQD`, without aliases).
+  `net:if_name2index/1` answers `einval` for an unknown name on macOS and
+  `enodev` elsewhere, as `if_nametoindex(3)` reports. Network namespaces
   answer `{error, enotsup}` ([differences](differences.md)).
 - `clause_net:dns_decode/1` and `dns_encode/1` (`builtins/net/dns.cpp`) are inet_res's DNS message codec: OTP's `#dns_rec{}`,
   `#dns_header{}`, `#dns_query{}`, `#dns_rr{}`, `#dns_rr_opt{}` and
@@ -395,10 +400,10 @@ byte for byte, same file orders.
 `builtins/qlc_pt/`, `library/stdlib/qlc_pt.erl`,
 `library/stdlib/clause_qlc_pt.erl`: the qlc parse
 transform at run time, for `qlc:string_to_handle/1,2,3` and `qlc:q/1,2` in
-evaluated code. Modules compiled with `qlc.hrl` still get the host OTP's
-transform ([parse transforms](transforms.md)).
+evaluated code, and at compile time for modules including `qlc.hrl`, in Clause's
+[transform host](transforms.md#transform-host).
 
-- `clause_qlc_pt:transform_expression/4` and `parse_transform/4` follow
+- `clause_qlc_pt:transform_expression/3` and `parse_transform/3` follow
   `qlc_pt.erl` function for function: NodeInfo (unique annotations and what the
   checks note on each node, kept by slot number from 1 as OTP's), `no_shadows`,
   the lint runs that find introduced and generator variables, frames of
@@ -411,11 +416,32 @@ transform ([parse transforms](transforms.md)).
   takes when the compiler is not available; a lint crash on the forms it builds
   is the compiler's internal error, as OTP's compiler reports it. Records are
   expanded by the C++ `erl_expand_records`, guard tests by `is_guard_test/3`.
-- Match specifications run `ms_transform` in Erlang: the builtin returns
-  `{try_ms, Forms}`, `qlc_pt.erl` answers `try_ms/4`'s result and calls the
-  builtin again with the answers so far, replaying its walk; the result is
-  `{done, Result, Transformed}` (a transformed module raises the backtrace
-  depth to 500, as OTP's transform does).
+- Match specifications: each attempt runs the C++ `ms_transform` (see
+  [ms_transform](#ms-transform)) over the module's records and a `foo/0`
+  calling `ets:fun2ms/1`, then `erl_parse:normalise/1` and the match
+  specification compiler, as OTP's `try_ms/4` does; any failure is `no`. The
+  walk runs once. The result is `{Result, Transformed}` (a transformed module
+  raises the backtrace depth to 500, as OTP's transform does).
+
+## Ms transform
+
+`builtins/front_end/ms_transform.hpp`, `ms_head.cpp`, `ms_guards.cpp`,
+`ms_transform.cpp`, `library/stdlib/ms_transform.erl`,
+`library/stdlib/clause_ms_transform.erl`: the translation of literal funs given
+to `ets:fun2ms/1` and `dbg:fun2ms/1` into abstract match specifications, in
+C++ so `qlc_pt` calls it in place.
+
+- `clause_ms_transform:transform_forms/1` walks a module's forms as OTP's
+  `ms_transform` does (bound variables through matches, funs and `case`
+  clauses, file and record attributes in order) and answers
+  `{ok, Forms, File, Warnings, Used}` or `{error, File, Anno, Reason}` for the
+  first fun that does not translate; `clause_list/2` translates a shell fun's
+  clauses. `ms_transform.erl` shapes `parse_transform/2`'s and
+  `transform_from_shell/3`'s results, formats errors and turns a shell
+  specification into a term (imported variables, constant binaries).
+- Operators over constants are folded through the registered `erlang`
+  builtins, as OTP's `apply(erlang, Op, Args)`; error codes, shadowing
+  warnings and the records used as tuples match OTP.
 
 ## Qlc
 
@@ -527,6 +553,10 @@ program.
 
 - `ensure_loaded/1`, `is_loaded/1` (`{file, preloaded}`), `which/1`
   (`preloaded`), `all_loaded/0`, `module_status/0,1`; `is_sticky/1` `false`.
+  An [interpreted module](#module-interpreter) is loaded from its file:
+  `{file, File}`, `File`, and `module_status/1` as OTP derives it from the
+  object code at that file (`removed` for a source file, `loaded` for a
+  `.beam`).
 - Code path (`library/kernel/code.erl`): a persistent term
   built on first use as OTP's interactive code server builds it: `ERL_LIBS`
   application `ebin` directories, the newest version of each application in
@@ -698,6 +728,168 @@ matching (`front_end/eval_match.cpp`), and
   `erl_lint:exprs_opt/3` as OTP does.
 - CTest `executables_erl_eval_exprs`.
 
+## Module interpreter
+
+`builtins/interpreted.cpp` is the runtime half of
+[`clause_interp`](library.md#module-interpreter): the code server's
+registry of interpreted modules (`modules/interpreted_modules.cpp`), with each
+module's file and exports.
+
+- `clause_interp:register(Module, File, Exports, Route)` registers or replaces a
+  module (`linked` for a module the program links), `unregister/1` removes it,
+  `interpreted/1` asks. `Route` is `fun error_handler:undefined_function/3`,
+  which keeps that function live in every program that loads modules.
+- When no export or builtin answers a call of a registered module
+  (`CLAUSE_call_v1`, `CLAUSE_call_list_v1`, `apply/3`, a `spawn` MFA) or of
+  its external funs, the call service writes `Module`, `Function` and the
+  argument list to the registers and returns `Route`'s frame
+  ([dynamic calls](funs.md#dynamic-calls)).
+- `clause_interp:route_undefined(Route)` sends every call that
+  finds no function to `Route`, so `clause_interp` can interpret a module
+  from a `.beam` when first called; `Route` raises `undef` for the rest.
+- `erlang:function_exported/3` and the [code module](#code-module) answer for
+  registered modules. Programs that never register one pay one atomic flag
+  test in these paths.
+- CTest `executables_interpreted_modules` (compared with `compile:forms/2` and
+  `code:load_binary/3` under OTP).
+
+## Compile
+
+`builtins/compile_messages.cpp` quotes sources for the
+reports of [`compile`](library.md):
+`clause_compile:quote_source(Source, Encoding, Location)` returns the line of
+`Location` from the source binary (latin1, or UTF-8 up to its first invalid
+character) as `"% Line| Text
+"`, the marker line `"%     |   ^
+"` when the
+location has a column, and an empty line, as OTP's `sys_messages` prints
+them, with OTP's quirks: tabs before the column stay tabs and a column past
+the end of the line widens the marker. `<<>>` when the source has no such
+line. `compile.erl` reads the file and its `coding` comment and formats the
+message.
+
+- CTest `executables_compile_forms` (reports, returned messages, transforms,
+  listings and `.beam` files compared with OTP's `compile`; a Clause-only run
+  for the options that need OTP's code generator).
+
+## Erl syntax
+
+`builtins/syntax/` implements
+[`erl_syntax`](syntax_tools.md#erl_syntax) over OTP's node representation. The
+`syntax.hpp` tables drive most of it:
+
+- `FIELDS`: the accessors that read one element of one erl_parse form, or one field of the
+  tree's data record, plus the data itself. They are registered from the table, and C++ reads
+  them by name with `get(context, node, "case_expr_argument")`. The name is checked at compile time.
+- `SIMPLE`: the constructors that build `tree(Type, #Record{Arguments...})`, used by C++ through
+  `make(context, "case_expr", ...)`.
+- In `build.cpp`, `make_tree/2`'s clauses as group shapes.
+- In `shapes.cpp`, `subtrees/1`'s groups as accessors with the parts that may be absent.
+- In `revert.cpp`, `revert/1`'s function per node type.
+
+Accessors with several erl_parse forms (`record_expr_type/1`, `attribute_arguments/1`, ...),
+constructors that normalize their arguments (`clause/3`'s guards, `list/2`, `cons/2`, ...), list
+skeletons, comments and attributes (`nodes.cpp`, `attrs.cpp`), `abstract/1`, `concrete/1`,
+`is_literal/1` and `meta/1` (`literals.cpp`) are written out.
+
+`concrete/1` of a binary reverts each field and builds it as `erl_parse:normalise/1` does.
+`abstract/1` takes a list for a string when Clause's `io_lib:printable_list/1` accepts it.
+
+- CTest `executables_erl_syntax_trees`.
+
+## Prettypr
+
+`builtins/prettypr/` is the layout chooser of
+[`prettypr`](syntax_tools.md#prettypr): `prettypr:best/3` is OTP's
+`rewrite/2`, John Hughes' strict context-passing pretty printer with OTP's
+paragraphs, empty documents, floats and null texts, rule for rule, so it
+returns OTP's very layout documents, joined strings included
+(`[W1 + W2 | [Chars1 | Chars2]]`).
+
+- `prettypr.hpp`: the `Engine` with arenas of documents, strings, sep cells
+  and contexts. Documents are read from their terms when the rewriting first
+  visits them (one per distinct term, so shared subdocuments cost nothing).
+- `rewrite.cpp`: one handler per document kind, switching on the context
+  (`floats.cpp` for floating documents). The rewriting is a loop; the one call
+  OTP makes under a context (a completed line moved out) pushes a line that
+  the result wraps, so deep documents need no deep C++ stack.
+- `documents.cpp`: reading terms, OTP's builders (`nest(0, D)` is `D`,
+  `expand_sep`, `expand_par`, `horizontal`, `vertical`) and the result terms.
+- `builtins.cpp`: `best/3` and `clause_prettypr`'s `width/1` (tabs to the next
+  multiple of 8), `words/1` (`text_par/2`'s words) and `layout/1` (the text of
+  a layout document). Malformed documents raise `function_clause`.
+- CTest `executables_prettypr_layout` (compared with OTP).
+
+## Erl syntax lib
+
+`builtins/syntax_lib/` has the functions of
+[`erl_syntax_lib`](syntax_tools.md#erl_syntax_lib) that take no funs.
+They are written over `builtins/syntax/`'s C++ accessors and constructors:
+
+- `analyze.cpp`: the `analyze_*` functions, `is_fail_expr/1` and
+  `function_name_expansions/1`. A node they cannot analyse raises
+  `throw(syntax_error)`. Errors of `erl_syntax` itself pass through as they are.
+- `bindings.cpp`: `annotate_bindings/1,2`. One `Binder` walks expressions and
+  patterns by OTP's scoping rules (tables of node types), with ordsets of
+  names (`Names` in `syntax_lib.hpp`) merged in Erlang's term order.
+- `trees.cpp`: `variables/1` (a `sets:new/0` map), `limit/2,3` and
+  `strip_comments/1`, and the subtree rebuilding the others share.
+- CTest `executables_syntax_tools_lib` (compared with OTP).
+
+## Comments
+
+`builtins/comments/` has
+[`erl_comment_scan`](syntax_tools.md#erl_comment_scan)'s scanning and
+[`erl_recomment`](syntax_tools.md#erl_recomment):
+
+- `scan.cpp`: `scan_lines/1` is OTP's scanner state machine (line, column,
+  margin) over the characters of the text, skipping strings, quoted atoms and
+  character literals; a comment's trailing white space is trimmed by
+  `string:trim/2`'s C++ walk. `join_lines/1` and `string/1` join consecutive
+  lines alone in the same column.
+- `recomment.cpp`: OTP's extended tree of leaf, tree and list nodes with the
+  line range each covers, built from `erl_syntax`'s subtrees; comments go
+  before, after or into nodes by those ranges, forms after a `-file` attribute
+  that leaves the file lose their range, and every tree node is rebuilt with
+  `make_tree/2` and its original attributes.
+- CTest `executables_syntax_tools_comments` (compared with OTP).
+
+## Epp dodger
+
+`builtins/epp_dodger/` has the rewriting of
+[`epp_dodger`](syntax_tools.md#epp_dodger), as `clause_epp_dodger`'s
+builtins:
+
+- `tokens.cpp`: `scan/2` is OTP's `scan_form/2` but `-error` and `-warning`:
+  directives become `'?preprocessor declaration?'() -> Name...` functions, and
+  `scan_macros/3` (a `Scanner` over a deque of tokens, since macro arguments
+  are put back in front) makes macros the atoms `'? NAME'` and `'?,NAME'` or
+  `{'? <macro> (', Name, Args...}` tuples, with `++` next to strings when
+  clever. `quickscan/1` is `quickscan_form/1`: directives killed, macros
+  `'?NAME'` atoms or parts of the strings next to them. `skip_macro_args`
+  throws `{error, macro_args}` for unclosed arguments.
+- `rewrite.cpp`: `rewrite_form/1` turns the directive functions back into
+  attributes and the macro atoms and tuples into `erl_syntax` macros.
+- CTest `executables_epp_dodger_forms` (compared with OTP).
+
+## Merl
+
+`builtins/merl/` has the template functions of
+[`merl`](syntax_tools.md#merl):
+
+- `shapes.cpp`: merl's view of nodes (`[]` is a list with two empty groups,
+  `{}` keeps its element group, lists, binary fields, clauses, receives and
+  record nodes have fixed groups) and the nodes made from such groups;
+  `clause_merl:subtrees/1` gives the groups to `show/1`.
+- `templates.cpp`: `template/1` finds metavariables (`'@Name'`, `_@Name`,
+  `909N`, `"'@Name"`; `@@`/`9099` globs) and lifts one level per extra
+  underscore or 0; `tree/1`, `subst/2`, `tsubst/2`, `alpha/2` and
+  `template_vars/1`.
+- `match.cpp`: `match/2` binds metavariables group by group (the last group
+  first, as OTP's recursion does) with a glob taking the run of trees its
+  group leaves, and compares the rest node by node; `meta_template/1`.
+- CTest `executables_merl_templates` (compared with OTP).
+
 ## Erl lint
 
 `erl_lint`'s checks are builtins (`front_end/lint*.cpp`) written after OTP's `erl_lint` clause for clause; `erl_lint.erl`
@@ -810,7 +1002,7 @@ Erlang clause dispatch, so programs that call it compile no extra code.
 ## Public key
 
 `builtins/public_key/` in `clause_runtime`, `library/public_key/clause_public_key.erl` ([public_key](public_key.md)): the record walks and tables of OTP's `pubkey_translation` and
-`pubkey_cert_records`, which `clause_public_key_codec` calls.
+`pubkey_cert_records`, `pubkey_pem`'s text and `pubkey_pbe`'s tables, which `clause_public_key_codec` calls.
 
 - `translate(decode | encode, Term)` (`translate.cpp`) walks a term as `pubkey_translation:decode/1` and `encode/1`
   do: the generated modules' `SubjectPublicKeyInfo_algorithm`, `DSA-Params`, `DSA-Sig-Value`, `OTPExtension`,
@@ -821,6 +1013,124 @@ Erlang clause dispatch, so programs that call it compile no extra code.
   and `extension` (an extension's type); `undefined` when the table has no row, `badarg` for another table.
 - `asn1_module(Type)` names the generated module `der_decode/2` and `der_encode/2` use for a type
   (`public_key:get_asn1_module/1`), `undefined` for a type of none.
+- `pem_decode(Text)` and `pem_entry(Entry)` (`pem.cpp`) read and write PEM text as
+  `pubkey_pem` does: CRLF/CR/LF lines, BEGIN lines without trailing white space, OTP's labels, the `Proc-Type` and
+  `DEK-Info` header and base64 bodies in 64-character lines, with `pubkey_pem`'s errors (`function_clause` without
+  an END line, `badmatch` of `DEK-Info` tokens, `unhex`'s `list_to_integer` signs). `pem_decode` stops after an
+  `ENCRYPTED PRIVATE KEY` entry, `{Entries, Der, Rest}`, so that Erlang decodes it before the rest is read;
+  otherwise `{Entries, done}`.
+- `pbe_cipher(Name)`, `pbes2_cipher(Oid)`, `pbes1(Oid)`, `pbes1_oid(Name, Digest)` and `prf_digest(Oid)` (`pbe.cpp`)
+  are `pubkey_pbe`'s tables: a PEM cipher's crypto cipher, block size and key length, PBES2 schemes, PBES1
+  algorithms and PBKDF2 digests; `function_clause` for anything else.
+- `policy_add/4`, `policy_map/5`, `policy_intersection/3`, `policy_prune/1`, `policy_constrained/1` and
+  `policy_result/1` (`policy.cpp`) are `pubkey_policy_tree`'s walks over the valid policy tree
+  (RFC 5280 6.1.3 d, 6.1.4 b, 6.1.5 g): children and siblings for a certificate's policies and anyPolicy, policy
+  mappings, the intersection with the user's policy set, pruning and the constrained node set with its qualifiers,
+  in OTP's list orders. `clause_public_key_path` keeps the verify fun calls, the counters and the node limit.
+- `pbkdf1_rounds(First, Count, Digest)` (`pbe.cpp`) runs PBKDF1's rounds after the first
+  through `clause_crypto:hash/2` (each digest in front of those before it, as `pubkey_pbe`), without the Erlang
+  loop's quadratic binary building; the first round stays `crypto:hash/2` in Erlang so a bad digest fails as there.
+- `os_cacerts()` (`os_cacerts.cpp`) reads the current user's Windows `ROOT` store through
+  crypt32 as OTP's `pubkey_os_cacerts` NIF does: `[{Encoding, Der}]` in the NIF's order, `internal_error` when the
+  store does not open, `[]` on other systems, where `clause_public_key_cacerts` reads files.
+
+## Ssl
+
+`builtins/ssl/` in `clause_runtime` ([ssl](ssl.md)): the `ssl` module's cipher suite
+table and `ssl_cipher_format`'s name walks, as catalog builtins of `ssl` itself.
+
+- `cipher_suites(Description, Version)` (`suites.cpp`, rows in `suites.inc` observed from OTP) is a list of OTP's,
+  as suite maps; `cipher_suites(Description, Version, rfc | openssl)` gives their names. `function_clause` for
+  another version, description or string type; the version is checked first.
+- `suite_to_str(Suite)` and `suite_to_openssl_str(Suite)` (`suite_names.cpp`) build a suite's RFC and OpenSSL names
+  from any map with the parts a clause of OTP's needs, Latin-1 upper-casing as `string:to_upper/1`;
+  `function_clause` for other terms and `badarg` for a part that is not an atom.
+- `str_to_suite(Name)` (`suite_parse.cpp`) parses RFC and OpenSSL names as `ssl_cipher_format` does and makes the
+  map of any parts whose atoms exist (the table's parts always do); `{error, {not_recognized, Name}}` otherwise.
+- `clause_ssl_algorithms:suite_code(Suite)` and `code_suite(Code)` (`suites.cpp`) map a listed suite's map to
+  its two-byte code and back, else `undefined`: connections hand libssl suites by code and report the negotiated one
+  as a map.
+- `clause_ssl_algorithms:hello_extensions(Message, {Major, Minor})` (`hello.cpp`) decodes the extensions of
+  a ClientHello or ServerHello handshake message as OTP's `ssl_handshake` does for the `{handshake, hello}` pause:
+  the version they are read for (the first supported version, else the hello's, at most the local one), the keys
+  OTP's map starts with for that version and message, each known extension under OTP's guards (others skipped, a
+  malformed tail ending the list), and the values without their top-level records. Signature schemes, groups and
+  TLS 1.2 curve OIDs come from OTP's tables; certificate authorities stay DER for Erlang to normalize. `error` for
+  a hello OTP fails to decode (a duplicate extension, a misplaced `pre_shared_key`, a bad compression method).
+
+## Ssl engine
+
+`builtins/ssl_engine/` in the separate `clause_runtime_ssl` archive, `library/ssl/clause_ssl_engine.erl` ([ssl](ssl.md#engine)): one TLS connection over OpenSSL's libssl and memory buffers. Each step
+takes the bytes received from the transport and returns the bytes to send to it, so the connection process does
+all the I/O.
+
+- Links libssl of the same OpenSSL as the [crypto archive](#crypto-module), which it needs. Calls of catalog
+  builtins name no module, so `clau` links the archive when a live function of the batch calls a
+  `clause_ssl_engine` builtin. The startup descriptor then lists `CLAUSE_ssl_extension_v1` after the crypto entry.
+- `context(client | server, Options)` (`context.cpp`) gives `{ok, Context}`, or `{error, {Key, Text}}` for an
+  option libssl refuses. It reads the options `ssl.erl` has validated: `versions`, `ciphers` (suite codes, which
+  libssl maps to its TLS 1.3 and 1.2 names), `honor_cipher_order`, `groups`, `signature_algs` (OTP's scheme atoms
+  and `{Hash, Sign}` tuples), `certs` (`[{[CertDER], {KeyType, KeyDER}}]`), `verify`, `fail_if_no_peer_cert`,
+  `client_cas` and `alpn`; also `keylog` (secrets and KeyUpdates become events) and a server's
+  `client_renegotiation`; also a server's `session_cache => Lifetime` (sessions live in Erlang's cache), and
+  `tickets` (`true` for a client keeping TLS 1.3 tickets, a server's `{stateless | stateful, Count,
+  Lifetime, StoreSize, Seed | undefined}`). It
+  drops names the linked libssl does not know and repeats, one at a time. It sets OTP's defaults where libssl's
+  differ: no session tickets, no libssl session cache (servers still name each session), security level 0, and
+  chains as given.
+- `connection(Context, #{server_name => Name, session => SessionDER})` (`connection.cpp`) makes an engine; a client
+  offers the given session. `handshake(Engine, Received)`
+  gives `{done | want_read | verify | Failure, Output}`. `read/2` gives `{ok | closed | Failure, Data, Output}`
+  with all the plaintext that is available, and answers a requested key update at once. `write(Engine, IoData)`,
+  `shutdown/1` (close_notify) and `key_update(Engine, write | read_write)` give `{ok | Failure, Output}`. A
+  failure is `{alert, sent | received, Level, Description}`, else `{error, Text}`.
+- Verification (`engine.cpp`): with `verify => verify_peer`, libssl's chain callback keeps the peer's chain
+  (`peer_chain/1`) and pauses the handshake (`verify`). Erlang validates the chain and answers with
+  `verify(Engine, ok | AlertDescription)`. On rejection, libssl sends that alert, through an X509 error that
+  `ssl_x509err2alert` maps back to it. Descriptions outside libssl's table become `certificate_unknown`. Servers
+  linked with a libssl older than 4.1 cannot pause: they accept in the callback, and the handshake answers
+  `verify` once libssl is done. A rejection then ends the connection without an alert.
+- `info(Engine)` (`info.cpp`) gives `protocol`, `cipher_suite` (its code), `alpn`, `server_name`, `group`,
+  `session_id`, `resumed`, `client_random`, `server_random` and the TLS 1.2 `master_secret`; also `alert` (the last alert sent or received, also one libssl ignored, as TLS 1.3's `user_canceled`) and `unread`
+  (received bytes libssl has not read, as the plain data after a close_notify).
+- Connection features (`features.cpp`): `renegotiate(Engine)` gives `{ok | Failure, Output}` with the
+  first message of a TLS 1.2 renegotiation, which later reads finish. `export(Engine, Label, Context | no_context,
+  Length)` gives `{ok, Material}` from `SSL_export_keying_material`, else `error`. `events(Engine)` gives the
+  events libssl's callbacks queued, oldest first: `{secret, Label, Secret}` (NSS key log lines), `key_update_sent`,
+  `key_update_received`, `renegotiation_started`, `renegotiated` and `renegotiation_refused` (a received
+  `no_renegotiation` warning). `allow_renegotiation(Engine, Boolean)` sets whether a server accepts the client's
+  renegotiations. A finished handshake resets the verdict, so a renegotiation verifies the peer again.
+- Session reuse (`sessions.cpp`): a server with `session_cache` pauses its handshake in libssl's
+  ClientHello callback when the hello offers a TLS 1.2 session, with the status `{lookup, SessionId, ServerName |
+  undefined}`. Erlang answers with `resume(Engine, SessionDER | none)`, which libssl's session lookup returns on the
+  next step. `session(Engine)` gives `{SessionId, SessionDER, OwnCertificate | undefined}` of the current session,
+  else `undefined`. `peer_chain/1` of a resumed session is the peer certificate the session kept.
+- Tickets (`tickets.cpp`): a client's TLS 1.3 tickets become `{ticket, SessionDER}` events. A stateless
+  server issues libssl's tickets (keys from SHA-512 and SHA-256 of the seed), a stateful one keeps each ticket's
+  session in its context and gives it to libssl's lookup once. Each ticket's session gets the server's lifetime,
+  and a TLS 1.2 connection of a ticket server is denied tickets in the ClientHello callback. libssl's own anti-replay
+  is off (`SSL_OP_NO_ANTI_REPLAY`): it needs libssl's internal session cache.
+- Early data (`early_data.cpp`): a context's `early_data => {MaxSize, AntiReplayWindow | undefined}` makes
+  a server take early data, which its handshake steps read before the handshake goes on; `early_data(Engine)` takes
+  what it read. `connection/2`'s `early_data => Data` is written with a client's ClientHello when the offered
+  session takes that much. `info/1` adds `early_data` (`accepted`, `rejected` or `not_sent`). With a window, the
+  ClientHello callback keeps the PSK binders and libssl's early data callback refuses binders seen in the current or
+  the last window.
+- Server name indication (`sni.cpp`): a server context with `sni => true` pauses its handshake in the
+  ClientHello callback when the client sends a name, with the status `{sni, Name}`. `name_served(Engine, keep |
+  Context | {alert, Description})` goes on, goes on under another server context (its certificates, verify mode,
+  version bounds, suites and options), or ends the handshake with the alert.
+- Pre-shared keys (`psk.cpp`): a context's `psk => {Hint | Identity | undefined}` installs libssl's PSK
+  callbacks (a server's hint). A handshake step reads the peer's plaintext records before libssl does and pauses
+  with `{psk, Name}` at a server's ClientKeyExchange (the client's identity) or a client's ServerHelloDone of a PSK
+  suite (the server's hint or `undefined`), holding those bytes; `psk(Engine, Key)` answers, and the next step
+  feeds them. The callbacks give the key, and a client its identity (`"psk_identity"` without one).
+- `configure(Engine, Context)` (`connection.cpp`) moves an engine to another context of its role
+  (`SSL_set_SSL_CTX` and the context's verify mode): a client's `handshake_continue/2,3` options take effect after
+  its ClientHello.
+- An engine is a handle reference owning the `SSL` behind a lock. It keeps its context alive for libssl's
+  callbacks: ALPN selection picks the server's first preference the client offers, else
+  `no_application_protocol`.
 
 ## Crypto module
 

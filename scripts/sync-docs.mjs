@@ -29,12 +29,13 @@ const SUBDIRS = ["libraries"];
 // Visitors cannot follow those, so paragraph lead-ins and parenthetical
 // references are removed; source paths of a lead-in are kept as "Source:".
 // Headings and code blocks are left alone, so anchors and structure stay.
-// Step ids: "41T", "OPT0.2A", "LIB5E", "OPTM.2E".
-const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|[A-Z]{2,5}(?:\d+[A-Z0-9]*(?:\.\d+[A-Z]?)?|\.\d+[A-Z]?))`;
+// Step ids: "41T", "OPT0.2A", "LIB5E", "LIB81D2a", "OPTM.2E".
+const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|[A-Z]{2,5}(?:\d+[A-Z0-9]*[a-z]?(?:\.\d+[A-Z]?)?|\.\d+[A-Z]?))`;
+const LIB_ID = String.raw`LIB\d+[A-Z0-9]*[a-z]?`;
 // References wrap across lines, so words are separated by any whitespace.
 const STEP_IDS = String.raw`${STEP_ID}(?:(?:\s+(?:and|or)\s+|–)${STEP_ID})*`;
 const STEP_REF = String.raw`(?:[Pp]lan(?:\s+\d+)?\s+)?(?:[Ss]teps?\s+)?${STEP_IDS}(?:\s+\(part\)|\s+follow-up)?`;
-const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+(?:\s+step|,)\s+)?(?:OPT[A-Z0-9]*\.\d+[A-Z0-9]*|LIB\d+[A-Z0-9]*)(?:\s+\(part\)|\s+follow-up)?)`;
+const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+(?:\s+step|,)?\s+)?(?:OPT[A-Z0-9]*\.\d+[A-Z0-9]*|${LIB_ID})(?:\s+\(part\)|\s+follow-up)?)`;
 const LEAD_IN = new RegExp(
   String.raw`^(?:Decision of )?(?:[Pp]lan(?: \d+)? )?[Ss]teps? ${STEP_IDS}(?: \(([^()]*)\))?(?:[.:]\s*|, (?=[a-z]))`,
 );
@@ -95,8 +96,21 @@ const INLINE_RULES = [
     "$1The project plan",
   ],
   [/\[[Pp]lan \d+\]\(\.\.\/\.agents\/[^)]*\)/g, "the project plan"],
+  // "tracked in [step 71](../.agents/11-plan.md#step-71)"
+  [
+    new RegExp(String.raw`\[${STEP_REF}\]\(\.\.\/\.agents\/[^)]*\)`, "g"),
+    "the project plan",
+  ],
   // "...; step 44: exit reasons; step 45: ..."
   [new RegExp(String.raw`(;\s)${PLAIN_REF}:\s`, "g"), "$1"],
+  // "LIB81D1, over the engine's builtins." opening a paragraph
+  [
+    new RegExp(String.raw`^${PLAIN_REF},\s+([a-z])`),
+    (_, first) => first.toUpperCase(),
+  ],
+  // "; LIB81D1 adds `keylog`", "and LIB81D2b `tickets`"
+  [new RegExp(String.raw`\b${LIB_ID}\s+adds\s+`, "g"), "also "],
+  [new RegExp(String.raw`(\s)${LIB_ID}\s+(?=\`)`, "g"), "$1"],
 ];
 
 if (!fs.existsSync(sourceDocs)) {

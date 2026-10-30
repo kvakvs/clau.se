@@ -14,7 +14,7 @@ and limits that exist today; plans and step history live in `.agents/`.
 | Executable entry, arguments, exit status, output streams, linking | [executables.md](executables.md) |
 | Debug information (`-g`), debuggers and the Erlang call stack | [debugging.md](debugging.md) |
 | Opt-in profiling (`--profile FILE`): entries and self time per function and process | [profiling.md](profiling.md) |
-| Parse transforms: host OTP loader, abstract format interchange, transform lookup | [transforms.md](transforms.md) |
+| Parse transforms: Clause's transform host, host OTP loader, abstract format interchange, transform lookup | [transforms.md](transforms.md) |
 | Semantic analysis, types, inference, bindings | [semantic.md](semantic.md) |
 | Type specialization at `-O2`: proofs and representation variants | [specialization.md](specialization.md) |
 | Generated-code ABI: terms, symbols, registration, failures, roots | [abi.md](abi.md) |
@@ -48,3 +48,5 @@ Clause's own OTP applications under `library/`, in [libraries/](libraries).
 | Console output: `io:format`, `io:put_chars`, devices, format controls, `~p` layout | [io.md](io.md) |
 | Crypto: OpenSSL versions and sources, building it, linking, FIPS mode and pinned FIPS programs | [crypto.md](crypto.md) |
 | public_key: ASN.1 specifications and their sources, generated modules, `public_key.hrl` | [public_key.md](public_key.md) |
+| ssl: the TLS design over libssl, the application, cipher suites and the other utility functions | [ssl.md](ssl.md) |
+| syntax_tools: `erl_syntax`'s trees, `prettypr`'s layouts, `erl_prettypr`'s text, `erl_syntax_lib`'s analyses, comment scanning, `epp_dodger` and `merl` for third-party parse transforms and tools | [syntax_tools.md](syntax_tools.md) |

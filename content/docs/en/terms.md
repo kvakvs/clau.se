@@ -69,7 +69,10 @@ in [abi.md](abi.md#terms).
   word per slot), which the first runtime to register the module fills; a
   context whose `FrameState::runtime` matches the claim reads it without a call,
   any other calls `CLAUSE_atom_v3`. The claim is given back when the runtime's
-  code server releases the module.
+  code server releases the module. Registration fills the cache before any of
+  the module's code runs, so generated code marks the claim, the runtime
+  identity and the cached words `!invariant.load`: a function checks the claim
+  once, before its first atom, and loops check it before they start.
 - Runtime C++ writes literal atoms as `"name"_atom` (`atom_names.hpp`): one
   static `CachedAtom` per spelling keeps the word last interned for it, and
   `AtomStorage::intern` returns it after one lock-free index read when this
@@ -90,9 +93,10 @@ in [abi.md](abi.md#terms).
   ([proofs](specialization.md#proofs)).
 - Generated `+`, `-`, `*` try an inline fast path on two immediates, otherwise
   call the runtime service: `+` and `-` add or subtract the tagged words
-  directly (`a + (b ^ 15)`) and fall back when the word overflows, which is
-  exactly when the result leaves the small range; `*` computes in double width
-  with explicit bounds. So do `band`, `bor`, `bxor`, `bsr`, `div`, `rem` and
+  directly (`a + (b ^ 15)`), `*` multiplies one payload by the other tagged
+  word less its tag (`(a >> 4) * (b ^ 15)`, then the tag); each falls back
+  when the word operation overflows (its overflow flag), which is exactly when
+  the result leaves the small range. So do `band`, `bor`, `bxor`, `bsr`, `div`, `rem` and
   comparisons of two small integers ([inline forms](abi.md#runtime-services)).
 - The service multiplies a bignum (or an overflowed small product) by a small
   integer limb by limb, from the operand's cell straight into the new one; other

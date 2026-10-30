@@ -31,17 +31,28 @@ cmake --build build/debug --target check-quality-all  # whole tree
   specialization-off project, runs mutations once and skips `full_only` tests
   (separate consumer projects such as `runtime_generated_link`, measurements,
   the host-OTP `library_freshness` audit, and the slow workflows `linking_lto`,
-  `linking_exports`, `linking_compile_cache`, `programs_compile` and
-  `transforms_cache`). Full mode (default) runs all driver/policy combinations.
+  `linking_exports`, `linking_compile_cache`, `programs_compile`,
+  `transforms_cache`, `printing_source` and the `qlc_queries` executable case). Full mode (default) runs all driver/policy combinations.
 - Long tests driven by a Python or CMake script carry a fixed CTest `COST`:
   CTest learns a wrapper's cost from its own small CPU time and would start them
   last.
 - Load-sensitive tests (`CLAUSE_LOAD_SENSITIVE_TESTS` in the top
-  `CMakeLists.txt`: `frontend_cli`, `codegen_examples`, `linking_debugger`,
-  `executables_applications`) only timed out or lost timing races under a full
-  parallel run. They `DEPENDS` on every other test, so they start after the rest
-  of the selection finishes and have the processors to themselves; a failing
-  dependency does not skip them.
+  `CMakeLists.txt`: `frontend_cli`, `codegen_examples`, `linking_debugger`, and
+  the executable cases `applications`, `ets_portions`, `gen_statems`,
+  `interpreted_modules`, `many_ports` and `supervisors`) only timed out or lost
+  timing races under a full parallel run. They `DEPENDS` on every other test, so
+  they start after the rest of the selection finishes and have the processors to
+  themselves; a failing dependency does not skip them. They reserve four CTest
+  slots instead of two, so half as many of them run at once.
+- The executable golden runner gives each `clau` it starts `--jobs 2`; a case
+  links two policy combinations at once, so it runs within its two CTest slots
+  instead of taking every hardware thread twice.
+- `transforms_host_setup` (fixture `transform_host`) builds Clause's transform
+  host before the tests that run library parse transforms (`transforms_*` and
+  the executable cases whose sources name a parse transform or include
+  `ms_transform.hrl`, `qlc.hrl` or `merl.hrl`), so they do not wait for its lock
+  holding their slots. It starts first and reserves eight slots; with a built
+  host it takes a fraction of a second.
 - `CLAUSE_TEST_TIMEOUT_SCALE=N` multiplies the per-run limits of the golden
   runner (60 s) and the semantic case runner (15 s) for instrumented builds.
 - `check-quality`, `make format` and `make-format.bat` cover files changed since
@@ -50,10 +61,15 @@ cmake --build build/debug --target check-quality-all  # whole tree
   user, from Ninja's dependency data of any configuration; the header's other
   dependents are left to `check-quality-all` in the full gate) and, for
   clang-tidy, units whose compile command differs from the one the last passing
-  run recorded (`build/debug/quality/tidy-commands.json`), so a build rule edit
-  rechecks only the units it changes. Changes to `.clang-tidy` or the tidy
-  scripts select everything, as do build rule edits before the first recorded
-  run.
+  run recorded (`.state/quality/<build directory>/tidy-commands.json`, in the
+  ignored `.state/` directory that `make clean` keeps), so a build rule edit
+  rechecks only the units it changes. Each passing batch merges its units into
+  that record, so after a failing run the next one rechecks only what did not
+  pass. Changes to `.clang-tidy`, `CheckClangTidy.cmake`, `tidy_filter.py` or
+  the quality toolchain template select everything, as do build rule edits
+  before the first recorded run. The scope scripts (`quality_scope.py`,
+  `QualityScope.cmake`) and `CMakeLists.txt` edits that only add, remove or
+  comment source files do not.
 - `CLAUSE_OPTIMIZED_COMPILER` (default ON) compiles `clau` and the compiler
   libraries optimized in Debug builds too, keeping their debug information and
   the Debug inference budgets; tests spend most of their time in `clau`. When a
@@ -194,7 +210,8 @@ host-specific evidence, not gate results.
 make-benchmark.bat                         # Windows; set JOBS=N to cap parallel builds
 make-benchmark.bat --repeat 9 --only bench_gc,bench_msg
 make-benchmark.bat --cpus all                 # unpinned set; default --cpus performance
-make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
+make-benchmark.bat --baseline HEAD           # performance work: HEAD vs the working tree
+make benchmark BENCH_ARGS="--repeat 9"         # other hosts
 ```
 
 - Both configure and build a Release `clau` and runtime in `build/bench`, then
@@ -228,10 +245,12 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   (`cpus`) name the set; ratios of runs on different sets are not comparable.
 - Systems, on the same host in one run, interleaved: OTP with its default flavor
   (JIT), OTP `-emu_flavor emu` when installed (the Windows installer ships only
-  the JIT, so those columns read `n/a`), Clause HEAD at O2 and with `--lto`, and
-  a previous Clause commit (default: the newest commit at least one day older
-  than HEAD; `--baseline REV`, `--no-baseline`) built in a cached worktree under
-  `build/bench-base/<hash>` that shares `thirdparty/`.
+  the JIT, so those columns read `n/a`), Clause HEAD at O2 and with `--lto`,
+  and only with `--baseline REV` another Clause commit, built in a cached
+  worktree under `build/bench-base/<hash>` that shares `thirdparty/`. A baseline
+  is for performance work: `--baseline HEAD` measures the committed code against
+  the uncommitted changes in `build/bench`. The day-to-day trend comes from the
+  history, not from a baseline.
 - Report: per kernel the median of `--repeat` runs (default 3) in milliseconds
   with six decimals and its spread, the change of Clause O2 against each system
   (`+N%`: Clause faster, the other takes N% longer; `-N%`: Clause takes N%
@@ -240,15 +259,15 @@ make benchmark BENCH_ARGS="--baseline HEAD~5"   # other hosts
   timeouts (`--timeout`, 600 s per run). A default run measures for about 15
   minutes.
 - Executable sizes, in bytes: every program at `-O2`, with `--lto` and at `-O0`
-  (an extra build only measured, never run; both skipped by `--no-lto`) and the
+  (an extra build only measured, never run; both skipped by `--no-lto`) and any
   baseline at `-O2`, with a total row and the changes O2 vs O0, `--lto` vs O2,
   `--lto` vs O0 and O2 vs baseline (`-N%` smaller); and `clau` at HEAD and the
   baseline. The history keeps them as `sizes_bytes` (`programs`: program →
   column → bytes, `clau`: `head`/`baseline` → bytes; `null` where a build
   failed).
 - History: `benchmarks/history/<host>.json` keeps one record per run day (run
-  date, HEAD hash and commit date, Clause, OTP and baseline medians, sizes, and
-  Clause's time ratios `otp_ratio` and `baseline.ratio` per kernel),
+  date, HEAD hash and commit date, Clause, OTP and any baseline medians, sizes,
+  and Clause's time ratios `otp_ratio` and `baseline.ratio` per kernel),
   `benchmarks/history/reports/<host>/<day>-<hash>.txt` the text reports; a rerun
   on the same day replaces both. Records and reports run more than 183 days
   before the newest are pruned; a run with uncommitted source changes is
