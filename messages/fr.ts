@@ -31,7 +31,7 @@ export const fr = {
     intro:
       "Clause est un compilateur AOT pour Erlang. Il prétraite, analyse et vérifie le code Erlang, le compile via LLVM et produit des exécutables natifs liés à son propre runtime : processus légers sur plusieurs threads ordonnanceurs, passage de messages, ports et ramasse-miettes par processus.",
     status:
-      "En cours de développement : les programmes Erlang/OTP 29 se compilent déjà en exécutables natifs qui s'exécutent sous Windows et Linux, avec les propres stdlib, kernel et crypto de Clause. Reste à venir : macOS Apple Silicon et le matériel ARM natif, les suites de tests d'OTP, la validation des certificats dans public_key et davantage d'optimisation ; la distribution et le chargement de code à chaud ne sont pas pris en charge. La page des benchmarks montre où se situe Clause par rapport à OTP ; la documentation indique ce qui fonctionne et en quoi Clause diffère.",
+      "En cours de développement : les programmes Erlang/OTP 29 se compilent déjà en exécutables natifs qui s'exécutent sous Windows et Linux, avec les propres stdlib, kernel, crypto et ssl de Clause. Reste à venir : macOS Apple Silicon et le matériel ARM natif, les suites de tests d'OTP, les fichiers source et numéros de ligne dans les traces de pile et davantage d'optimisation ; la distribution et le chargement de code à chaud ne sont pas pris en charge. La page des benchmarks montre où se situe Clause par rapport à OTP ; la documentation indique ce qui fonctionne et en quoi Clause diffère.",
     ctaDocs: "Lire la documentation",
     ctaSource: "Code source sur GitHub",
     cardsTitle: "Fonctionnalités",
@@ -62,9 +62,9 @@ export const fr = {
       },
       {
         id: "library",
-        property: "gen_server · crypto",
+        property: "gen_server · ssl",
         title: "Bibliothèque OTP",
-        text: "Les propres stdlib, kernel et crypto de Clause, avec les exports, résultats et erreurs d'OTP 29.",
+        text: "Les propres stdlib, kernel, crypto et ssl de Clause, avec les exports, résultats et erreurs d'OTP 29.",
       },
       {
         id: "ports",
@@ -99,7 +99,7 @@ export const fr = {
         items: [
           "Syntaxe Erlang/OTP 29 : records, maps, bitstrings, comprehensions, types et spécifications",
           "Macros, inclusions et compilation conditionnelle",
-          "Parse transforms sur un Erlang/OTP 29 de l'hôte, ms_transform et qlc compris",
+          "Parse transforms sans installation d'Erlang/OTP : ms_transform, qlc, merl et les vôtres",
           "Spécifications ASN.1 compilées en modules comme le fait asn1ct : BER, DER, PER et UPER",
         ],
       },
@@ -119,6 +119,7 @@ export const fr = {
           "Inférence de types avec des types de fonctions par clause",
           "LLVM O0, O2 et Os, avec optimisation à l'édition de liens entre modules",
           "O2 supprime les vérifications de types prouvées par l'inférence",
+          "O2 intègre en ligne les petites fonctions locales, les funs connues et les boucles de lists",
           "Vrais appels terminaux et récursion profonde",
           "Génération de code en parallèle sur chaque thread matériel",
         ],
@@ -141,9 +142,11 @@ export const fr = {
           "gen_server, gen_statem, gen_event, supervisor, application et logger",
           "stdlib : lists, maps, string, binary, json, re, rand et les modules de collections",
           "ets, dets, disk_log, zip et erl_tar avec des fichiers tels qu'OTP les écrit",
-          "erl_scan, erl_parse, erl_lint, erl_eval et qlc à l'exécution",
+          "erl_scan, erl_parse, erl_lint, erl_eval, qlc et compile à l'exécution, les modules compilés étant interprétés",
+          "syntax_tools : erl_syntax, erl_prettypr, epp_dodger et merl",
           "kernel : file, gen_tcp, gen_udp, inet, inet_res et os",
-          "crypto avec OpenSSL et mode FIPS ; codec public_key, clés et signatures",
+          "crypto avec OpenSSL et mode FIPS ; public_key avec validation des chemins de certificats, CRL et OCSP",
+          "ssl : connexions TLS 1.2 et 1.3 via la libssl d'OpenSSL",
         ],
       },
       {

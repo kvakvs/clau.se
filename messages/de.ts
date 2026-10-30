@@ -31,7 +31,7 @@ export const de = {
     intro:
       "Clause ist ein AOT-Compiler für Erlang. Er verarbeitet, parst und analysiert Erlang-Quellcode, kompiliert ihn über LLVM und linkt native Programme mit einer eigenen Laufzeitumgebung: leichtgewichtige Prozesse auf mehreren Scheduler-Threads, Nachrichtenaustausch, Ports und Garbage Collection pro Prozess.",
     status:
-      "In Entwicklung: Erlang/OTP 29-Programme lassen sich bereits heute zu nativen Programmen kompilieren, die unter Windows und Linux laufen, mit Clause-eigenen stdlib, kernel und crypto. Noch ausstehend: macOS mit Apple Silicon und native ARM-Hardware, die Testsuites von OTP, Zertifikatsvalidierung in public_key und weitere Optimierungen; verteilte Ausführung und das Nachladen von Code im laufenden Betrieb werden nicht unterstützt. Die Benchmark-Seite zeigt, wo Clause im Vergleich zu OTP steht; die Dokumentation beschreibt, was funktioniert und wo Clause abweicht.",
+      "In Entwicklung: Erlang/OTP 29-Programme lassen sich bereits heute zu nativen Programmen kompilieren, die unter Windows und Linux laufen, mit Clause-eigenen stdlib, kernel, crypto und ssl. Noch ausstehend: macOS mit Apple Silicon und native ARM-Hardware, die Testsuites von OTP, Quelldatei- und Zeilenangaben in Stacktraces und weitere Optimierungen; verteilte Ausführung und das Nachladen von Code im laufenden Betrieb werden nicht unterstützt. Die Benchmark-Seite zeigt, wo Clause im Vergleich zu OTP steht; die Dokumentation beschreibt, was funktioniert und wo Clause abweicht.",
     ctaDocs: "Dokumentation lesen",
     ctaSource: "Quellcode auf GitHub",
     cardsTitle: "Funktionen",
@@ -62,9 +62,9 @@ export const de = {
       },
       {
         id: "library",
-        property: "gen_server · crypto",
+        property: "gen_server · ssl",
         title: "OTP-Bibliothek",
-        text: "Clause-eigene stdlib, kernel und crypto mit den Exporten, Ergebnissen und Fehlern von OTP 29.",
+        text: "Clause-eigene stdlib, kernel, crypto und ssl mit den Exporten, Ergebnissen und Fehlern von OTP 29.",
       },
       {
         id: "ports",
@@ -99,7 +99,7 @@ export const de = {
         items: [
           "Erlang/OTP 29-Syntax: Records, Maps, Bitstrings, Comprehensions, Typen und Spezifikationen",
           "Makros, Includes und bedingte Kompilierung",
-          "Parse-Transforms auf einem Erlang/OTP 29 des Hosts, einschließlich ms_transform und qlc",
+          "Parse-Transforms ohne installiertes Erlang/OTP: ms_transform, qlc, merl und eigene",
           "ASN.1-Spezifikationen werden wie mit asn1ct zu Modulen kompiliert: BER, DER, PER und UPER",
         ],
       },
@@ -119,6 +119,7 @@ export const de = {
           "Typinferenz mit Funktionstypen pro Klausel",
           "LLVM O0, O2 und Os, mit modulübergreifender Link-Time-Optimierung",
           "O2 entfernt Typprüfungen, die die Inferenz beweist",
+          "O2 inlinet kleine lokale Funktionen, bekannte Funs und lists-Schleifen",
           "Echte Endaufrufe und tiefe Rekursion",
           "Parallele Codegenerierung auf jedem Hardware-Thread",
         ],
@@ -141,9 +142,11 @@ export const de = {
           "gen_server, gen_statem, gen_event, supervisor, application und logger",
           "stdlib: lists, maps, string, binary, json, re, rand und die Collection-Module",
           "ets, dets, disk_log, zip und erl_tar mit Dateien, wie OTP sie schreibt",
-          "erl_scan, erl_parse, erl_lint, erl_eval und qlc zur Laufzeit",
+          "erl_scan, erl_parse, erl_lint, erl_eval, qlc und compile zur Laufzeit, kompilierte Module werden interpretiert",
+          "syntax_tools: erl_syntax, erl_prettypr, epp_dodger und merl",
           "kernel: file, gen_tcp, gen_udp, inet, inet_res und os",
-          "crypto über OpenSSL mit FIPS-Modus; public_key-Codec, Schlüssel und Signaturen",
+          "crypto über OpenSSL mit FIPS-Modus; public_key mit Validierung von Zertifikatspfaden, CRLs und OCSP",
+          "ssl: TLS-1.2- und TLS-1.3-Verbindungen über libssl von OpenSSL",
         ],
       },
       {

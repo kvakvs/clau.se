@@ -31,7 +31,7 @@ export const sv = {
     intro:
       "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, portar och skräpsamling per process.",
     status:
-      "Under utveckling: Erlang/OTP 29-program kompileras till körbara program som redan idag körs på Windows och Linux, med Clauses egna stdlib, kernel och crypto. Återstår: macOS med Apple Silicon och riktig ARM-hårdvara, OTP:s egna testsviter, certifikatvalidering i public_key och mer optimering; distribution och kodladdning under körning stöds inte. Sidan med prestandatester visar var Clause står jämfört med OTP; dokumentationen beskriver vad som fungerar och var Clause skiljer sig.",
+      "Under utveckling: Erlang/OTP 29-program kompileras till körbara program som redan idag körs på Windows och Linux, med Clauses egna stdlib, kernel, crypto och ssl. Återstår: macOS med Apple Silicon och riktig ARM-hårdvara, OTP:s egna testsviter, käll- och radpositioner i stackspår och mer optimering; distribution och kodladdning under körning stöds inte. Sidan med prestandatester visar var Clause står jämfört med OTP; dokumentationen beskriver vad som fungerar och var Clause skiljer sig.",
     ctaDocs: "Läs dokumentationen",
     ctaSource: "Källkod på GitHub",
     cardsTitle: "Funktioner",
@@ -62,9 +62,9 @@ export const sv = {
       },
       {
         id: "library",
-        property: "gen_server · crypto",
+        property: "gen_server · ssl",
         title: "OTP-bibliotek",
-        text: "Clauses egna stdlib, kernel och crypto med samma exporter, resultat och fel som OTP 29.",
+        text: "Clauses egna stdlib, kernel, crypto och ssl med samma exporter, resultat och fel som OTP 29.",
       },
       {
         id: "ports",
@@ -99,7 +99,7 @@ export const sv = {
         items: [
           "Erlang/OTP 29-syntax: records, maps, bitsträngar, comprehensions, typer och specifikationer",
           "Makron, includes och villkorlig kompilering",
-          "Parse transforms på en Erlang/OTP 29 på värddatorn, inklusive ms_transform och qlc",
+          "Parse transforms utan installerad Erlang/OTP: ms_transform, qlc, merl och egna",
           "ASN.1-specifikationer kompilerade till moduler som asn1ct gör: BER, DER, PER och UPER",
         ],
       },
@@ -119,6 +119,7 @@ export const sv = {
           "Typhärledning med funktionstyper per klausul",
           "LLVM O0, O2 och Os, med länktidsoptimering över moduler",
           "O2 tar bort typkontroller som härledningen bevisar",
+          "O2 infogar små lokala funktioner, kända funs och lists-loopar",
           "Riktiga svansanrop och djup rekursion",
           "Parallell kodgenerering på varje hårdvarutråd",
         ],
@@ -141,9 +142,11 @@ export const sv = {
           "gen_server, gen_statem, gen_event, supervisor, application och logger",
           "stdlib: lists, maps, string, binary, json, re, rand och samlingsmodulerna",
           "ets, dets, disk_log, zip och erl_tar med filer som OTP skriver dem",
-          "erl_scan, erl_parse, erl_lint, erl_eval och qlc vid körning",
+          "erl_scan, erl_parse, erl_lint, erl_eval, qlc och compile vid körning, där kompilerade moduler tolkas",
+          "syntax_tools: erl_syntax, erl_prettypr, epp_dodger och merl",
           "kernel: file, gen_tcp, gen_udp, inet, inet_res och os",
-          "crypto via OpenSSL med FIPS-läge; public_key-kodek, nycklar och signaturer",
+          "crypto via OpenSSL med FIPS-läge; public_key med validering av certifikatkedjor, CRL och OCSP",
+          "ssl: TLS 1.2- och 1.3-anslutningar via OpenSSL:s libssl",
         ],
       },
       {

@@ -31,7 +31,7 @@ export const pt = {
     intro:
       "Clause é um compilador AOT para Erlang. Pré-processa, analisa e verifica o código Erlang, compila-o via LLVM e gera executáveis nativos com o seu próprio runtime: processos leves em várias threads do escalonador, troca de mensagens, portas e recolha de lixo por processo.",
     status:
-      "Em desenvolvimento: programas Erlang/OTP 29 compilam para executáveis nativos que já executam em Windows e Linux, com stdlib, kernel e crypto próprios do Clause. Falta ainda: macOS com Apple Silicon e hardware ARM nativo, os conjuntos de testes do próprio OTP, validação de certificados em public_key e mais otimização; a distribuição e o carregamento de código a quente não são suportados. A página de benchmarks mostra a posição do Clause face ao OTP; a documentação indica o que funciona e em que o Clause difere.",
+      "Em desenvolvimento: programas Erlang/OTP 29 compilam para executáveis nativos que já executam em Windows e Linux, com stdlib, kernel, crypto e ssl próprios do Clause. Falta ainda: macOS com Apple Silicon e hardware ARM nativo, os conjuntos de testes do próprio OTP, ficheiros de código-fonte e linhas nos rastos de pilha e mais otimização; a distribuição e o carregamento de código a quente não são suportados. A página de benchmarks mostra a posição do Clause face ao OTP; a documentação indica o que funciona e em que o Clause difere.",
     ctaDocs: "Ler a documentação",
     ctaSource: "Código no GitHub",
     cardsTitle: "Funcionalidades",
@@ -62,9 +62,9 @@ export const pt = {
       },
       {
         id: "library",
-        property: "gen_server · crypto",
+        property: "gen_server · ssl",
         title: "Biblioteca OTP",
-        text: "stdlib, kernel e crypto próprios do Clause com as exportações, resultados e erros do OTP 29.",
+        text: "stdlib, kernel, crypto e ssl próprios do Clause com as exportações, resultados e erros do OTP 29.",
       },
       {
         id: "ports",
@@ -99,7 +99,7 @@ export const pt = {
         items: [
           "Sintaxe Erlang/OTP 29: records, maps, bitstrings, comprehensions, tipos e especificações",
           "Macros, includes e compilação condicional",
-          "Parse transforms num Erlang/OTP 29 do anfitrião, incluindo ms_transform e qlc",
+          "Parse transforms sem instalar Erlang/OTP: ms_transform, qlc, merl e as próprias",
           "Especificações ASN.1 compiladas em módulos como faz o asn1ct: BER, DER, PER e UPER",
         ],
       },
@@ -119,6 +119,7 @@ export const pt = {
           "Inferência de tipos com tipos de funções por cláusula",
           "LLVM O0, O2 e Os, com otimização em tempo de ligação entre módulos",
           "O2 elimina verificações de tipos provadas pela inferência",
+          "O2 integra em linha pequenas funções locais, funs conhecidas e ciclos de lists",
           "Chamadas de cauda próprias e recursão profunda",
           "Geração paralela de código em todas as threads de hardware",
         ],
@@ -141,9 +142,11 @@ export const pt = {
           "gen_server, gen_statem, gen_event, supervisor, application e logger",
           "stdlib: lists, maps, string, binary, json, re, rand e os módulos de coleções",
           "ets, dets, disk_log, zip e erl_tar com ficheiros tal como o OTP os escreve",
-          "erl_scan, erl_parse, erl_lint, erl_eval e qlc em runtime",
+          "erl_scan, erl_parse, erl_lint, erl_eval, qlc e compile em runtime, com os módulos compilados interpretados",
+          "syntax_tools: erl_syntax, erl_prettypr, epp_dodger e merl",
           "kernel: file, gen_tcp, gen_udp, inet, inet_res e os",
-          "crypto sobre OpenSSL com modo FIPS; codec, chaves e assinaturas de public_key",
+          "crypto sobre OpenSSL com modo FIPS; public_key com validação de caminhos de certificados, CRL e OCSP",
+          "ssl: ligações TLS 1.2 e 1.3 sobre a libssl do OpenSSL",
         ],
       },
       {
