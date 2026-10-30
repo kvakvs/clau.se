@@ -307,7 +307,7 @@ export const en = {
     sizesNote:
       "Size of the benchmark programs as Clause builds them at each optimization level, in megabytes.",
     sizesHistoryNote:
-      "-O2 sizes of the last {count} measured commits, oldest first. Each run also builds a baseline, the previous Clause commit (the newest commit at least one day older than HEAD, or the one given with --baseline), at -O2 to catch regressions; baselines appear here as commits of their own. The table below adds the total of all bench_* programs and the size of the clau compiler.",
+      "-O2 sizes of the last {count} benchmark runs, oldest first, one Clause commit each. The table below adds the total of all bench_* programs and the size of the clau compiler.",
     sizesTotal: "All bench_* programs",
     megabytes: "{value} MB",
     setupTitle: "Setup",

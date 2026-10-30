@@ -134,8 +134,8 @@ function readHistory(host) {
 }
 
 // Executable sizes in bytes: the newest run's bench_* programs at O0, O2 and
-// O2 with LTO, and clau itself; plus the O2 sizes of the last SIZE_DAYS
-// commits, each run day's baseline (the previous commit) included.
+// O2 with LTO, and clau itself; plus the O2 sizes of the last SIZE_DAYS run
+// commits. A --baseline build is optional, so baselines are left out.
 function sizes(host) {
   const SIZE_DAYS = 6;
   const records = readHistory(host).filter((r) => r.sizes_bytes);
@@ -154,17 +154,6 @@ function sizes(host) {
           .map(([name, p]) => [name, p[key]]),
       ),
     });
-    if (record.baseline?.commit && !points.has(record.baseline.commit)) {
-      points.set(
-        record.baseline.commit,
-        point(
-          record.baseline.commit,
-          record.baseline.commit_date,
-          "baseline",
-          s.clau?.baseline,
-        ),
-      );
-    }
     points.set(
       record.commit,
       point(record.commit, record.run_date, "o2", s.clau?.head),

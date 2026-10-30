@@ -322,7 +322,7 @@ export const de = {
     sizesNote:
       "Größe der Benchmark-Programme in Megabyte, wie Clause sie auf jeder Optimierungsstufe erzeugt.",
     sizesHistoryNote:
-      "Größen mit -O2 der letzten {count} gemessenen Commits, älteste zuerst. Jeder Lauf erzeugt außerdem eine Baseline, den vorherigen Clause-Commit (den neuesten Commit, der mindestens einen Tag älter als HEAD ist, oder den mit --baseline angegebenen), mit -O2, um Regressionen zu erkennen; Baselines erscheinen hier als eigene Commits. Die Tabelle darunter ergänzt die Summe aller bench_*-Programme und die Größe des Compilers clau.",
+      "Größen mit -O2 der letzten {count} Benchmark-Läufe, älteste zuerst, ein Clause-Commit pro Lauf. Die Tabelle darunter ergänzt die Summe aller bench_*-Programme und die Größe des Compilers clau.",
     sizesTotal: "Alle bench_*-Programme",
     megabytes: "{value} MB",
     setupTitle: "Testumgebung",

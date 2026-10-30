@@ -38,9 +38,11 @@ Keep these when editing the page or its strings:
   the benchmarks page. Its title and text stay neutral, true on either side.
 - Unstable runs (spread above `NOISY_SPREAD` percent of the median) are marked
   with the 🔺 emoji, not an asterisk.
-- Explain in the headnotes, the 'baseline' is the previous Clause commit (newest
-  commit at least one day older than HEAD, or --baseline REV), built at -O2 to
-  catch regressions.
+- No baseline: `../clau/benchmarks/run.py` builds another Clause commit only
+  with `--baseline REV` (default none, for local performance work). The page
+  does not mention or show baselines; the size history holds only the run
+  commits (`sync-benchmarks` ignores a record's `baseline`). If a report has a
+  baseline other than `Clause baseline: none`, still leave it out.
 - Both the kernel table and the "whole programs" table show the Clause/OTP ratio
   with the `Bar` component on a shared log scale (`Axis`):
   - blue bars (Clause faster) run left of the 1× line, with "faster" in small
@@ -60,7 +62,7 @@ Keep these when editing the page or its strings:
 - The size comparisons for `clau.exe` in different build modes, and for `bench_*` executables
   should have their own table showing the historical change of the sizes (hopefully towards
   being smaller with every new benchmark). A vertical bar SVG chart will suit here, adding
-  a group of 6 bars per each `bench_*` per last 6 benchmarks .
+  a group of 6 bars per each `bench_*` per last 6 benchmark runs.
 
 ## Steps
 

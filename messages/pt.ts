@@ -320,7 +320,7 @@ export const pt = {
     sizesNote:
       "Tamanho em megabytes dos programas de teste tal como o Clause os constrói em cada nível de otimização.",
     sizesHistoryNote:
-      "Tamanhos com -O2 dos últimos {count} commits medidos, do mais antigo para o mais recente. Cada execução constrói também uma referência (baseline), o commit anterior do Clause (o commit mais recente com pelo menos um dia de antiguidade em relação a HEAD, ou o indicado com --baseline), com -O2 para detetar regressões; as referências aparecem aqui como commits próprios. A tabela abaixo acrescenta o total de todos os programas bench_* e o tamanho do compilador clau.",
+      "Tamanhos com -O2 das últimas {count} execuções dos benchmarks, da mais antiga para a mais recente, um commit do Clause por execução. A tabela abaixo acrescenta o total de todos os programas bench_* e o tamanho do compilador clau.",
     sizesTotal: "Todos os programas bench_*",
     megabytes: "{value} MB",
     setupTitle: "Configuração",

@@ -322,7 +322,7 @@ export const fr = {
     sizesNote:
       "Taille en mégaoctets des programmes de test tels que Clause les construit à chaque niveau d'optimisation.",
     sizesHistoryNote:
-      "Tailles en -O2 des {count} derniers commits mesurés, du plus ancien au plus récent. Chaque exécution construit aussi une référence (baseline), le commit précédent de Clause (le commit le plus récent antérieur d'au moins un jour à HEAD, ou celui donné par --baseline), en -O2 pour détecter les régressions ; les références apparaissent ici comme des commits à part entière. Le tableau ci-dessous ajoute le total de tous les programmes bench_* et la taille du compilateur clau.",
+      "Tailles en -O2 des {count} dernières exécutions des benchmarks, de la plus ancienne à la plus récente, un commit de Clause par exécution. Le tableau ci-dessous ajoute le total de tous les programmes bench_* et la taille du compilateur clau.",
     sizesTotal: "Tous les programmes bench_*",
     megabytes: "{value} Mo",
     setupTitle: "Configuration",
