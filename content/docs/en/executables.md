@@ -69,10 +69,12 @@ otherwise unchanged and in order, like `escript`.
 
 ## Runtime options
 
-The runtime reads its options from the `CLAUSE_FLAGS` environment variable
-(words split on spaces and tabs, no quoting) and then from the leading
-command-line arguments, so the command line wins. Both are parsed the same way;
-a value goes in the next argument or after `=`.
+The runtime reads its options from the defaults built into the executable
+(the project option `runtime_options`, [projects](projects.md)), then from the
+`CLAUSE_FLAGS` environment variable (words split on spaces and tabs, no
+quoting), then from the leading command-line arguments, so the command line
+wins. All are parsed the same way; a value goes in the next argument or after
+`=`.
 
 | Option | Effect |
 | --- | --- |
@@ -83,19 +85,77 @@ a value goes in the next argument or after `=`.
 | `--max-memory BYTES` | Cap on the memory of all processes together (heaps, off-heap binaries, stacks); default uncapped |
 | `--schedulers N` | Scheduler workers running processes, 1 to 1,024; default one per CPU of `--scheduler-cpus`, else one per logical processor the program may run on (its affinity mask), like OTP's online schedulers ([workers](processes.md#workers)) |
 | `--scheduler-cpus SET` | Bind worker N to the N-th CPU of `SET`, round-robin, like OTP's `+sbt`/`+sct`: `performance` (the fastest core class: P-cores of a hybrid CPU, every CPU otherwise), `all`, or a list such as `0-15` or `2,4,6`; every listed CPU must be in the affinity mask. Default unbound ([CPU binding](processes.md#cpu-binding)) |
+| `--epmd MODE` | What a registration with epmd does when none listens: `bundled` (default) runs the epmd the program carries, `external` starts an epmd program (`clause-epmd` beside the program or on `PATH`, else OTP's `epmd`), `none` fails as OTP's; a program built with `--no-bundled-epmd` treats `bundled` as `none` ([epmd](distribution.md#epmd)) |
+| `--sname`, `--name`, `--setcookie`, `--nocookie`, `--hidden`, `--proto-dist`, `--dist-listen` | Node start options, reported by `init:get_argument/1` under OTP's flag names; `--sname` and `--name` start distribution before the entry in a program linked with the distribution modules ([node start options](distribution.md#node-start-options)) |
+| `--env APP KEY VALUE` | Sets `APP`'s environment parameter `KEY` to the term `VALUE`, as OTP's `-App Key Value`: `application_controller` parses it when it loads `APP` ([node start options](distribution.md#node-start-options)) |
+| `--config FILE` | Application environments from a `.config` file, as OTP's `-config FILE`; every one is kept ([config files](#config-files)) |
 | `--profile FILE` | Write a report of entries and self time per function and per process to `FILE` when the program ends ([profiling](profiling.md)); off by default |
-| `--args-file FILE` | Options file like OTP's `vm.args`: reserved, reports `runtime option --args-file is not implemented` |
+| `--args-file FILE` | Reads a release's `vm.args` as OTP's `-args_file` ([args files](#args-files)) |
 | `--` | Ends the runtime options; the following arguments all go to `Entry` |
 
 On the command line, parsing stops at the first argument that is not a runtime
 option, so `prog data --max-atoms 9` passes all three arguments to the program.
-In `CLAUSE_FLAGS` every word must be a runtime option. An invalid value, a word
-that is not an option in the variable, or `--args-file` stops the program before
+In `CLAUSE_FLAGS` and the built-in defaults every word must be a runtime option. An invalid value, a word
+that is not an option in the variable, or an unreadable args file stops the program before
 any module is registered: `clau: runtime failure: <reason>`, exit 70. Process
 counts are not limited and memory is uncapped by default. Byte values are
 decimal without suffixes and round down to whole words; a program reaching a cap
 fails with `resource_limit`, exit 70
 ([runtime memory limit](runtime-heap.md#runtime-memory-limit)).
+
+## Args files
+
+Decided (2026-10-31, user choices); implemented.
+`--args-file FILE` reads a release's `vm.args` unchanged, as OTP's `erl -args_file FILE` does
+(`erts/etc/common/erlexec.c`):
+
+- **Syntax:** words split on whitespace; `#` starts a comment to the end of the line; `'...'` and `"..."` quote,
+  `\` escapes the next character; `-args_file FILE` (or `--args-file FILE`) inside a file reads another one in its
+  place (at most 32 deep: OTP never ends a file naming itself); the words after `-extra` are plain arguments,
+  after those of the command line (erlexec puts every `-extra` part last). A relative `FILE` is resolved against
+  the current directory, as OTP's.
+- **Position:** the file's words stand where `--args-file FILE` was given (command line or `CLAUSE_FLAGS`), so a
+  later option replaces an earlier one, as on the command line.
+- **Spellings:** OTP's flags and Clause's runtime options (`--sname`, `--env`, ...) may be mixed.
+- **Every `-Flag Values...`** (the words up to the next word starting with `-` or `+`) is an init flag reported by
+  `init:get_argument/1`, as OTP's init reports user flags; `-App Key Value [Key Value ...]` is therefore an
+  application environment, as `--env`.
+- **Flags with a Clause meaning:**
+
+  | Flag | Clause |
+  | --- | --- |
+  | `-sname`, `-name`, `-setcookie`, `-nocookie`, `-hidden`, `-proto_dist`, `-dist_listen` | The node start option of that name ([distribution](distribution.md#node-start-options)) |
+  | `-start_epmd true\|false` | `--epmd bundled` / `--epmd none` |
+  | `-config FILE...` | Application environments from `.config` files, as `--config` ([config files](#config-files)) |
+  | `-env VAR VALUE` | Sets the environment variable before the runtime starts |
+  | `+t N` | `--max-atoms N` |
+  | `+S N[:M]` | `--schedulers N` |
+  | `+sbt u` / other `+sbt` types | Nothing (unbound is the default) / `--scheduler-cpus all` |
+  | `+hms N` | `--min-heap-size N` |
+
+- **Ignored with a warning:** emulator tuning without a Clause meaning (every other `+` flag: `+K`, `+A`, `+P`,
+  `+Q`, `+e`, `+zdbbl`, `+sbwt`, `+swt`, `+M...` allocators, `+C`, `+c`, ...) and the `-` flags Clause cannot act
+  on (`-heart`, `-eval`, `-s`, `-run`, `-boot`, `-mode`, `-pa`, `-pz`, `-noshell`, `-noinput`, `-smp`, ...; still
+  reported by init). One line on stderr names them all:
+  `clau: warning: --args-file FILE: ignored: +K true +A 30 -heart`.
+- A file that cannot be read, or a bad value of a flag with a Clause meaning, stops the program as other invalid
+  runtime options do (exit 70).
+
+## Config files
+
+`--config FILE` and an args file's `-config FILE...` are read as OTP's boot reads `-config`
+(`application_controller:check_conf/0`), by `library/kernel/clause_config.erl`:
+
+- `.config` is appended to a name without it; the files are read in order and merged, a later file winning per
+  parameter. A file named `sys.config` may list other file names besides `{App, Parameters}` entries, relative to its
+  directory when the file is there, else to the current directory.
+- The configured parameters apply over the `.app` resources and under `--env` (`-App Key Value`), as OTP merges them;
+  `set_env/2,4`'s persistent parameters join them.
+- A file that cannot be read or parsed, or a configuration OTP rejects, stops the program with OTP's boot failure:
+  `Could not start kernel pid (application_controller) ("error in config file \"./x.config\" (none): ...")`, exit
+  1. The files are read when the program first uses `application` ([differences](differences.md)).
+- `-config A B` in an args file is one `config` flag with both files, or one flag per file on Windows, as OTP's
+  erlexec gives them to `init:get_argument/1`.
 
 ## Exit status
 
@@ -146,7 +206,8 @@ collide with a module artifact). It contains a constant
 `abi::v1::StartupDescriptor`
 ([startup.hpp](../abi/include/clause/abi/startup.hpp)): ABI revision, term
 width, every module descriptor in source order, the entry module/function
-spellings and an escript flag. Its `int main(int, char **)` calls the runtime's
+spellings, an escript flag, the linked runtime extension entries and the
+built-in runtime options (`runtime_options`). Its `int main(int, char **)` calls the runtime's
 `CLAUSE_main_v1`, which:
 
 1. Checks the startup and every module descriptor for ABI revision and width

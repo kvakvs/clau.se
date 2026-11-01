@@ -29,19 +29,70 @@ const SUBDIRS = ["libraries"];
 // Visitors cannot follow those, so paragraph lead-ins and parenthetical
 // references are removed; source paths of a lead-in are kept as "Source:".
 // Headings and code blocks are left alone, so anchors and structure stay.
-// Step ids: "41T", "OPT0.2A", "LIB5E", "LIB81D2a", "OPTM.2E".
-const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|[A-Z]{2,5}(?:\d+[A-Z0-9]*[a-z]?(?:\.\d+[A-Z]?)?|\.\d+[A-Z]?))`;
+// Step ids: "41T", "OPT0.2A", "LIB5E", "LIB81D2a", "OPTM.2E", "DIST4b3b1".
+const STEP_ID = String.raw`(?:\d+[A-Z0-9]*|[A-Z]{2,5}(?:\d+[A-Za-z0-9]*(?:\.\d+[A-Z]?)?|\.\d+[A-Z]?))`;
 const LIB_ID = String.raw`LIB\d+[A-Z0-9]*[a-z]?`;
 // References wrap across lines, so words are separated by any whitespace.
 const STEP_IDS = String.raw`${STEP_ID}(?:(?:\s+(?:and|or)\s+|–)${STEP_ID})*`;
+// Distribution steps stand alone, in lists: "DIST4b2a, DIST4b2b", "DIST2b to DIST2d".
+const DIST_ID = String.raw`DIST\d+[a-z0-9]*`;
+const DIST_IDS = String.raw`${DIST_ID}(?:(?:,\s+|\s+(?:and|or|to)\s+)${DIST_ID})*`;
 const STEP_REF = String.raw`(?:[Pp]lan(?:\s+\d+)?\s+)?(?:[Ss]teps?\s+)?${STEP_IDS}(?:\s+\(part\)|\s+follow-up)?`;
-const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+(?:\s+step|,)?\s+)?(?:OPT[A-Z0-9]*\.\d+[A-Z0-9]*|${LIB_ID})(?:\s+\(part\)|\s+follow-up)?)`;
+const PLAIN_REF = String.raw`(?:(?:[Pp]lan(?:\s+\d+)?\s+)?[Ss]teps?\s+${STEP_IDS}|(?:plan\s+\d+(?:\s+step|,)?\s+)?(?:OPT[A-Z0-9]*\.\d+[A-Z0-9]*|${LIB_ID}|${DIST_IDS})(?:\s+\(part\)|\s+follow-up)?)`;
 const LEAD_IN = new RegExp(
   String.raw`^(?:Decision of )?(?:[Pp]lan(?: \d+)? )?[Ss]teps? ${STEP_IDS}(?: \(([^()]*)\))?(?:[.:]\s*|, (?=[a-z]))`,
 );
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DATE_TEXT = String.raw`\d{4}-\d{2}-\d{2}`;
 const INLINE_RULES = [
+  // "([plan 30](../.agents/30-dist.md) step DIST7)", "([plan 30](...) Later)"
+  [
+    new RegExp(
+      String.raw`\s*\(\[[Pp]lan \d+\]\(\.\.\/\.agents\/[^)]*\)\s+(?:[Ss]teps?\s+${STEP_IDS}|Later)\)`,
+      "g",
+    ),
+    "",
+  ],
+  // "; implemented in DIST4a3a and DIST4a4 (`-config`)."
+  [
+    new RegExp(
+      String.raw`;\s+implemented\s+in\s+${DIST_IDS}(?:\s+\([^()]*\))?`,
+      "g",
+    ),
+    "; implemented",
+  ],
+  // "`getopts/2`, which call them, come in DIST6."
+  [
+    new RegExp(
+      String.raw`,\s+which\s+call\s+them,\s+come\s+in\s+${DIST_IDS}`,
+      "g",
+    ),
+    " call them",
+  ],
+  // "... runner. DIST3c adds the rest below."
+  [
+    new RegExp(String.raw`(^|[.!?]\s+)${DIST_IDS}\s+adds\s+`, "gm"),
+    "$1It also has ",
+  ],
+  // "([epmd](#epmd), DIST3a; written beside programs ...", "teardown, OPT3.5B; lock-free"
+  [new RegExp(String.raw`,\s+${PLAIN_REF};\s+`, "g"), "; "],
+  // "(since DIST4b1a)", "at most 120, since DIST6)"
+  [new RegExp(String.raw`\s*\(since\s+${DIST_IDS}\)`, "g"), ""],
+  [new RegExp(String.raw`,\s+since\s+${DIST_IDS}(?=\))`, "g"), ""],
+  // "Since DIST4b2c (`path`):", "Since DIST6 the server ..."
+  [new RegExp(String.raw`\bSince\s+${DIST_IDS}\s+(?=\()`, "g"), "Also "],
+  [
+    new RegExp(String.raw`\bSince\s+${DIST_IDS}\s+(\S)`, "g"),
+    (_, first) => first.toUpperCase(),
+  ],
+  // "Current since DIST2a (...)", "with `-kill` in DIST3c)", "and from DIST4 with"
+  [
+    new RegExp(
+      String.raw`\s+(?:since|in|from)\s+${DIST_IDS}(?=[\s).,;:])`,
+      "g",
+    ),
+    "",
+  ],
   // "(decision of plan 11 step 57A, 2026-10-08)"
   [
     new RegExp(

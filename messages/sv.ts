@@ -29,9 +29,9 @@ export const sv = {
   home: {
     title: "Erlang/OTP 29, kompilerat till maskinkod",
     intro:
-      "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, portar och skräpsamling per process.",
+      "Clause är en AOT-kompilator för Erlang. Den förbehandlar, parsar och analyserar Erlang-källkod, kompilerar den via LLVM och länkar körbara program med en egen runtime: lättviktsprocesser på flera schemaläggartrådar, meddelandeöverföring, distribution, portar och skräpsamling per process.",
     status:
-      "Under utveckling: Erlang/OTP 29-program kompileras till körbara program som redan idag körs på Windows och Linux, med Clauses egna stdlib, kernel, crypto och ssl. Återstår: macOS med Apple Silicon och riktig ARM-hårdvara, OTP:s egna testsviter, käll- och radpositioner i stackspår och mer optimering; distribution och kodladdning under körning stöds inte. Sidan med prestandatester visar var Clause står jämfört med OTP; dokumentationen beskriver vad som fungerar och var Clause skiljer sig.",
+      "Under utveckling: Erlang/OTP 29-program kompileras till körbara program som redan idag körs på Windows och Linux, med Clauses egna stdlib, kernel, crypto och ssl, och som distribuerade noder ansluter de till varandra och till OTP 29-noder. Återstår: macOS med Apple Silicon och riktig ARM-hårdvara, OTP:s egna testsviter, käll- och radpositioner i stackspår, rpc, global och pg mellan noder och mer optimering; kodladdning under körning stöds inte. Sidan med prestandatester visar var Clause står jämfört med OTP; dokumentationen beskriver vad som fungerar och var Clause skiljer sig.",
     ctaDocs: "Läs dokumentationen",
     ctaSource: "Källkod på GitHub",
     cardsTitle: "Funktioner",
@@ -79,10 +79,10 @@ export const sv = {
         text: "Med O2 tar härledda typer bort kontroller vid körning och väljer specialiserad kod.",
       },
       {
-        id: "shell",
-        property: "clau --shell",
-        title: "Interaktivt skal",
-        text: "Länkar Erlang-skalet till ett körbart program: erl_eval, historik och records, utan BEAM.",
+        id: "distribution",
+        property: "node@host",
+        title: "Distribuerad Erlang",
+        text: "Noder ansluter till varandra och till OTP 29-noder via OTP:s protokoll: meddelanden, länkar, monitorer och fjärrstart av processer.",
       },
       {
         id: "targets",
@@ -135,6 +135,17 @@ export const sv = {
         ],
       },
       {
+        id: "distribution",
+        title: "Distribution",
+        items: [
+          "Namngivna noder via --sname och --name, eller net_kernel:start under körning",
+          "OTP:s handskakning och cookies över TCP, IPv4 och IPv6",
+          "Meddelanden, länkar, monitorer, gruppledare och processtart mellan noder",
+          "Fungerar med OTP 29-noder i båda riktningar",
+          "Inbyggd epmd, eller clause-epmd som separat program",
+        ],
+      },
+      {
         id: "library",
         title: "OTP-bibliotek",
         items: [
@@ -155,6 +166,7 @@ export const sv = {
         items: [
           "Ett clau-kommando från Erlang-källkod till ett körbart program",
           "TOML-projekt med SQLite-byggcache",
+          "Release-filerna vm.args och sys.config, lästa som OTP:s uppstart läser dem",
           "Interaktivt Erlang-skal med clau --shell",
           "Felsökningsinformation med -g (CodeView eller DWARF 5) och profilering med --profile",
           "Testad mot referensimplementationen Erlang/OTP och jämförd med OTP i benchmarks",
@@ -227,11 +239,14 @@ export const sv = {
     groups: {
       datagen: "Datagenerering",
       dataproc: "Databearbetning",
+      dist: "Distribution",
       file: "Fil-I/O",
+      float: "Flyttal",
       gc: "Skräpsamling",
       libraries: "Bibliotek",
       msg: "Meddelandeöverföring",
       socket: "Loopback-sockets",
+      ssl: "TLS",
     },
     kernelInfo: {
       "datagen.list_of_tuples":
@@ -262,6 +277,14 @@ export const sv = {
         "Comprehension som filtrerar och dubblar 20 000 heltal, 15 000 gånger",
       "dataproc.small_map":
         "Uppdaterar en liten tillståndsmap 80 miljoner gånger",
+      "dist.ping_pong":
+        "5 000 meddelanden fram och tillbaka med en annan nod över TCP, 3 gånger",
+      "dist.data_exchange":
+        "200 rundturer av en binär på 64 KB och 1 000 tupler med en annan nod, 3 gånger",
+      "dist.spawn":
+        "Startar 500 processer efter varandra på en annan nod, 3 gånger",
+      "dist.reconnect":
+        "20 frånkopplingar och återanslutningar till en annan nod, var och en med en rundtur, 3 gånger",
       "file.small_files":
         "Skriver, läser tillbaka och raderar 500 små filer, 11 gånger",
       "file.large_write":
@@ -270,6 +293,17 @@ export const sv = {
       "file.read_line":
         "Läser en textfil med 20 000 rader rad för rad, 52 gånger",
       "file.read_file": "Läser en hel fil på 16 MB i ett anrop, 330 gånger",
+      "float.sum":
+        "Summerar ett flyttal i en loop med 1 miljon steg, 200 gånger",
+      "float.mandelbrot":
+        "Mandelbrot-iterationer över ett rutnät på 120×120, 120 gånger",
+      "float.limit": "Låter ett flyttal växa stegvis förbi 1e100, 80 gånger",
+      "float.negate":
+        "Unärt minus och float/1 i en flyttalsloop med 1 miljon steg, 70 gånger",
+      "float.guards":
+        "En is_float/1-guard i en flyttalsloop med 1 miljon steg, 120 gånger",
+      "float.calls":
+        "Trapetssumma av ett polynom med ett anrop per steg, 160 gånger",
       "gc.short_processes":
         "Startar 5000 kortlivade processer som var och en skapar skräp, 69 gånger",
       "gc.grow_shrink":
@@ -293,13 +327,22 @@ export const sv = {
         "Öppnar 900 TCP-anslutningar via loopback och ekar 25 meddelanden på 1 KB i varje",
       "socket.udp_round_trip":
         "Studsar ett datagram på 1 KB 27 900 gånger över UDP via loopback",
+      "ssl.tls_echo": "5 000 TLS 1.3-ekon på 1 KB via loopback, 3 gånger",
+      "ssl.tls_handshake":
+        "50 TLS 1.3-anslutningar, var och en med full handskakning och ett eko, 3 gånger",
+      "ssl.tls_bulk":
+        "Skickar 1 024 block på 16 KB över TLS 1.3 via loopback, 3 gånger",
     },
     programInfo: {
       bench_datagen:
         "Bygger listor, tupler, maps, binaries och stora heltal i mängd",
       bench_dataproc:
         "Sortering, fold, map-uppdateringar, binary-matchning och konverteringar",
+      bench_dist:
+        "Rundturer, data, processtarter och återanslutningar mellan noder; OTP kör dem även över TLS",
       bench_file: "Skriver och läser små och stora filer, läser rader",
+      bench_float:
+        "Flyttalsloopar: summor, Mandelbrot, gränser, negation, guards och anrop",
       bench_gc:
         "Kortlivade processer, heap som växer och krymper, levande data",
       bench_library:
@@ -307,6 +350,7 @@ export const sv = {
       bench_msg:
         "Ping-pong, fan-in, processring och kopiering av stora meddelanden",
       bench_socket: "TCP-eko, TCP-anslutningar och UDP-rundturer via loopback",
+      bench_ssl: "TLS 1.3-eko, handskakningar och bulköverföring via loopback",
     },
     programsTitle: "Hela program",
     programsNote:

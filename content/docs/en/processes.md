@@ -68,6 +68,11 @@ online schedulers), or per CPU of `--scheduler-cpus`.
   worker is woken only when a queue then holds more than one process. The timer
   and I/O threads, port tasks and workers between slices queue a process for its
   own worker, or for an idle worker when its own one is busy.
+- A process that a worker wakes for itself (the worker is its home and its
+  queue is empty) is handed over instead of queued: it waits beside the queue,
+  under the executor mutex the waking send holds anyway, and the worker takes
+  it when its slice ends without the run queues' lock (handed-over wakes). It would have been the first queued process, so the order is the
+  queue's; stealing, balancing and the queue counts include it.
 - One executor mutex guards the waiting processes, the timers, the registered
   names, the links and monitors of every process, and every process that is not
   running. A running process's heap, stack, mailbox and failure channel belong
@@ -124,7 +129,8 @@ process's scheduling state happens under the executor mutex:
   receiver parked wakes it under the executor mutex.
 - A worker that finds no runnable process sleeps until another worker, a send, a
   spawn or the timer thread queues one, or the program ends; it looks at the
-  queues and sleeps under the run queues' lock, which every queueing takes. Workers never read the clock
+  queues and sleeps under the run queues' lock, which every queueing takes (a
+  handed-over wake is the worker's own). Workers never read the clock
   for timers; parking a process with a timeout earlier than every other wakes
   only the timer thread.
 - A message and an expiring timeout of one receive may race: whichever comes
@@ -227,10 +233,10 @@ process does not write one: its uncaught exception is the program's
 
 | `Dest` | Effect |
 | --- | --- |
-| A pid of a live process | `Msg` is copied flat into the receiver's heap ([copying between heaps](runtime-heap.md#copying-between-heaps)), as OTP copies messages, a large one into a block the receiver takes over ([message hand-off](runtime-heap.md#message-buffers)), and appended to its signal inbox; to a receiver running on another worker, into a buffer among its arrivals that it takes when it next looks ([arrival buffers](#arrival-buffers)) |
+| A pid of a live process | `Msg` is copied flat into the receiver's heap ([copying between heaps](runtime-heap.md#copying-between-heaps)), as OTP copies messages, a large one into a block the receiver takes over ([message hand-off](runtime-heap.md#message-buffers)), and appended to its signal inbox; to a receiver that is not parked, into a buffer among its arrivals that it takes when it next looks ([arrival buffers](#arrival-buffers)) |
 | A pid of a process that has ended | Nothing; the send succeeds |
 | A [registered name](#registered-names) | As for its pid; `badarg` when no live process has the name |
-| `{Name, nonode@nohost}` of two atoms | As for the pid registered as `Name`; nothing when there is none |
+| `{Name, Node}` of two atoms, `Node` this node's name | As for the pid registered as `Name`; nothing when there is none |
 | `{Name, Node}` for any other node | Nothing (there are no other nodes) |
 | A reference | As for the owner of an active [alias](#aliases); nothing otherwise |
 | Anything else | `badarg` |
@@ -252,8 +258,8 @@ process does not write one: its uncaught exception is the program's
 
 ### Arrival buffers
 
-A send to a process running on another worker takes no lock at all (process
-creation and teardown):
+A send to a process that is not parked takes no lock at all (process creation
+and teardown; lock-free posts):
 
 - The runtime's process table (`ProcessTable`) is an open-addressed array of
   atomic slots that a send on a worker reads without any lock: pid numbers are
@@ -261,19 +267,20 @@ creation and teardown):
   the array. Inserts and erases take a writer lock and also hold the executor
   lock, under which lookups need nothing more.
 - Each process has its arrivals (`Arrivals`): a lock-free list senders push
-  messages onto, with a copy of the executor's running state of the process.
-  The sender looks up the receiver's arrivals and reads that state; a sender
-  whose last send to the same receiver found it not running skips the lookup.
+  messages onto, with the flag the process sets when it parks. The sender
+  looks up the receiver's arrivals and reads that flag; a sender whose last
+  send to the same receiver found it parked skips the lookup.
 - The sender walks the message once, before any lock
-  ([single message walk](runtime-heap.md#message-buffers)). To a running
-  receiver, it copies the message right behind a list node, in one allocation
-  (a large message or one holding off-heap binaries into a `MessageBuffer`),
-  and pushes it; the receiver later copies those words into its heap and
-  relocates their pointers. Any other receiver gets the message under the
-  executor lock as before: copied into its heap, or pushed behind
-  its arrivals when it began a slice meanwhile or still has arrivals, so a
-  sender's messages never pass each other and the sender never copies a
-  backlog under the lock. Either answer of a race is correct.
+  ([single message walk](runtime-heap.md#message-buffers)). To a receiver
+  that is not parked (running, queued, held or suspended), it copies the
+  message right behind a list node, in one allocation (a large message or one
+  holding off-heap binaries into a `MessageBuffer`), and pushes it; the
+  receiver later copies those words into its heap and relocates their
+  pointers. A parked receiver gets the message under the executor lock, which
+  waking it takes anyway: copied into its heap, or pushed behind its arrivals
+  when it began a slice meanwhile or still has arrivals, so a sender's
+  messages never pass each other and the sender never copies a backlog under
+  the lock. Either answer of a race is correct.
 - The receiver takes its arrivals into its heap and signal inbox, oldest
   first: 64 at a time when its receive has examined every message and would
   wait, so a flood reaches the heap as fast as the receive consumes it (OTP
@@ -351,6 +358,8 @@ pids in link order and the `trap_exit` flag).
 - When a process ends, every linked process gets an exit signal with its exit
   reason ([exits](#exits)) and the link is gone. Linked processes are signalled
   in the order the links were made.
+- Links to another node's processes go over its connection
+  ([links and exit signals](distribution.md#links-and-exit-signals)).
 
 ## Monitors
 
@@ -373,10 +382,13 @@ so it can send the message when it ends.
 - `spawn_monitor/1,3` return `{Pid, Ref}`, the monitor made before the new
   process runs.
 - A process that ends drops the monitors it holds.
-- `monitor(process, Name)` and `monitor(process, {Name, nonode@nohost})` monitor
-  the process registered as `Name` (`noproc` at once when there is none); its
-  `'DOWN'` names `{Name, nonode@nohost}` instead of the pid. `{Name, Node}` for
-  another node is `badarg`.
+- `monitor(process, Name)` and `monitor(process, {Name, Node})` with this
+  node's name monitor the process registered as `Name` (`noproc` at once when
+  there is none); its `'DOWN'` and `process_info/2`'s `monitors` name
+  `{Name, Node}` instead of the pid. Another node's pid and `{Name, Node}` for
+  another node monitor that node's process over its connection
+  ([distribution](distribution.md#process-monitors)); `{Name, Node}` for another
+  node is `badarg` while this node is not alive.
 - `monitor(port, Port | Name)` monitors a port
   ([ports](ports.md#port-table-and-ownership)):
   `{'DOWN', Ref, port, Port, Reason}` when it closes. A pid for `port`, or a
@@ -455,7 +467,8 @@ gives `undefined`.
   `badarg`.
 - `processes/0` lists live pids in creation order. A spawned process inherits
   its parent's group leader; the first process leads itself. `group_leader/2` of
-  a pid of no live process is `badarg`.
+  a pid of no live process is `badarg`; leaders of other nodes are in
+  [group leaders](distribution.md#group-leaders).
 - `garbage_collect/0,1,2` asks for a collection at the target's next safepoint
   and returns `true` (`false` for no live process); with `{async, RequestId}` it
   returns `async` and sends `{garbage_collect, RequestId, Result}`. `yield/0`
@@ -470,13 +483,15 @@ Sources: `builtins/erlang/spawning.cpp`, `scheduler/aliases.cpp`.
   `{min_bin_vheap_size, N}`, `{max_heap_size, S}`, `{message_queue_data, M}`,
   `{async_dist, B}`; `{min_heap_size, N}` sets the child's
   [minimum heap](runtime-heap.md#sizing-and-budget), the other tuning options
-  are checked and accepted, not applied. A node other than `nonode@nohost` is
-  `badarg`.
+  are checked and accepted, not applied. Another node spawns as
+  [spawning](distribution.md#spawning) says.
 - `spawn_request/1..5` spawns at once and sends `{Tag, ReqId, ok, Pid}`
   (`{Tag, ReqId, error, Reason}` on failure, `badopt` for an invalid option) as
   `{reply_tag, Tag}` and `{reply, yes | no | error_only | success_only}` ask;
   with `monitor` the request id is the monitor reference.
-  `spawn_request_abandon/1` returns `false`: the reply is already sent.
+  `spawn_request_abandon/1` returns `false`: the reply is already sent. A
+  request to another node waits for that node's reply
+  ([spawning](distribution.md#spawning)) and can be abandoned meanwhile.
 - `hibernate(M, F, A)` waits until the mailbox holds a message, then calls
   `M:F(A...)` in place of the call; the stack is kept, so the result returns to
   the caller.
@@ -495,12 +510,19 @@ monitors take no options.
 
 ## Nodes
 
-A Clause program is one node that is not distributed, `nonode@nohost`, and
-answers as such an OTP node (`builtins/erlang/node.cpp`): `nodes/0` is `[]`,
-`nodes(this | known)` `[nonode@nohost]`, other types `[]`; `nodes/2` gives
-`{nonode@nohost, #{connection_id => undefined, node_type =>
-this}}` for the keys asked. `is_alive/0` is `false`, `monitor_node/2,3` raise
-`error:notalive` and `disconnect_node/1` returns `ignored`.
+A Clause program is one node, `nonode@nohost` until `erlang:setnode/2` names it
+([this node](distribution.md#this-node)), and answers as such an OTP node
+(`builtins/erlang/node.cpp`). `nodes/0,1,2` list the connection entries that
+`setnode/3` and `erts_internal:new_connection/1` make
+([connections](distribution.md#connections)), then this node for `this` and
+`known`; without them `nodes/0` is `[]`. `is_alive/0` is true once the node has
+a name. `monitor_node/2,3` raise `error:notalive` for another node while the
+node has no name, and otherwise monitor its connection entry
+([node monitors](distribution.md#node-monitors)); `disconnect_node/1` returns
+`ignored`.
+`process_flag(monitor_nodes, Bool)` and `process_flag({monitor_nodes, Options},
+Bool)` subscribe to node status messages
+([node status messages](distribution.md#node-status-messages)).
 
 ## Exit signals
 
@@ -564,14 +586,14 @@ not suspend.
 | `spawn_link(Fun)`, `spawn_link(M, F, Args)` | As `spawn`, and the new process is linked to the caller ([links](#links)) |
 | `is_process_alive(Pid)` | `badarg` unless `Pid` is a pid; true while its process has not ended |
 | `spawn_monitor(Fun)`, `spawn_monitor(M, F, Args)` | As `spawn`, returning `{Pid, Ref}` of a new [monitor](#monitors) |
-| `link(Pid)`, `unlink(Pid)` | `badarg` unless `Pid` is a pid ([links](#links)) |
+| `link(Pid)`, `unlink(Pid)` | `badarg` unless `Pid` is a pid or port of this node, or another node's pid ([links](#links)) |
 | `monitor(process, Item)` | `badarg` for another type or item; a reference ([monitors](#monitors)); `Item` is a pid or a registered name |
 | `register(Name, Pid)`, `unregister(Name)`, `whereis(Name)`, `registered()` | See [registered names](#registered-names); `Name` must be an atom |
 | `demonitor(Ref)`, `demonitor(Ref, Options)` | `badarg` unless `Ref` is a reference and `Options` a proper list of `flush` and `info` |
 | `exit(Dest, Reason)`, `exit_signal(Dest, Reason)` | `badarg` unless `Dest` is a pid or reference; `true` after the [exit signal](#exit-signals) |
 | `process_flag(trap_exit, Bool)`, `process_flag(min_heap_size, N)`, `process_flag(save_calls, N)` | The previous setting; `badarg` for another flag, a non-boolean or a negative or non-integer size |
 | `erlang:send(Dest, Msg)`, `Dest ! Msg` | `Msg`, after sending it ([messages](#messages)); `send/2` is not auto-imported |
-| `spawn(Node, ...)`, `spawn_link(Node, ...)`, `spawn_monitor(Node, ...)` (`/2`, `/4`) | This node (`nonode@nohost`): as without `Node`. Another node: OTP's useless pid of a node that is not alive, a process that ends at once with reason `noconnection`, so a link or monitor reports `noconnection`; `badarg` for a non-atom node |
+| `spawn(Node, ...)`, `spawn_link(Node, ...)`, `spawn_monitor(Node, ...)` (`/2`, `/4`) | This node (`node()`): as without `Node`. Another node: the process runs there ([spawning](distribution.md#spawning)); a node that cannot be reached gives OTP's useless pid, a process here that ends at once with reason `noconnection`, so a link or monitor reports `noconnection`; `badarg` for a non-atom node |
 | `erlang:send(Dest, Msg, Options)` | `ok`, or `noconnect` for a message to another node with the `noconnect` option; options `nosuspend`, `noconnect`, `priority` (an ordinary message) |
 | `send_nosuspend(Dest, Msg)`, `send_nosuspend(Dest, Msg, [noconnect])` | `true`; `false` for another node with `noconnect` |
 | `link(Pid, Options)`, `exit(Dest, Reason, Options)`, `exit_signal(Dest, Reason, Options)` | As without options; `Options` is `[]` or `[priority]` (an ordinary signal) |

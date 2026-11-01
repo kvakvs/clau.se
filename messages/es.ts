@@ -29,9 +29,9 @@ export const es = {
   home: {
     title: "Erlang/OTP 29, compilado a código nativo",
     intro:
-      "Clause es un compilador anticipado (AOT) para Erlang. Preprocesa, analiza sintáctica y semánticamente el código Erlang, lo compila mediante LLVM y enlaza ejecutables nativos con su propio runtime: procesos ligeros en varios hilos planificadores, paso de mensajes, puertos y recolección de basura por proceso.",
+      "Clause es un compilador anticipado (AOT) para Erlang. Preprocesa, analiza sintáctica y semánticamente el código Erlang, lo compila mediante LLVM y enlaza ejecutables nativos con su propio runtime: procesos ligeros en varios hilos planificadores, paso de mensajes, distribución, puertos y recolección de basura por proceso.",
     status:
-      "En desarrollo: los programas Erlang/OTP 29 se compilan a ejecutables nativos que ya se ejecutan en Windows y Linux, con stdlib, kernel, crypto y ssl propios de Clause. Pendiente: macOS con Apple Silicon y hardware ARM nativo, los propios conjuntos de pruebas de OTP, las ubicaciones de archivo fuente y línea en las trazas de pila y más optimización; no se admiten la distribución ni la carga de código en caliente. La página de benchmarks muestra la posición de Clause frente a OTP; la documentación indica qué funciona y en qué difiere Clause.",
+      "En desarrollo: los programas Erlang/OTP 29 se compilan a ejecutables nativos que ya se ejecutan en Windows y Linux, con stdlib, kernel, crypto y ssl propios de Clause, y funcionan como nodos distribuidos que se conectan entre sí y con nodos OTP 29. Pendiente: macOS con Apple Silicon y hardware ARM nativo, los propios conjuntos de pruebas de OTP, las ubicaciones de archivo fuente y línea en las trazas de pila, rpc, global y pg entre nodos y más optimización; no se admite la carga de código en caliente. La página de benchmarks muestra la posición de Clause frente a OTP; la documentación indica qué funciona y en qué difiere Clause.",
     ctaDocs: "Leer la documentación",
     ctaSource: "Código en GitHub",
     cardsTitle: "Características",
@@ -79,10 +79,10 @@ export const es = {
         text: "Con O2, los tipos inferidos eliminan comprobaciones en tiempo de ejecución y seleccionan código especializado.",
       },
       {
-        id: "shell",
-        property: "clau --shell",
-        title: "Shell interactiva",
-        text: "Enlaza la shell de Erlang en un ejecutable: erl_eval, historial y records, sin BEAM.",
+        id: "distribution",
+        property: "node@host",
+        title: "Erlang distribuido",
+        text: "Los nodos se conectan entre sí y con nodos OTP 29 mediante el protocolo de OTP: mensajes, enlaces, monitores y creación remota de procesos.",
       },
       {
         id: "targets",
@@ -135,6 +135,17 @@ export const es = {
         ],
       },
       {
+        id: "distribution",
+        title: "Distribución",
+        items: [
+          "Nodos con nombre mediante --sname y --name, o net_kernel:start en tiempo de ejecución",
+          "Handshake y cookies de OTP sobre TCP, IPv4 e IPv6",
+          "Mensajes, enlaces, monitores, líderes de grupo y creación de procesos entre nodos",
+          "Funciona con nodos OTP 29 en ambos sentidos",
+          "epmd integrado, o clause-epmd como programa aparte",
+        ],
+      },
+      {
         id: "library",
         title: "Biblioteca de OTP",
         items: [
@@ -155,6 +166,7 @@ export const es = {
         items: [
           "Un solo comando clau del código fuente Erlang a un ejecutable nativo",
           "Proyectos TOML con cachés de compilación SQLite",
+          "Archivos vm.args y sys.config de releases, leídos como los lee el arranque de OTP",
           "Shell interactiva de Erlang con clau --shell",
           "Información de depuración con -g (CodeView o DWARF 5) y perfilado con --profile",
           "Probado frente al Erlang/OTP de referencia y comparado con OTP en benchmarks",
@@ -226,11 +238,14 @@ export const es = {
     groups: {
       datagen: "Generación de datos",
       dataproc: "Procesamiento de datos",
+      dist: "Distribución",
       file: "E/S de archivos",
+      float: "Coma flotante",
       gc: "Recolección de basura",
       libraries: "Bibliotecas",
       msg: "Paso de mensajes",
       socket: "Sockets de loopback",
+      ssl: "TLS",
     },
     kernelInfo: {
       "datagen.list_of_tuples":
@@ -261,6 +276,13 @@ export const es = {
         "Comprehension que filtra y duplica 20 000 enteros, 15 000 veces",
       "dataproc.small_map":
         "Actualiza 80 millones de veces un map de estado pequeño",
+      "dist.ping_pong":
+        "5 000 idas y vueltas de un mensaje con otro nodo por TCP, 3 veces",
+      "dist.data_exchange":
+        "200 idas y vueltas de un binario de 64 KB y 1 000 tuplas con otro nodo, 3 veces",
+      "dist.spawn": "Crea 500 procesos uno tras otro en otro nodo, 3 veces",
+      "dist.reconnect":
+        "20 desconexiones y reconexiones con otro nodo, cada una con una ida y vuelta, 3 veces",
       "file.small_files":
         "Escribe, relee y borra 500 archivos pequeños, 11 veces",
       "file.large_write":
@@ -271,6 +293,17 @@ export const es = {
         "Lee línea a línea un archivo de texto de 20 000 líneas, 52 veces",
       "file.read_file":
         "Lee un archivo entero de 16 MB en una sola llamada, 330 veces",
+      "float.sum": "Suma un float en un bucle de 1 millón de pasos, 200 veces",
+      "float.mandelbrot":
+        "Iteraciones de Mandelbrot sobre una cuadrícula de 120×120, 120 veces",
+      "float.limit":
+        "Hace crecer un float paso a paso hasta superar 1e100, 80 veces",
+      "float.negate":
+        "Menos unario y float/1 en un bucle de floats de 1 millón de pasos, 70 veces",
+      "float.guards":
+        "Una guarda is_float/1 en un bucle de floats de 1 millón de pasos, 120 veces",
+      "float.calls":
+        "Suma trapezoidal de un polinomio, una llamada por paso, 160 veces",
       "gc.short_processes":
         "Lanza 5000 procesos efímeros que generan basura cada uno, 69 veces",
       "gc.grow_shrink":
@@ -294,20 +327,30 @@ export const es = {
         "Abre 900 conexiones TCP en loopback con eco de 25 mensajes de 1 KB en cada una",
       "socket.udp_round_trip":
         "Rebota un datagrama de 1 KB 27 900 veces por UDP en loopback",
+      "ssl.tls_echo": "5 000 ecos TLS 1.3 de 1 KB en loopback, 3 veces",
+      "ssl.tls_handshake":
+        "50 conexiones TLS 1.3, cada una con un handshake completo y un eco, 3 veces",
+      "ssl.tls_bulk":
+        "Envía 1 024 bloques de 16 KB por TLS 1.3 en loopback, 3 veces",
     },
     programInfo: {
       bench_datagen:
         "Construye en masa listas, tuplas, maps, binaries y enteros grandes",
       bench_dataproc:
         "Ordenación, fold, actualización de maps, matching de binaries y conversiones",
+      bench_dist:
+        "Idas y vueltas, datos, procesos remotos y reconexiones entre nodos; OTP también los ejecuta sobre TLS",
       bench_file:
         "Escritura y lectura de archivos pequeños y grandes, lectura por líneas",
+      bench_float:
+        "Bucles de floats: sumas, Mandelbrot, límites, negación, guardas y llamadas",
       bench_gc: "Procesos efímeros, heap que crece y encoge, datos vivos",
       bench_library:
         "La parse transform de qlc en tiempo de ejecución, como la usa qlc:q/1",
       bench_msg:
         "Ping-pong, fan-in, anillo de procesos y copia de mensajes grandes",
       bench_socket: "Eco TCP, conexiones TCP e idas y vueltas UDP en loopback",
+      bench_ssl: "Eco, handshakes y transferencia masiva TLS 1.3 en loopback",
     },
     programsTitle: "Programas completos",
     programsNote:

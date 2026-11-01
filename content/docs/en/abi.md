@@ -1,8 +1,11 @@
-# Generated-code ABI (revision 21)
+# Generated-code ABI (revision 1)
 
 Private contract between compiler output and the runtime. It is project-internal
 C++23, not BEAM-compatible and not a general FFI. Objects and runtime must come
-from the same build; older descriptor revisions are rejected before use.
+from the same build. Nothing outside the project uses it yet, so layout changes
+keep revision 1 until the ABI is published; a descriptor of another revision or
+term width is rejected before use. `clau`'s caches are keyed by the `clau`
+executable, so a rebuilt compiler never reuses objects of an older layout.
 
 Headers: [v1.hpp](../abi/include/clause/abi/v1.hpp) (term/context/function
 types), [term.hpp](../abi/include/clause/abi/term.hpp) (immediate integer
@@ -92,7 +95,7 @@ publishes nothing (already interned atoms stay in the bounded table).
   `CLAUSE_main_v1(argc, argv, descriptor)`, which registers all modules and runs
   the entry ([executables](executables.md#startup-object)).
 
-## Failure channel (revision 2)
+## Failure channel
 
 Errors are not encoded in term bits. After every non-tail generated call the
 caller checks the channel before using the result or evaluating the next
@@ -156,10 +159,9 @@ Without `else` that value is the result; otherwise `else` clauses select on it
 like `case` clauses and raise `{else_clause, Value}`
 (`ErrorReason::else_clause = 15`) when none matches.
 
-Comprehensions use the existing services with a few operations: the accumulated
-elements are reversed by the construction `reverse`
-(`ContainerConstruction::reverse = 2`, values `{List, Tail}`), which builds the
-result in one heap reservation; list generators test and read cons cells inline;
+Comprehensions use the existing services with a few operations: the result is
+built forward, each new cell written into the tail of the last one (forward-built
+lists below); list generators test and read cons cells inline;
 a binary comprehension joins its pieces with `BitOperation::concat` (`{List}`)
 and a map comprehension builds its map with `MapOperation::from_list`
 (`{Pairs}`, later keys win). Map generators take `MapOperation::entries` (11,
@@ -234,7 +236,8 @@ registration rejects a module whose `code_convention` (0 none, 1 C, 2
   limit, current frame offset, reductions left, register pointer, live register
   count, slow bits, the failed word, the heap block's free words
   `[heap_top, heap_limit)`, the runtime identity atom caches are claimed by, the
-  context's pid word (`self`), one target word each. A body reads its frame
+  context's pid word (`self`) and `young`, the lowest word of `[young, heap_top)`
+  whose objects were all made since the latest collection, one target word each. A body reads its frame
   header (`stack + frame`) and the registers from it on entry and switches on
   the header's resume word.
 - Binary patterns: the start test, the end test and integer segments of a
@@ -288,23 +291,54 @@ registration rejects a module whose `code_convention` (0 none, 1 C, 2
   per byte. Skipped steps spend no reductions.
 - Float loops (64-bit targets): a parameter among the first six (those passed in
   registers) that every clause binds to a variable (or ignores), that some self
-  tail call passes a float-only expression (a float literal, `/`, a `math` call,
-  or `+ - *` with such an operand), and whose value is read only as an operand
-  of arithmetic, comparisons or `math` calls, as the same parameter of a self
-  tail call, or within the result or a tail call of another function (never in a
-  fun) is a float parameter. The function gets a private variant
+  tail call passes a float-only expression, and whose value is read only as an
+  operand of arithmetic, comparisons, unary minus, `math` calls, `float/1`,
+  `is_float/1` or `is_number/1`, as the same parameter of a self tail call, or
+  within the result or a tail call of another function (never in a fun) is a
+  float parameter. A float-only expression is a float literal, `/`, a `math`
+  call, `float/1`, the negation of one, `+ - *` with such an operand, a read of
+  a float parameter found so far, a variable every definition of which matches
+  (`V = Expression`) a float-only expression, or at `-O2` an expression type
+  inference proves `float()` (a call of a function returning floats, a
+  parameter every caller passes floats); parameters are added until no self
+  call makes another one float-only. Each module's float loops are chosen before
+  any of its functions is lowered. The function gets a private variant
   `<symbol>.float` taking each float parameter as the bits of its double in the
   argument word (function attributes `clause-float-parameters`, a bit mask, and
-  `clause-float-generic`, the function). A self tail call of either whose new
-  value of every float parameter is a double in a register enters the variant
-  with those bits, so a float loop makes no cell per step; the variant makes a
-  cell of a parameter only where it reads the word itself. Raw bits never reach
-  a place a collection reads: the variant's other self tail calls re-enter the
-  function, and a transfer into the variant that takes its service path (a
-  wanted collection, profiling, no reductions left, stack growth) boxes the
-  doubles with the module's `clause.float.box` helper and enters the function's
+  `clause-float-generic`, the function). A self tail call of either, and a tail
+  or body call from another function of the module, enters the variant with
+  the bits of every float parameter's new double: a double in a register, or
+  the double of a float cell, tested at run time (a failed test calls the
+  function itself); so a float loop makes no cell per step, its callers make
+  none for its float arguments, and the function entered with cells enters its
+  variant on its first step. The variant makes a cell of a parameter only where
+  it reads the word itself, and returns words: a float result is a cell. Raw
+  bits never reach a place a collection reads: the variant's self tail calls
+  passing a word that is no float (and its other ones) re-enter the function,
+  and a transfer into the variant that takes its service path (a wanted
+  collection, profiling, no reductions left, stack growth) boxes the doubles
+  with the module's `clause.float.box` helper and enters the function's
   descriptor instead. The variant has the function's name and arity in stack
   traces.
+- Forward-built lists: comprehensions and the `lists` loops (`map/2`, `filter/2`,
+  `filtermap/2`, `partition/2`, `takewhile/2`, `splitwith/2`, `zipwith/3,4`,
+  `mapfoldl/3`) build their lists in order: each new cell is made with `[]` as its
+  tail and written into the tail of the last cell, both kept in term slots, so no
+  reverse runs at the end (`flatmap/2` still prepends with `reverse/2`, and
+  `mapfoldr/3` prepends as it walks backwards). Only a cell built here and held by
+  nothing else is written. A cell in `[young, heap_top)` is written inline; any
+  other goes through `CLAUSE_cons_tail_v1(context, cell, tail)`, which writes it
+  and remembers a cell that is old or below the high-water mark
+  ([generations](runtime-heap.md#generations)).
+- Raw floats (64-bit targets): a double in a register compares with another
+  word inline. `=:=` and `=/=` hold only against a float cell of the same bits;
+  the other comparisons read a float cell's double, or convert a small integer
+  while the float's magnitude is below 2^53 - 2 (ERTS's lossless range), and
+  take the comparison service otherwise. `is_float/1` and `is_number/1` of a
+  raw float are `true`. `float/1` keeps the double of a small integer or a float
+  cell in a register, and unary minus negates a raw float in its register and a
+  float cell into a new cell; a small integer's negation stays inline while it
+  stays small. Other operands take the immediate service, with OTP's errors.
 - A binary construction whose every byte is known at compile time (small integer
   constants and string literals at constant whole-byte widths, at most 64 bytes)
   is an inline binary cell of the module literal area, like other compound
@@ -529,3 +563,4 @@ success.
 | 23 | Quick builtins: `BuiltinName::call` (`BuiltinCall`), 0 from `CLAUSE_builtin_call_v1` declines |
 | 24 | `RecordDescriptor::definition` (the field list as External Term Format bytes, for `records:get_definition/2`) and `ModuleDescriptor::features` (atom slots of the enabled features, for `erl_features:used/1`) |
 | 25 | Encoded module literals and the literal heap: `ModuleDescriptor::literals` holds encoded bytes (`literal_bytes`), `literal_cache`, `literal_count`; `CLAUSE_literal_v1` |
+| 26 | `FrameState::young` and `CLAUSE_cons_tail_v1`: forward-built lists |

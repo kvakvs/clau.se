@@ -27,6 +27,11 @@ ignore_dirs = ["src/legacy", "deps/*/test"]
 ignore_modules = ["telemetry", "*_SUITE"]
 keep_exports = false
 shell = false
+epmd_executable = false
+bundled_epmd = true
+runtime_options = ["--setcookie", "secret", "--args-file", "vm.args"]
+distribution = false
+exclude_kernel_services = ["global_group"]
 cache_inference_in_dirs = ["deps/*"]
 
 [targets.options.applications]
@@ -57,6 +62,25 @@ my_dependency = "vendor/my_dependency"
 - `shell = true` in `options` links the interactive shell into the target's
   executable, as `--shell` does ([interactive shell](library.md#interactive-shell)).
   It must be a boolean.
+- `epmd_executable = true` in `options` also writes `clause-epmd` beside the
+  target's executable, as `--epmd-executable` does ([epmd](distribution.md#epmd)).
+  It must be a boolean.
+- `bundled_epmd = false` in `options` leaves the bundled epmd out of the
+  target's executable, as `--no-bundled-epmd` does ([epmd](distribution.md#epmd)).
+  It must be a boolean; absent means `true`.
+- `runtime_options` in `options` are runtime option words built into the
+  executable as its defaults; `CLAUSE_FLAGS` and then the command line override
+  them, and a word that is no runtime option stops the program
+  ([runtime options](executables.md#runtime-options)). A relative
+  `--args-file` is read from the directory the program runs in.
+- `distribution = true` in `options` links the distribution modules, as
+  `--distribution` does ([node start options](distribution.md#node-start-options));
+  `runtime_options` holding `--sname` or `--name` imply it. It must be a boolean.
+- `exclude_kernel_services` in `options` lists kernel services the target's
+  executable does not start under `kernel_sup`, by OTP's child ids: `rex`,
+  `global_name_server`, `global_group`, `kernel_safe_sup` (`net_sup` cannot be
+  excluded), as `--exclude-kernel-service` does ([kernel_sup](distribution.md#kernel_sup)).
+  This mostly saves processes, not program size: `gen_server` already links `global` and `rpc`, so an excluded service usually stays linked and is only not started.
 - `cache_inference_in_dirs` (directory wildcards) in `options` adds directories
   whose modules keep their inference results in the build cache
   ([inference cache](#inference-cache)).

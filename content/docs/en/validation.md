@@ -4,7 +4,7 @@
 
 Latest recorded gates on the Windows x64 development host (clang-cl and LLVM SDK
 23.1.2, `/MT`, `_ITERATOR_DEBUG_LEVEL=0`); later steps record theirs in
-`.agents/00-finished.md`:
+the per-plan `.agents/NN-finished.md` files:
 
 | Check | Result |
 | --- | --- |
@@ -223,7 +223,9 @@ make benchmark BENCH_ARGS="--repeat 9"         # other hosts
   an empty temporary working directory under `build/bench/runs`, inside the
   repository so that a repository antivirus exclusion covers it), loopback
   sockets and libraries (`libraries.qlc`: `qlc_pt` transforms of queries and
-  modules shaped like `qlc_SUITE` cases, timed together). Iteration counts make every kernel last 1-2 s on OTP, so timer
+  modules shaped like `qlc_SUITE` cases, timed together) and float loops
+  (`float.`: accumulators, mandelbrot, comparisons with a parameter, unary minus
+  and `float/1`, `is_float/1` guards, floats crossing calls). Iteration counts make every kernel last 1-2 s on OTP, so timer
   resolution and host noise stay small against it; socket kernels grow the work
   per connection, not the number of sockets. Untimed, the warm-up and the timed
   calls each wait until the processes they spawned have exited (`processes_left`
@@ -321,4 +323,4 @@ skips.
 | 2026-10-19 | Plan 21 LIB10F ThreadSanitizer (Linux x86-64): ETS and digraph goldens, `runtime_concurrency` | 10 | — | No report; `ets_portions` on one worker showed a delete freed in two portions, fixed by costing a freed object as a walked one |
 
 PG = pattern/guard plan step; plan 11 step records are archived in
-`.agents/00-finished.md`.
+`.agents/11-finished.md`.

@@ -140,12 +140,15 @@ OTP's trapping BIFs.
 ([external_term.hpp](../abi/include/clause/abi/external_term.hpp)), explicit
 stacks.
 
-- `term_to_binary/1,2`: OTP's bytes for `nonode@nohost`; options
+- `term_to_binary/1,2`: OTP's bytes for this node's name and creation; options
   `minor_version`, `deterministic`, `compressed`; local funs and native records
-  are `notsup`.
+  are `notsup`. Identities of other nodes keep their node and creation
+  ([terms](terms.md#identities-of-other-nodes)).
 - `term_to_iovec/1,2`, `external_size/1,2`.
 - `binary_to_term/1,2`: lengths checked before allocating; `safe`, `used`;
-  malformed input or foreign identities are `badarg`.
+  malformed input and pids or ports of this node the program never created are
+  `badarg`; identities of other nodes, in the current and older encodings, become
+  their cells.
 - The codec's stacks and `term_to_binary`'s encoded bytes are per-thread
   buffers kept between calls (up to 1 MB each, `builtins/scratch.hpp`), so a
   large term does not take fresh pages each call; small integers skip the
@@ -355,6 +358,12 @@ byte for byte, same file orders.
   opcodes, escaped name labels, LOC as degrees and meters) and its `formerr`
   rules (compression pointers backwards past the header, names below 255
   bytes, truncated sections only with the TC bit); encoding compresses names.
+- `clause_dist:start_epmd/0` (`builtins/epmd.cpp`) opens
+  the bundled epmd for `erl_epmd`'s registration under `--epmd bundled`
+  ([epmd](distribution.md#epmd)); it answers `external` under `--epmd external`
+  and `none` in a program without the bundled epmd, and
+  `clause_dist:start_daemon/1` starts the epmd program `erl_epmd` found with
+  `-daemon`, detached.
 
 ## Filename
 
@@ -604,7 +613,12 @@ script.
 
 - Command line decoded once (`startup/arguments.cpp`): plain arguments feed the
   entry's argv and `get_plain_arguments/0`.
-- Only flag is `home`; `script_name/0` is the executable's path.
+- Flags are `home`, then those of the
+  [node start options](distribution.md#node-start-options) under OTP's names
+  (`--env kernel net_ticktime 20` is `kernel` with `["net_ticktime", "20"]`),
+  in the order given; `script_name/0` is the executable's path.
+- `application_controller` reads the `--env` values from these flags as OTP
+  reads `-App Key Value`.
 - Other functions are Erlang with OTP's started answers; `script_id/0` is
   `{"Clause", "29"}`.
 - `stop/0,1`, `reboot/0` halt at once; `boot/1`, `restart/0,1`,
@@ -625,10 +639,16 @@ script.
 `builtins/erts_internal.cpp`, `library/erts/erts_internal.erl`: the functions
 `stdlib` and `kernel` call.
 
-- Builtins `cmp_term/2` and `map_next/3` (map iterators, key order).
+- Builtins `cmp_term/2` and `map_next/3` (map iterators, key order),
+  `get_creation/0` ([this node](distribution.md#this-node)), and
+  `new_connection/1`, `abort_pending_connection/2`, `create_dist_channel/3` and
+  `get_dflags/0` ([connections](distribution.md#connections),
+  `builtins/erlang/connections.cpp`).
+- Erlang `dist_ctrl_put_data/2`, where `erlang:dist_ctrl_put_data/2` continues
+  with iodata ([controller data path](distribution.md#controller-data-path)).
 - Erlang: `list_to_integer/2`, `binary_to_integer/2`, `map_to_tuple_keys/1`,
   `term_type/1`, counters, `dynamic_node_name`.
-- `get_creation/0` `undefined`; distribution and `.beam` groups declined.
+- The rest of the distribution group and the `.beam` group declined.
 - `erts_code_purger`: nothing to purge.
 
 ## Unicode util
