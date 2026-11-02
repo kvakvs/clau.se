@@ -214,14 +214,15 @@ export const en = {
     title: "Benchmarks",
     intro:
       "Clause compared with Erlang/OTP on one machine: the same Erlang programs, compiled by erlc and by clau -O2, time their kernels after a warm-up call. These numbers change with every optimization.",
-    geomean:
-      "Geometric mean of kernel times, Clause -O2 against the BEAM JIT (OTP)",
+    codeGeomean:
+      "Geometric mean of kernel times of the compiled programs, library tests left out, Clause -O2 against the BEAM JIT (OTP)",
+    libraryGeomean:
+      "Geometric mean of library test times, OTP library modules compiled by Clause -O2 against the BEAM JIT (OTP)",
     slowerOnAverage: "slower on average",
     fasterOnAverage: "faster on average",
     barFaster: "faster",
     barSlower: "slower",
     faster: "Kernels where Clause is faster",
-    first: "Geometric mean on {date}, the first recorded run",
     kernelsTitle: "Kernel times",
     kernelsNote:
       "Median of {runs} runs in milliseconds. The bar shows Clause's time divided by OTP's on a logarithmic scale.",

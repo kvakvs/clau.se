@@ -217,14 +217,15 @@ export const fr = {
     title: "Benchmarks",
     intro:
       "Clause comparé à Erlang/OTP sur une même machine : les mêmes programmes Erlang, compilés par erlc et par clau -O2, chronomètrent leurs noyaux après un appel de préchauffage. Ces chiffres évoluent à chaque optimisation.",
-    geomean:
-      "Moyenne géométrique des temps des noyaux, Clause -O2 face au JIT de BEAM (OTP)",
+    codeGeomean:
+      "Moyenne géométrique des temps des noyaux des programmes compilés, hors tests de bibliothèques, Clause -O2 face au JIT de BEAM (OTP)",
+    libraryGeomean:
+      "Moyenne géométrique des temps des tests de bibliothèques, modules des bibliothèques OTP compilés par Clause -O2 face au JIT de BEAM (OTP)",
     slowerOnAverage: "plus lent en moyenne",
     fasterOnAverage: "plus rapide en moyenne",
     barFaster: "plus rapide",
     barSlower: "plus lent",
     faster: "Noyaux où Clause est plus rapide",
-    first: "Moyenne géométrique au {date}, première exécution enregistrée",
     kernelsTitle: "Temps des noyaux",
     kernelsNote:
       "Médiane de {runs} exécutions en millisecondes. La barre montre le temps de Clause divisé par celui d'OTP sur une échelle logarithmique.",

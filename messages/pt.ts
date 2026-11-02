@@ -217,14 +217,15 @@ export const pt = {
     title: "Benchmarks",
     intro:
       "O Clause comparado com o Erlang/OTP numa única máquina: os mesmos programas Erlang, compilados pelo erlc e pelo clau -O2, medem o tempo dos seus kernels após uma chamada de aquecimento. Estes números mudam a cada otimização.",
-    geomean:
-      "Média geométrica dos tempos dos kernels, Clause -O2 face ao JIT da BEAM (OTP)",
+    codeGeomean:
+      "Média geométrica dos tempos dos kernels dos programas compilados, sem os testes de bibliotecas, Clause -O2 face ao JIT da BEAM (OTP)",
+    libraryGeomean:
+      "Média geométrica dos tempos dos testes de bibliotecas, módulos das bibliotecas OTP compilados pelo Clause -O2 face ao JIT da BEAM (OTP)",
     slowerOnAverage: "mais lento em média",
     fasterOnAverage: "mais rápido em média",
     barFaster: "mais rápido",
     barSlower: "mais lento",
     faster: "Kernels em que o Clause é mais rápido",
-    first: "Média geométrica em {date}, a primeira execução registada",
     kernelsTitle: "Tempos dos kernels",
     kernelsNote:
       "Mediana de {runs} execuções em milissegundos. A barra mostra o tempo do Clause dividido pelo do OTP numa escala logarítmica.",

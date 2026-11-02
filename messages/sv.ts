@@ -217,15 +217,15 @@ export const sv = {
     title: "Prestandatester",
     intro:
       "Clause jämfört med Erlang/OTP på en och samma maskin: samma Erlang-program, kompilerade med erlc och med clau -O2, tar tid på sina kärnor efter ett uppvärmningsanrop. Siffrorna ändras med varje optimering.",
-    geomean:
-      "Geometriskt medelvärde av kärntiderna, Clause -O2 mot BEAM JIT (OTP)",
+    codeGeomean:
+      "Geometriskt medelvärde av kärntiderna för de kompilerade programmen, utan bibliotekstester, Clause -O2 mot BEAM JIT (OTP)",
+    libraryGeomean:
+      "Geometriskt medelvärde av bibliotekstesternas tider, OTP:s biblioteksmoduler kompilerade av Clause -O2 mot BEAM JIT (OTP)",
     slowerOnAverage: "långsammare i genomsnitt",
     fasterOnAverage: "snabbare i genomsnitt",
     barFaster: "snabbare",
     barSlower: "långsammare",
     faster: "Kärnor där Clause är snabbare",
-    first:
-      "Geometriskt medelvärde den {date}, den första registrerade körningen",
     kernelsTitle: "Tider per kärna",
     kernelsNote:
       "Median av {runs} körningar i millisekunder. Stapeln visar Clauses tid delad med OTP:s på en logaritmisk skala.",

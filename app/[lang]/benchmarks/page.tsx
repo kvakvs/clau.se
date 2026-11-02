@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { formatTimes, kernelGeomean, kernels } from "@/lib/benchmarks";
+import {
+  codeGeomean,
+  formatTimes,
+  kernels,
+  libraryGeomean,
+} from "@/lib/benchmarks";
 import { cn } from "@/lib/cn";
 import { isLocale } from "@/lib/i18n";
 import { getMessages } from "@/messages";
@@ -46,7 +51,15 @@ export default async function BenchmarksPage({ params }: Props) {
   const megabytes = (bytes: number) =>
     t.megabytes.replace("{value}", number(bytes / 1e6, 2));
 
-  const geomean = kernelGeomean;
+  // A geometric mean as "1.48× faster on average".
+  const average = (geomean: number) => (
+    <>
+      {times(geomean >= 1 ? geomean : 1 / geomean)}{" "}
+      <span className="font-sans text-lg font-medium">
+        {geomean >= 1 ? t.slowerOnAverage : t.fasterOnAverage}
+      </span>
+    </>
+  );
   const fasterCount = kernels.filter((k) => k.clause < k.otp).length;
   const first = data.history[0];
   // Run days before the first pinned one ran wherever the OS placed them.
@@ -67,24 +80,9 @@ export default async function BenchmarksPage({ params }: Props) {
       <p className="mt-3 max-w-3xl text-muted">{t.intro}</p>
 
       <dl className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Tile
-          value={
-            <>
-              {times(geomean >= 1 ? geomean : 1 / geomean)}{" "}
-              <span className="font-sans text-lg font-medium">
-                {geomean >= 1 ? t.slowerOnAverage : t.fasterOnAverage}
-              </span>
-            </>
-          }
-          label={t.geomean}
-        />
+        <Tile value={average(codeGeomean)} label={t.codeGeomean} />
+        <Tile value={average(libraryGeomean)} label={t.libraryGeomean} />
         <Tile value={`${fasterCount} / ${kernels.length}`} label={t.faster} />
-        {first && first.date !== data.runAt.slice(0, 10) && (
-          <Tile
-            value={times(first.ratio)}
-            label={t.first.replace("{date}", first.date)}
-          />
-        )}
       </dl>
 
       <section aria-labelledby="kernels" className="mt-12">
